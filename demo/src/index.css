@@ -1,0 +1,189 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ----------------------------------------------------------------------------
+   Theme tokens — palette lifted directly from basicsos.com.
+
+   Primary green   #22955C  →  hsl(150 63% 36%)
+   Primary hover   #1B7D4E  →  hsl(151 65% 30%)
+   Tint surface    #E8F5EE  →  hsl(146 30% 94%)
+   Background      #F3F3F3  →  hsl(0 0% 95%)
+   Foreground      #050505  →  hsl(0 0% 2%)
+   Hairline border #E2E2E2  →  hsl(0 0% 89%)
+
+   Type:
+   DM Sans (display + body) — loaded from Google Fonts in index.html.
+---------------------------------------------------------------------------- */
+
+:root {
+  --background:           hsl(0 0% 95.3%);
+  --foreground:           hsl(0 0% 2%);
+
+  --card:                 hsl(0 0% 100%);
+  --card-foreground:      hsl(0 0% 4%);
+
+  --popover:              hsl(0 0% 100%);
+  --popover-foreground:   hsl(0 0% 4%);
+
+  --primary:              hsl(150 63% 36%);
+  --primary-foreground:   hsl(0 0% 100%);
+
+  --secondary:            hsl(146 30% 94%);
+  --secondary-foreground: hsl(151 65% 22%);
+
+  --muted:                hsl(0 0% 92%);
+  --muted-foreground:     hsl(0 0% 36%);
+
+  --accent:               hsl(146 30% 94%);
+  --accent-foreground:    hsl(151 65% 22%);
+
+  --destructive:          hsl(0 70% 50%);
+  --destructive-foreground: hsl(0 0% 98%);
+
+  --border:               hsl(0 0% 89%);
+  --input:                hsl(0 0% 89%);
+  --ring:                 hsl(150 63% 36%);
+
+  --chart-1:              hsl(150 63% 36%);
+  --chart-2:              hsl(38 92% 50%);
+  --chart-3:              hsl(217 91% 60%);
+  --chart-4:              hsl(0 0% 36%);
+  --chart-5:              hsl(151 65% 22%);
+
+  --radius:               0.625rem;
+
+  --sidebar:              hsl(0 0% 98%);
+  --sidebar-foreground:   hsl(0 0% 18%);
+  --sidebar-primary:      hsl(150 63% 36%);
+  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-accent:       hsl(146 30% 94%);
+  --sidebar-accent-foreground: hsl(151 65% 22%);
+  --sidebar-border:       hsl(0 0% 89%);
+  --sidebar-ring:         hsl(150 63% 36%);
+
+  --success:              hsl(150 63% 36%);
+  --warn:                 hsl(38 92% 50%);
+  --danger:               hsl(0 70% 50%);
+}
+
+@theme inline {
+  --color-background:           var(--background);
+  --color-foreground:           var(--foreground);
+  --color-card:                 var(--card);
+  --color-card-foreground:      var(--card-foreground);
+  --color-popover:              var(--popover);
+  --color-popover-foreground:   var(--popover-foreground);
+  --color-primary:              var(--primary);
+  --color-primary-foreground:   var(--primary-foreground);
+  --color-secondary:            var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted:                var(--muted);
+  --color-muted-foreground:     var(--muted-foreground);
+  --color-accent:               var(--accent);
+  --color-accent-foreground:    var(--accent-foreground);
+  --color-destructive:          var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border:               var(--border);
+  --color-input:                var(--input);
+  --color-ring:                 var(--ring);
+  --color-chart-1:              var(--chart-1);
+  --color-chart-2:              var(--chart-2);
+  --color-chart-3:              var(--chart-3);
+  --color-chart-4:              var(--chart-4);
+  --color-chart-5:              var(--chart-5);
+  --color-sidebar:              var(--sidebar);
+  --color-sidebar-foreground:   var(--sidebar-foreground);
+  --color-sidebar-primary:      var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent:       var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border:       var(--sidebar-border);
+  --color-sidebar-ring:         var(--sidebar-ring);
+  --color-success:              var(--success);
+  --color-warn:                 var(--warn);
+  --color-danger:               var(--danger);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --font-display: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; border-color: var(--color-border); }
+html, body, #root { height: 100%; }
+body {
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01", "cv11";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection { background: color-mix(in oklch, var(--color-primary) 40%, transparent); color: var(--color-foreground); }
+
+/* hide scrollbars in chrome-frame mock */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+
+/* shimmer for "loading" placeholders inside the mock browser */
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+.shimmer {
+  background: linear-gradient(90deg, rgba(0,0,0,0.04) 0%, rgba(0,0,0,0.10) 50%, rgba(0,0,0,0.04) 100%);
+  background-size: 800px 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+/* the agent's "ghost cursor" — green ring with a soft glow */
+.ghost-cursor {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border-radius: 9999px;
+  border: 2px solid var(--color-primary);
+  box-shadow:
+    0 0 0 6px color-mix(in oklch, var(--color-primary) 22%, transparent),
+    0 0 24px color-mix(in oklch, var(--color-primary) 45%, transparent);
+  pointer-events: none;
+  transition: transform 800ms cubic-bezier(0.4, 0.0, 0.2, 1), opacity 200ms;
+  z-index: 50;
+  transform-origin: center;
+}
+.ghost-cursor.clicking { transform: scale(0.7); }
+
+/* live status pulse */
+@keyframes pulse-dot {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklch, var(--color-primary) 70%, transparent); }
+  50%      { box-shadow: 0 0 0 6px transparent; }
+}
+.pulse-dot { animation: pulse-dot 1.6s ease-out infinite; }
+
+/* fake browser typewriter caret */
+@keyframes caret { 50% { opacity: 0; } }
+.caret::after {
+  content: '';
+  display: inline-block;
+  width: 1.5px;
+  height: 1em;
+  background: currentColor;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: caret 1s steps(1) infinite;
+}
+
+/* a soft "noise" texture overlay used for the landing-page-y backdrop */
+.noise-bg {
+  background-color: var(--color-background);
+  background-image:
+    radial-gradient(at 17% 12%, color-mix(in oklch, var(--color-primary) 6%, transparent) 0px, transparent 50%),
+    radial-gradient(at 82% 78%, color-mix(in oklch, var(--color-primary) 4%, transparent) 0px, transparent 50%);
+}

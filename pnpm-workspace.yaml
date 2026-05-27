@@ -3,3 +3,4 @@ packages:
   - "harness"
   - "shared"
   - "worker"
+  - "demo"
