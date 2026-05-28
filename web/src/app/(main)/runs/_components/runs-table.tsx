@@ -1,17 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 import Link from "next/link";
 
-import {
-  type ColumnDef,
-  type SortingState,
-  flexRender,
-  getCoreRowModel,
-  getSortedRowModel,
-  useReactTable,
-} from "@tanstack/react-table";
 import { ArrowUpDown, Search } from "@/icons";
 
 import { Button } from "@/components/ui/button";
@@ -37,15 +29,18 @@ import { mockWorkflows } from "@/mocks/workflows";
 import type { Run, RunStatus } from "@/types/runs";
 
 import { LiveRunCard } from "./live-run-card";
-import { RUN_STATUS_OPTIONS, StatusPill } from "./status-pill";
+import { RUN_STATUS_OPTIONS } from "./status-options";
+import { StatusPill } from "./status-pill";
 
 const LIVE_STATUSES = new Set<RunStatus>(["pending", "booting", "running", "paused", "paused_by_user", "verifying"]);
+const SKELETON_ROWS = ["skeleton-run-1", "skeleton-run-2", "skeleton-run-3", "skeleton-run-4", "skeleton-run-5", "skeleton-run-6"];
+const SKELETON_COLUMNS = ["status", "workflow", "steps", "cost", "started"];
 
 export function RunsTable() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<RunStatus | "all">("all");
   const [workflowId, setWorkflowId] = useState<string>("all");
-  const [sorting, setSorting] = useState<SortingState>([{ id: "startedAt", desc: true }]);
+  const [startedDesc, setStartedDesc] = useState(true);
 
   const { data, isLoading } = useRuns({
     status,
@@ -53,86 +48,11 @@ export function RunsTable() {
     search: search.trim() || undefined,
   });
 
-  const liveRuns = useMemo(() => (data ?? []).filter((r) => LIVE_STATUSES.has(r.status)), [data]);
-  const historyRuns = useMemo(() => (data ?? []).filter((r) => !LIVE_STATUSES.has(r.status)), [data]);
-
-  const columns = useMemo<ColumnDef<Run>[]>(
-    () => [
-      {
-        accessorKey: "status",
-        header: "Status",
-        cell: ({ row }) => <StatusPill status={row.original.status} />,
-      },
-      {
-        accessorKey: "workflowName",
-        header: "Workflow",
-        cell: ({ row }) => (
-          <div className="flex flex-col">
-            <Link
-              href={`/runs/${row.original.id}`}
-              className="font-medium hover:underline underline-offset-2"
-              prefetch={false}
-            >
-              {row.original.workflowName}
-            </Link>
-            <span className="font-mono text-muted-foreground text-xs">
-              {row.original.id}
-              {row.original.trigger !== "scheduled" && (
-                <>
-                  {" · "}
-                  <span className="capitalize">{row.original.trigger}</span>
-                  {row.original.triggeredBy ? ` · ${row.original.triggeredBy.name}` : ""}
-                </>
-              )}
-            </span>
-          </div>
-        ),
-      },
-      {
-        accessorKey: "stepCount",
-        header: () => <span className="text-right">Steps</span>,
-        cell: ({ row }) => <span className="tabular-nums text-sm">{row.original.stepCount}</span>,
-      },
-      {
-        accessorKey: "costCents",
-        header: "Cost",
-        cell: ({ row }) =>
-          row.original.costCents != null ? (
-            <span className="tabular-nums text-sm">${(row.original.costCents / 100).toFixed(2)}</span>
-          ) : (
-            <span className="text-muted-foreground text-sm">—</span>
-          ),
-      },
-      {
-        accessorKey: "startedAt",
-        header: ({ column }) => (
-          <button
-            type="button"
-            className="inline-flex items-center gap-1 hover:text-foreground"
-            onClick={() => column.toggleSorting()}
-          >
-            Started
-            <ArrowUpDown className="size-3.5" />
-          </button>
-        ),
-        cell: ({ row }) => (
-          <div className="flex flex-col">
-            <span className="text-sm">{formatRelative(row.original.startedAt)}</span>
-            <span className="text-muted-foreground text-xs">{formatDuration(row.original)}</span>
-          </div>
-        ),
-      },
-    ],
-    [],
-  );
-
-  const table = useReactTable({
-    data: historyRuns,
-    columns,
-    state: { sorting },
-    onSortingChange: setSorting,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
+  const liveRuns = (data ?? []).filter((run) => LIVE_STATUSES.has(run.status));
+  const historyRuns = (data ?? []).filter((run) => !LIVE_STATUSES.has(run.status));
+  const sortedHistoryRuns = historyRuns.toSorted((left, right) => {
+    const delta = new Date(left.startedAt).getTime() - new Date(right.startedAt).getTime();
+    return startedDesc ? -delta : delta;
   });
 
   const totalCount = (data ?? []).length;
@@ -214,39 +134,82 @@ export function RunsTable() {
         <div className="overflow-hidden rounded-lg border bg-card">
           <Table>
             <TableHeader>
-              {table.getHeaderGroups().map((hg) => (
-                <TableRow key={hg.id}>
-                  {hg.headers.map((h) => (
-                    <TableHead key={h.id}>
-                      {h.isPlaceholder ? null : flexRender(h.column.columnDef.header, h.getContext())}
-                    </TableHead>
-                  ))}
-                </TableRow>
-              ))}
+              <TableRow>
+                <TableHead>Status</TableHead>
+                <TableHead>Workflow</TableHead>
+                <TableHead>
+                  <span className="text-right">Steps</span>
+                </TableHead>
+                <TableHead>Cost</TableHead>
+                <TableHead>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 hover:text-foreground"
+                    onClick={() => setStartedDesc((current) => !current)}
+                    aria-label={`Sort by started time ${startedDesc ? "oldest first" : "newest first"}`}
+                  >
+                    Started
+                    <ArrowUpDown className="size-3.5" />
+                  </button>
+                </TableHead>
+              </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                Array.from({ length: 6 }).map((_, i) => (
-                  <TableRow key={i}>
-                    {columns.map((_c, j) => (
-                      <TableCell key={j}>
+                SKELETON_ROWS.map((rowKey) => (
+                  <TableRow key={rowKey}>
+                    {SKELETON_COLUMNS.map((columnKey) => (
+                      <TableCell key={columnKey}>
                         <Skeleton className="h-4 w-24" />
                       </TableCell>
                     ))}
                   </TableRow>
                 ))
-              ) : table.getRowModel().rows.length === 0 ? (
+              ) : sortedHistoryRuns.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={columns.length} className="h-32 text-center text-muted-foreground">
+                  <TableCell colSpan={SKELETON_COLUMNS.length} className="h-32 text-center text-muted-foreground">
                     {totalCount === 0 ? "No runs match these filters." : "All matching runs are still live above."}
                   </TableCell>
                 </TableRow>
               ) : (
-                table.getRowModel().rows.map((row) => (
-                  <TableRow key={row.id}>
-                    {row.getVisibleCells().map((cell) => (
-                      <TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
-                    ))}
+                sortedHistoryRuns.map((run) => (
+                  <TableRow key={run.id}>
+                    <TableCell>
+                      <StatusPill status={run.status} />
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <Link href={`/runs/${run.id}`} className="font-medium hover:underline underline-offset-2" prefetch={false}>
+                          {run.workflowName}
+                        </Link>
+                        <span className="font-mono text-muted-foreground text-xs">
+                          {run.id}
+                          {run.trigger !== "scheduled" && (
+                            <>
+                              {" · "}
+                              <span className="capitalize">{run.trigger}</span>
+                              {run.triggeredBy ? ` · ${run.triggeredBy.name}` : ""}
+                            </>
+                          )}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <span className="tabular-nums text-sm">{run.stepCount}</span>
+                    </TableCell>
+                    <TableCell>
+                      {run.costCents != null ? (
+                        <span className="tabular-nums text-sm">${(run.costCents / 100).toFixed(2)}</span>
+                      ) : (
+                        <span className="text-muted-foreground text-sm">No cost</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span className="text-sm">{formatRelative(run.startedAt)}</span>
+                        <span className="text-muted-foreground text-xs">{formatDuration(run)}</span>
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))
               )}
@@ -270,7 +233,7 @@ function formatRelative(iso: string): string {
 }
 
 function formatDuration(run: Run): string {
-  if (!run.completedAt) return "—";
+  if (!run.completedAt) return "In progress";
   const ms = new Date(run.completedAt).getTime() - new Date(run.startedAt).getTime();
   const sec = Math.max(1, Math.round(ms / 1000));
   if (sec < 60) return `${sec}s`;

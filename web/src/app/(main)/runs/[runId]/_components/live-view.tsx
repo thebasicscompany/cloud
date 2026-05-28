@@ -24,7 +24,7 @@ export function LiveView({ run, takeover, fullBleed, onToggleTakeover }: Props) 
       <div className="flex items-center justify-between border-b bg-card px-4 py-2">
         <div className="flex items-center gap-2 text-sm">
           <Monitor className="size-4 text-muted-foreground" />
-          <span className="font-medium">{isLive ? "Live browser" : "Final browser state"}</span>
+          <span className="font-medium">{run.executionTarget ? liveTitleFor(run.executionTarget, isLive) : isLive ? "Live browser" : "Final browser state"}</span>
           {takeover && (
             <Badge variant="secondary" className="h-auto min-h-5 gap-1 py-0.5">
               <Hand data-icon="inline-start" />
@@ -65,13 +65,38 @@ export function LiveView({ run, takeover, fullBleed, onToggleTakeover }: Props) 
           <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center text-muted-foreground">
             <Monitor className="size-10 opacity-30" />
             <p className="max-w-sm text-sm">
-              Browserbase live URL renders here in production. {isLive ? "(Streaming…)" : "(Final frame)"}
+              {run.executionTarget ? localRunDescription(run, isLive) : `Browserbase live URL renders here in production. ${isLive ? "(Streaming)" : "(Final frame)"}`}
             </p>
           </div>
         </div>
       </div>
     </div>
   );
+}
+
+function liveTitleFor(target: string, isLive: boolean): string {
+  if (target === "local_device") return isLive ? "Local device run" : "Final local state";
+  if (target === "local_browser") return isLive ? "Local browser run" : "Final browser state";
+  if (target === "local_app") return isLive ? "Local app runtime" : "Final app state";
+  if (target === "codex_app_server") return isLive ? "Codex app-server run" : "Codex app-server result";
+  if (target === "codex_exec") return isLive ? "Codex exec JSON run" : "Codex exec result";
+  if (target === "basics_cloud") return isLive ? "Basics Cloud run" : "Cloud run result";
+  return isLive ? "Live run" : "Final run state";
+}
+
+function localRunDescription(run: Run, isLive: boolean): string {
+  const target = run.executionTarget;
+  if (run.browserRuntimeTarget) {
+    const label = browserRuntimeLabel(run.browserRuntimeTarget);
+    const page = run.browserTitle && run.browserDomain ? `${run.browserTitle} on ${run.browserDomain}` : run.browserDomain ?? "the selected site";
+    return `${label} renders here with watch, take-over, stop, and cloud promotion controls. ${isLive ? `Current page: ${page}.` : "Final browser state."}`;
+  }
+  if (target === "basics_cloud") return `Basics Cloud live view and worker logs render here in production. ${isLive ? "(Cloud stream active)" : "(Cloud result)"}`;
+  if (target === "codex_app_server") return `Codex app-server thread events render here through Basics logs and policy. ${isLive ? "(Codex stream active)" : "(Codex result)"}`;
+  if (target === "codex_exec") return `Codex exec JSONL events render here after Basics policy projection. ${isLive ? "(Codex JSON stream active)" : "(Codex result)"}`;
+  if (target === "local_browser") return `Managed local browser activity renders here. ${isLive ? "(Local stream active)" : "(Final local browser state)"}`;
+  if (target === "local_app") return `Local app/tool runtime activity renders here. ${isLive ? "(Local app worker active)" : "(Final app state)"}`;
+  return `Local device tool activity renders here. ${isLive ? "(Local stream active)" : "(Final local state)"}`;
 }
 
 function BrowserChrome({ url }: { url: string }) {
@@ -90,6 +115,7 @@ function BrowserChrome({ url }: { url: string }) {
 }
 
 function fakeUrlFor(run: Run): string {
+  if (run.browserUrl) return run.browserUrl;
   const map: Record<string, string> = {
     wf_invoice_chase: "app.qbo.intuit.com/app/reports/ar-aging",
     wf_lead_enrich: "app.hubspot.com/contacts/list/all",
@@ -97,5 +123,12 @@ function fakeUrlFor(run: Run): string {
     wf_zendesk_triage: "yourco.zendesk.com/agent/dashboard",
     wf_inventory_sync: "admin.shopify.com/store/inventory",
   };
-  return map[run.workflowId] ?? "—";
+  return map[run.workflowId] ?? "local://basichome/run";
+}
+
+function browserRuntimeLabel(target: string): string {
+  if (target === "local_visible_browser") return "Active browser";
+  if (target === "local_headless_browser") return "Background browser";
+  if (target === "basics_cloud_browser") return "Basics Cloud Browser";
+  return "Managed local browser";
 }

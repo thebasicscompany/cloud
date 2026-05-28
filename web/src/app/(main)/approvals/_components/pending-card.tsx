@@ -1,43 +1,35 @@
 "use client";
 
-import { useState } from "react";
-
 import Link from "next/link";
 
-import { Check, Clock, ExternalLink, X } from "@/icons";
+import { Check, Clock, ExternalLink, ShieldCheck, TriangleAlertIcon, X } from "@/icons";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useApprovalActions } from "@/hooks/queries/use-approvals";
+import { canApprove, getCurrentActor, readApprovalStore } from "@/lib/admin-approvals-runtime";
 import { formatRelative } from "@/lib/format";
-import { cn } from "@/lib/utils";
-import type { Approval } from "@/types/runs";
+import type { WorkspaceApproval } from "@/types/approvals";
 
-export function PendingCard({ approval }: { approval: Approval }) {
-  const [resolved, setResolved] = useState<"approved" | "rejected" | null>(null);
-  const params = Object.entries(approval.params);
+export function PendingCard({ approval }: { approval: WorkspaceApproval }) {
+  const actions = useApprovalActions();
+  const actor = getCurrentActor(readApprovalStore());
+  const approveEnabled = canApprove(actor, approval);
+  const failedCheck = approval.checks.some((check) => check.status === "failed");
+  const pending = approval.status === "pending" || approval.status === "draft";
+  const canRevokeTrust = approval.kind === "trust_grant" && approval.status === "approved" && approval.trustGrantId;
 
   return (
-    <article
-      className={cn(
-        "flex flex-col gap-3 rounded-xl border bg-card p-4 transition-opacity",
-        resolved && "opacity-60",
-      )}
-    >
+    <article className="flex flex-col gap-3 rounded-lg border bg-card p-4">
       <header className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">{approval.action}</code>
-            {resolved && (
-              <Badge
-                variant={resolved === "approved" ? "default" : "destructive"}
-                className="h-auto min-h-5 gap-1 py-0.5 font-normal [&>svg]:!size-3"
-              >
-                {resolved === "approved" ? <Check /> : <X />}
-                {resolved === "approved" ? "Approved" : "Rejected"}
-              </Badge>
-            )}
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline" className="h-auto min-h-5 py-0.5 font-normal">{approval.kind.replace(/_/g, " ")}</Badge>
+            <Badge variant={approval.risk === "high" || approval.risk === "critical" ? "destructive" : "secondary"} className="h-auto min-h-5 py-0.5">{approval.risk}</Badge>
+            {failedCheck ? <Badge variant="destructive" className="h-auto min-h-5 py-0.5">Check failed</Badge> : null}
           </div>
-          <p className="mt-1 text-sm leading-snug">{approval.reason}</p>
+          <h2 className="mt-2 font-medium text-sm">{approval.objectName}</h2>
+          <p className="mt-1 text-muted-foreground text-sm leading-snug">{approval.reason}</p>
         </div>
         <div className="flex items-center gap-1 text-muted-foreground text-xs">
           <Clock className="size-3" />
@@ -45,50 +37,89 @@ export function PendingCard({ approval }: { approval: Approval }) {
         </div>
       </header>
 
-      {params.length > 0 && (
-        <dl className="space-y-1.5 rounded-md border bg-muted/30 p-3 text-xs">
-          {params.map(([k, v]) => (
-            <div key={k} className="flex gap-2">
-              <dt className="shrink-0 font-mono text-muted-foreground">{k}</dt>
-              <dd className="min-w-0 flex-1 break-all">
-                {typeof v === "string" ? v : <code className="font-mono">{JSON.stringify(v)}</code>}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      )}
+      <div className="grid gap-2 rounded-md border bg-muted/30 p-3 text-xs sm:grid-cols-2">
+        <Fact label="Requester" value={`${approval.requestedBy.name} (${approval.requestedBy.roles[0]})`} />
+        <Fact label="Required" value={approval.requiredRole} />
+        <Fact label="Target" value={approval.rolloutTarget} />
+        <Fact label="Artifact" value={approval.artifactHash ? approval.artifactHash.replace(/^sha256:/, "").slice(0, 12) : "none"} mono />
+      </div>
+
+      <div className="flex flex-wrap gap-1">
+        {approval.requestedAccess.slice(0, 3).map((access) => (
+          <Badge key={access} variant="outline" className="h-auto min-h-5 py-0.5 font-normal">
+            {access}
+          </Badge>
+        ))}
+      </div>
 
       <footer className="flex items-center justify-between gap-2 border-t pt-3">
         <Link
-          href={`/runs/${approval.runId}`}
+          href={`/approvals/${approval.id}`}
           prefetch={false}
           className="inline-flex items-center gap-1 text-muted-foreground text-xs hover:text-foreground"
         >
           <ExternalLink className="size-3" />
-          <span className="font-mono">{approval.runId}</span>
+          <span>Open details</span>
         </Link>
-        <div className="flex items-center gap-1.5">
+        {pending ? (
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 gap-1.5"
+              onClick={() => actions.decide.mutate({ approvalId: approval.id, action: "request_changes", reason: "Admin requested a narrower rollout or clearer test evidence." })}
+              data-testid={`approval-card-changes-${approval.id}`}
+            >
+              <TriangleAlertIcon className="size-3.5" />
+              Changes
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 gap-1.5"
+              onClick={() => actions.decide.mutate({ approvalId: approval.id, action: "reject", reason: "Rejected from approval queue." })}
+              data-testid={`approval-card-reject-${approval.id}`}
+            >
+              <X className="size-3.5" />
+              Reject
+            </Button>
+            <Button
+              size="sm"
+              className="h-8 gap-1.5"
+              onClick={() => actions.decide.mutate({ approvalId: approval.id, action: "approve", reason: "Admin approved final rollout; basichome will deploy automatically." })}
+              disabled={!approveEnabled}
+              data-testid={`approval-card-approve-${approval.id}`}
+            >
+              {approveEnabled ? <Check className="size-3.5" /> : <ShieldCheck className="size-3.5" />}
+              Approve
+            </Button>
+          </div>
+        ) : canRevokeTrust ? (
           <Button
             size="sm"
             variant="outline"
             className="h-8 gap-1.5"
-            onClick={() => setResolved("rejected")}
-            disabled={Boolean(resolved)}
+            onClick={() => actions.revokeTrust.mutate({ trustGrantId: approval.trustGrantId!, reason: "Revoked from approvals queue." })}
+            data-testid={`approval-card-revoke-${approval.trustGrantId}`}
           >
-            <X className="size-3.5" />
-            Reject
+            <TriangleAlertIcon className="size-3.5" />
+            Revoke trust
           </Button>
-          <Button
-            size="sm"
-            className="h-8 gap-1.5"
-            onClick={() => setResolved("approved")}
-            disabled={Boolean(resolved)}
-          >
-            <Check className="size-3.5" />
-            Approve
-          </Button>
-        </div>
+        ) : (
+          <Badge variant="outline" className="h-auto min-h-5 py-0.5">
+            {approval.status.replace(/_/g, " ")}
+          </Badge>
+        )}
       </footer>
     </article>
+  );
+}
+
+function Fact({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="min-w-0">
+      <div className="text-muted-foreground">{label}</div>
+      <div className={mono ? "truncate font-mono" : "truncate font-medium"}>{value}</div>
+    </div>
   );
 }

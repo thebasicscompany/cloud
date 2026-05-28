@@ -8,8 +8,9 @@
     "dev:no-env": "next dev",
     "build": "next build",
     "start": "next start",
+    "test": "tsx --test \"src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit",
-    "lint": "next lint"
+    "lint": "eslint ."
   },
   "dependencies": {
     "@assistant-ui/react": "^0.14.0",

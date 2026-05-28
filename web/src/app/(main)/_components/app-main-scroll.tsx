@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 
 import { Lenis } from "lenis/react";
 
@@ -10,22 +10,16 @@ const LENIS_OPTIONS = {
   overscroll: true,
 } as const;
 
-export function AppMainScroll({ children }: { children: ReactNode }) {
-  const [useLenis, setUseLenis] = useState(false);
+const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
 
-  useEffect(() => {
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const apply = () => setUseLenis(!mq.matches);
-    apply();
-    mq.addEventListener("change", apply);
-    return () => mq.removeEventListener("change", apply);
-  }, []);
+export function AppMainScroll({ children }: { children: ReactNode }) {
+  const useLenis = useSyncExternalStore(subscribeToMotionPreference, getMotionPreferenceSnapshot, getMotionPreferenceServerSnapshot);
 
   const shellClass = "min-h-0 flex-1 overflow-x-hidden overscroll-y-contain";
 
   if (!useLenis) {
     return (
-      <div data-app-scroll="main" className={`${shellClass} overflow-y-auto p-4 md:p-6`}>
+      <div data-app-scroll="main" className={`${shellClass} overflow-y-auto p-4 pb-28 md:p-6 md:pb-28`}>
         {children}
       </div>
     );
@@ -33,7 +27,21 @@ export function AppMainScroll({ children }: { children: ReactNode }) {
 
   return (
     <Lenis data-app-scroll="main" className={shellClass} options={LENIS_OPTIONS}>
-      <div className="p-4 md:p-6">{children}</div>
+      <div className="p-4 pb-28 md:p-6 md:pb-28">{children}</div>
     </Lenis>
   );
+}
+
+function subscribeToMotionPreference(onStoreChange: () => void) {
+  const mq = window.matchMedia(REDUCED_MOTION_QUERY);
+  mq.addEventListener("change", onStoreChange);
+  return () => mq.removeEventListener("change", onStoreChange);
+}
+
+function getMotionPreferenceSnapshot() {
+  return !window.matchMedia(REDUCED_MOTION_QUERY).matches;
+}
+
+function getMotionPreferenceServerSnapshot() {
+  return false;
 }

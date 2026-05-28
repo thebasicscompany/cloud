@@ -4,6 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 
 import { findRun, mockRuns } from "@/mocks/runs";
 import { detailedRunChecks, detailedRunSteps, synthesizeSteps } from "@/mocks/run-steps";
+import { cloudAutomationRunChecks, cloudAutomationRunToRun, cloudAutomationRunToSteps, findCloudAutomationRun, readCloudAutomationStore } from "@/lib/cloud-automation-runtime";
+import { findLocalAgentRun, localAgentRunToRun, localAgentRunToSteps, readLocalAgentStore } from "@/lib/local-agent-runtime";
 import type { CheckResult, Run, RunStep, RunsFilter } from "@/types/runs";
 
 /**
@@ -15,7 +17,7 @@ export function useRuns(filter: RunsFilter = {}) {
     queryKey: ["runs", filter],
     queryFn: async (): Promise<Run[]> => {
       await delay();
-      return mockRuns.filter((r) => matches(r, filter));
+      return allRuns().filter((r) => matches(r, filter));
     },
   });
 }
@@ -26,7 +28,10 @@ export function useRun(runId: string | undefined) {
     queryFn: async (): Promise<Run | null> => {
       await delay();
       if (!runId) return null;
-      return findRun(runId) ?? null;
+      const localRun = findLocalAgentRun(readLocalAgentStore(), runId);
+      if (localRun) return localAgentRunToRun(localRun);
+      const cloudRun = findCloudAutomationRun(readCloudAutomationStore(), runId);
+      return cloudRun ? cloudAutomationRunToRun(cloudRun) : findRun(runId) ?? null;
     },
     enabled: Boolean(runId),
   });
@@ -38,6 +43,10 @@ export function useRunSteps(runId: string | undefined) {
     queryFn: async (): Promise<RunStep[]> => {
       await delay();
       if (!runId) return [];
+      const localRun = findLocalAgentRun(readLocalAgentStore(), runId);
+      if (localRun) return localAgentRunToSteps(localRun);
+      const cloudRun = findCloudAutomationRun(readCloudAutomationStore(), runId);
+      if (cloudRun) return cloudAutomationRunToSteps(cloudRun);
       const cached = detailedRunSteps[runId];
       if (cached) return cached;
       const run = findRun(runId);
@@ -53,10 +62,18 @@ export function useRunChecks(runId: string | undefined) {
     queryFn: async (): Promise<CheckResult[]> => {
       await delay();
       if (!runId) return [];
+      const cloudRun = findCloudAutomationRun(readCloudAutomationStore(), runId);
+      if (cloudRun) return cloudAutomationRunChecks(cloudRun);
       return detailedRunChecks[runId] ?? [];
     },
     enabled: Boolean(runId),
   });
+}
+
+function allRuns(): Run[] {
+  const localRuns = readLocalAgentStore().runs.map(localAgentRunToRun);
+  const cloudRuns = readCloudAutomationStore().runs.map(cloudAutomationRunToRun);
+  return [...localRuns, ...cloudRuns, ...mockRuns];
 }
 
 function matches(run: Run, filter: RunsFilter): boolean {

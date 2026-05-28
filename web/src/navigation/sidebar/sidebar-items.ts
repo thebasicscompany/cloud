@@ -5,6 +5,7 @@ import {
   CogSolid,
   FileSearch,
   FileSearchSolid,
+  Folder,
   Globe,
   GlobeSolid,
   Home,
@@ -52,17 +53,6 @@ export const sidebarItems: NavGroup[] = [
     id: 1,
     items: [
       { title: "Home", url: "/", icon: Home, iconActive: HomeSolid },
-      { title: "Runs", url: "/runs", icon: Play, iconActive: PlaySolid },
-      { title: "Workflows", url: "/workflows", icon: Workflow, iconActive: WorkflowSolid },
-      { title: "Approvals", url: "/approvals", icon: ClipboardCheck, iconActive: ClipboardCheckSolid },
-    ],
-  },
-  {
-    id: 2,
-    label: "Workspace",
-    items: [
-      { title: "Context", url: "/context", icon: Globe, iconActive: GlobeSolid },
-      { title: "Audit", url: "/audit", icon: FileSearch, iconActive: FileSearchSolid },
       {
         title: "Conversations",
         url: "/conversations",
@@ -76,6 +66,19 @@ export const sidebarItems: NavGroup[] = [
           { title: "Browse all", url: "/conversations" },
         ],
       },
+      { title: "Browser", url: "/browser", icon: Globe, iconActive: GlobeSolid },
+      { title: "Runs", url: "/runs", icon: Play, iconActive: PlaySolid },
+      { title: "Automations", url: "/automations", icon: Workflow, iconActive: WorkflowSolid },
+      { title: "Apps", url: "/apps", icon: Folder, iconActive: Folder },
+      { title: "Approvals", url: "/approvals", icon: ClipboardCheck, iconActive: ClipboardCheckSolid },
+    ],
+  },
+  {
+    id: 2,
+    label: "Workspace",
+    items: [
+      { title: "Context", url: "/context", icon: Globe, iconActive: GlobeSolid },
+      { title: "Logs/Audit", url: "/logs", icon: FileSearch, iconActive: FileSearchSolid },
     ],
   },
   {

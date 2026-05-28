@@ -13,7 +13,7 @@ import type { WorkflowSummary } from "@/types/runs";
 
 import { StatusPill } from "../../runs/_components/status-pill";
 
-export function WorkflowsGrid() {
+export function WorkflowsGrid({ basePath = "/workflows" }: { basePath?: string }) {
   const { data, isLoading } = useWorkflows();
 
   if (isLoading) {
@@ -37,13 +37,13 @@ export function WorkflowsGrid() {
   return (
     <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
       {data.map((wf) => (
-        <WorkflowCard key={wf.id} workflow={wf} />
+        <WorkflowCard key={wf.id} workflow={wf} basePath={basePath} />
       ))}
     </div>
   );
 }
 
-function WorkflowCard({ workflow }: { workflow: WorkflowSummary }) {
+function WorkflowCard({ workflow, basePath }: { workflow: WorkflowSummary; basePath: string }) {
   const successPct = workflow.successRate == null ? null : Math.round(workflow.successRate * 100);
   const successTone =
     successPct == null
@@ -56,7 +56,7 @@ function WorkflowCard({ workflow }: { workflow: WorkflowSummary }) {
 
   return (
     <Link
-      href={`/workflows/${workflow.id}`}
+      href={`${basePath}/${workflow.id}`}
       prefetch={false}
       className={cn(
         "group flex flex-col gap-3 rounded-xl border bg-card p-4 transition-colors hover:border-primary/40",

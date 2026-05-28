@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { createServerClient } from "@supabase/ssr";
 
+import { shouldUseLocalDevAuth } from "@/lib/supabase/config";
+
 const PUBLIC_PATHS = ["/auth", "/_next", "/favicon.ico", "/basics-logo.png"];
 
 function isPublicPath(pathname: string) {
@@ -10,6 +12,10 @@ function isPublicPath(pathname: string) {
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
+
+  if (shouldUseLocalDevAuth()) {
+    return response;
+  }
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

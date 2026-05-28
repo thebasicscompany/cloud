@@ -13,6 +13,7 @@ export type RunStatus =
   | "verifying"
   | "completed"
   | "failed"
+  | "stopped"
   | "verified"
   | "unverified";
 
@@ -35,6 +36,17 @@ export type Run = {
   costCents?: number;
   stepCount: number;
   errorSummary?: string;
+  runtime?: string;
+  executionTarget?: string;
+  actorAccountId?: string;
+  deviceId?: string;
+  authMode?: string;
+  costBearer?: string;
+  activeTool?: string;
+  browserRuntimeTarget?: string;
+  browserUrl?: string;
+  browserTitle?: string;
+  browserDomain?: string;
 };
 
 export type Workflow = {

@@ -74,6 +74,11 @@ export function RunHeader({ run, takeover, onToggleTakeover, paused, onTogglePau
         <Stat label="Steps" value={run.stepCount.toString()} />
         {run.costCents != null && <Stat label="Cost" value={`$${(run.costCents / 100).toFixed(2)}`} />}
         <Stat label="Trigger" value={triggerText(run)} />
+        {run.executionTarget && <Stat label="Target" value={run.executionTarget} mono />}
+        {run.runtime && <Stat label="Runtime" value={run.runtime} mono />}
+        {run.actorAccountId && <Stat label="Actor" value={run.actorAccountId} mono />}
+        {run.deviceId && <Stat label="Device" value={run.deviceId} mono />}
+        {run.activeTool && <Stat label="Active tool" value={run.activeTool} mono />}
         {run.browserbaseSessionId && (
           <Stat label="Session" value={run.browserbaseSessionId} mono />
         )}

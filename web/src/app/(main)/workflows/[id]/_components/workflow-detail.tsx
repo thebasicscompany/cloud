@@ -14,8 +14,8 @@ import { cn } from "@/lib/utils";
 import { StatusPill } from "../../../runs/_components/status-pill";
 import { RecentRuns } from "./recent-runs";
 
-export function WorkflowDetail({ id }: { id: string }) {
-  const router = useRouter();
+export function WorkflowDetail({ id, basePath = "/workflows", label = "Workflows" }: { id: string; basePath?: string; label?: string }) {
+  const { push } = useRouter();
   const { data, isLoading } = useWorkflow(id);
 
   if (isLoading) {
@@ -31,8 +31,8 @@ export function WorkflowDetail({ id }: { id: string }) {
     return (
       <div className="flex h-[60vh] flex-col items-center justify-center gap-3 text-center">
         <h2 className="font-semibold text-lg">Workflow not found</h2>
-        <button type="button" className="text-primary text-sm hover:underline" onClick={() => router.push("/workflows")}>
-          ← Back to workflows
+        <button type="button" className="text-primary text-sm hover:underline" onClick={() => push(basePath)}>
+          Back to {label.toLowerCase()}
         </button>
       </div>
     );
@@ -53,8 +53,8 @@ export function WorkflowDetail({ id }: { id: string }) {
     <div className="space-y-6">
       <header className="space-y-3">
         <nav className="flex items-center gap-1 text-muted-foreground text-sm">
-          <Link href="/workflows" prefetch={false} className="hover:text-foreground">
-            Workflows
+          <Link href={basePath} prefetch={false} className="hover:text-foreground">
+            {label}
           </Link>
           <ChevronRight className="size-3.5" />
           <span className="truncate text-foreground">{workflow.name}</span>

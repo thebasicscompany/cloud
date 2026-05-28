@@ -1,13 +1,10 @@
 "use client";
 
-import type { VariantProps } from "class-variance-authority";
-import type { ReactNode } from "react";
-
 import Link from "next/link";
 
-import { Check, Clock, X } from "@/icons";
+import { Check, Clock, TriangleAlertIcon, X } from "@/icons";
 
-import { Badge, badgeVariants } from "@/components/ui/badge";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -17,39 +14,27 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useApprovals } from "@/hooks/queries/use-approvals";
+import { isResolvedApproval, useApprovals } from "@/hooks/queries/use-approvals";
 import { formatRelative } from "@/lib/format";
-import type { ApprovalStatus } from "@/types/runs";
-
-type BadgeVariant = NonNullable<VariantProps<typeof badgeVariants>["variant"]>;
+import type { WorkspaceApprovalStatus } from "@/types/approvals";
 
 const STATUS_META: Record<
-  Exclude<ApprovalStatus, "pending">,
-  { label: string; variant: BadgeVariant; icon: ReactNode }
+  Exclude<WorkspaceApprovalStatus, "draft" | "pending">,
+  { label: string; variant: "secondary" | "destructive" | "outline"; icon: typeof Check }
 > = {
-  approved: {
-    label: "Approved",
-    variant: "default",
-    icon: <Check />,
-  },
-  rejected: {
-    label: "Rejected",
-    variant: "destructive",
-    icon: <X />,
-  },
-  timeout: {
-    label: "Timeout",
-    variant: "secondary",
-    icon: <Clock />,
-  },
+  approved: { label: "Approved", variant: "secondary", icon: Check },
+  rejected: { label: "Rejected", variant: "destructive", icon: X },
+  changes_requested: { label: "Changes", variant: "outline", icon: TriangleAlertIcon },
+  expired: { label: "Expired", variant: "outline", icon: Clock },
+  revoked: { label: "Revoked", variant: "destructive", icon: X },
 };
 
 export function ResolvedTable() {
   const { data, isLoading } = useApprovals();
   const resolved = (data ?? [])
-    .filter((a) => a.status !== "pending")
+    .filter(isResolvedApproval)
     .slice()
-    .sort((a, b) => (b.resolvedAt ?? b.requestedAt).localeCompare(a.resolvedAt ?? a.requestedAt));
+    .sort((a, b) => (b.decidedAt ?? b.requestedAt).localeCompare(a.decidedAt ?? a.requestedAt));
 
   return (
     <div className="overflow-hidden rounded-lg border bg-card">
@@ -57,9 +42,10 @@ export function ResolvedTable() {
         <TableHeader>
           <TableRow>
             <TableHead>Outcome</TableHead>
-            <TableHead>Action</TableHead>
-            <TableHead>Run</TableHead>
-            <TableHead>Resolved by</TableHead>
+            <TableHead>Request</TableHead>
+            <TableHead>Kind</TableHead>
+            <TableHead>Actor</TableHead>
+            <TableHead className="hidden lg:table-cell">Reason</TableHead>
             <TableHead className="text-right">Resolved</TableHead>
           </TableRow>
         </TableHeader>
@@ -67,7 +53,7 @@ export function ResolvedTable() {
           {isLoading ? (
             Array.from({ length: 6 }).map((_, i) => (
               <TableRow key={i}>
-                {Array.from({ length: 5 }).map((_x, j) => (
+                {Array.from({ length: 6 }).map((_x, j) => (
                   <TableCell key={j}>
                     <Skeleton className="h-4 w-20" />
                   </TableCell>
@@ -76,38 +62,45 @@ export function ResolvedTable() {
             ))
           ) : resolved.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={5} className="h-24 text-center text-muted-foreground text-sm">
+              <TableCell colSpan={6} className="h-24 text-center text-muted-foreground text-sm">
                 No resolved approvals yet.
               </TableCell>
             </TableRow>
           ) : (
-            resolved.map((a) => {
-              const meta = STATUS_META[a.status as Exclude<ApprovalStatus, "pending">];
+            resolved.map((approval) => {
+              const meta = STATUS_META[approval.status as Exclude<WorkspaceApprovalStatus, "draft" | "pending">];
+              const Icon = meta.icon;
               return (
-                <TableRow key={a.id}>
+                <TableRow key={approval.id}>
                   <TableCell>
                     <Badge variant={meta.variant} className="h-auto min-h-5 gap-1 py-0.5 font-normal [&>svg]:!size-3">
-                      {meta.icon}
+                      <Icon />
                       {meta.label}
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">{a.action}</code>
-                  </TableCell>
-                  <TableCell>
                     <Link
-                      href={`/runs/${a.runId}`}
-                      className="font-mono text-muted-foreground text-xs hover:text-foreground hover:underline underline-offset-2"
+                      href={`/approvals/${approval.id}`}
+                      className="font-medium hover:underline underline-offset-2"
                       prefetch={false}
                     >
-                      {a.runId}
+                      {approval.objectName}
                     </Link>
+                    <div className="font-mono text-muted-foreground text-xs">{approval.id}</div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className="h-auto min-h-5 py-0.5 font-normal">
+                      {approval.kind.replace(/_/g, " ")}
+                    </Badge>
                   </TableCell>
                   <TableCell className="text-muted-foreground text-sm">
-                    {a.resolvedBy?.name ?? <span className="italic">—</span>}
+                    {approval.decidedBy?.name ?? approval.requestedBy.name}
+                  </TableCell>
+                  <TableCell className="hidden max-w-[360px] text-muted-foreground text-sm lg:table-cell">
+                    <div className="truncate">{approval.decisionReason ?? approval.reason}</div>
                   </TableCell>
                   <TableCell className="text-right text-muted-foreground text-sm">
-                    {formatRelative(a.resolvedAt ?? a.requestedAt)}
+                    {formatRelative(approval.decidedAt ?? approval.requestedAt)}
                   </TableCell>
                 </TableRow>
               );

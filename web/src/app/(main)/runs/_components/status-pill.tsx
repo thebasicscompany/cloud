@@ -18,20 +18,10 @@ const STATUS_STYLES: Record<RunStatus, { label: string; variant: BadgeVariant; d
   verifying: { label: "Verifying", variant: "secondary", dot: "bg-secondary-foreground/65 animate-pulse" },
   completed: { label: "Completed", variant: "secondary", dot: "bg-secondary-foreground/45" },
   failed: { label: "Failed", variant: "destructive", dot: "bg-destructive" },
+  stopped: { label: "Stopped", variant: "outline", dot: "bg-muted-foreground" },
   verified: { label: "Verified", variant: "default", dot: "bg-primary-foreground/75" },
   unverified: { label: "Unverified", variant: "outline", dot: "bg-muted-foreground" },
 };
-
-export const RUN_STATUS_OPTIONS: Array<{ value: RunStatus | "all"; label: string }> = [
-  { value: "all", label: "All statuses" },
-  { value: "running", label: "Running" },
-  { value: "paused", label: "Paused" },
-  { value: "verifying", label: "Verifying" },
-  { value: "verified", label: "Verified" },
-  { value: "unverified", label: "Unverified" },
-  { value: "failed", label: "Failed" },
-  { value: "completed", label: "Completed" },
-];
 
 export function StatusPill({ status }: { status: RunStatus }) {
   const cfg = STATUS_STYLES[status];

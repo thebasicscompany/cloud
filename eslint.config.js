@@ -26,6 +26,7 @@ export default [
       'node_modules/**',
       'vendor/**',
       '**/.next/**',
+      '**/sst-env.d.ts',
       '**/dist/**',
       '**/dist-bundle/**',
       '**/coverage/**',

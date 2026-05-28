@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "doppler run --project backend --config dev -- pnpm -r --parallel dev",
     "build": "pnpm -r build",
+    "basics": "node scripts/basics-app-cli.mjs",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "lint": "eslint \"*.{js,mjs,ts}\" \"{api,harness,shared,worker,web}/**/*.{js,mjs,ts,tsx}\"",
@@ -22,6 +23,8 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@types/react": "19.2.15",
+    "@types/react-dom": "19.2.3",
     "eslint": "10.3.0",
     "prettier": "3.8.3",
     "sst": "^3.0.0",
@@ -34,6 +37,56 @@
     "pnpm": ">=10.0.0"
   },
   "pnpm": {
+    "packageExtensions": {
+      "@heroicons/react@*": {
+        "peerDependencies": {
+          "@types/react": "*"
+        },
+        "peerDependenciesMeta": {
+          "@types/react": {
+            "optional": true
+          }
+        }
+      },
+      "@tanstack/react-query@*": {
+        "peerDependencies": {
+          "@types/react": "*"
+        },
+        "peerDependenciesMeta": {
+          "@types/react": {
+            "optional": true
+          }
+        }
+      },
+      "input-otp@*": {
+        "peerDependencies": {
+          "@types/react": "*",
+          "@types/react-dom": "*"
+        },
+        "peerDependenciesMeta": {
+          "@types/react": {
+            "optional": true
+          },
+          "@types/react-dom": {
+            "optional": true
+          }
+        }
+      },
+      "next@*": {
+        "peerDependencies": {
+          "@types/react": "*",
+          "@types/react-dom": "*"
+        },
+        "peerDependenciesMeta": {
+          "@types/react": {
+            "optional": true
+          },
+          "@types/react-dom": {
+            "optional": true
+          }
+        }
+      }
+    },
     "overrides": {
       "zod": "4.3.6"
     }

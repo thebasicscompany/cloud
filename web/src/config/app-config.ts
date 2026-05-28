@@ -3,12 +3,12 @@ import packageJson from "../../package.json";
 const currentYear = new Date().getFullYear();
 
 export const APP_CONFIG = {
-  name: "Basics",
+  name: "basichome",
   version: packageJson.version,
-  copyright: `© ${currentYear}, Basics.`,
+  copyright: `© ${currentYear}, basichome.`,
   meta: {
-    title: "Basics",
+    title: "basichome",
     description:
-      "Run B2B SaaS RevOps playbooks in cloud Chrome with live-view, take-over, approval gating, and audit log.",
+      "Run local-first AI work, saved automations, private apps, approvals, context, and cloud promotion from one cockpit.",
   },
 };
