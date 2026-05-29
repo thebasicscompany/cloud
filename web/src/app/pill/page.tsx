@@ -170,6 +170,17 @@ export default function PillPage() {
     } catch {
       /* best-effort */
     }
+    // Hand the routine to the main window so the loop continues into building an
+    // automation (same origin → shared localStorage; Home reads it on mount and
+    // via a storage listener if already open).
+    try {
+      window.localStorage.setItem(
+        "basichome:routine-prompt",
+        `Turn this recorded routine into a reusable automation, then run it. Here's what I demonstrated and said out loud:\n\n${narration.current || "(no narration captured)"}`,
+      );
+    } catch {
+      /* ignore */
+    }
     bridge()?.closePill?.();
   }
 

@@ -20,7 +20,7 @@ const STARTER_PROMPT = "Use approved local context to summarize my invoice follo
 /** Desktop preload bridge (Model B). Present only inside the Electron app. */
 interface BasichomeBridge {
   isDesktop?: boolean;
-  localRelayStart?: (opts: { relayUrl: string; session: string; token: string }) => Promise<{ ok?: boolean; error?: string }>;
+  localRelayStart?: (opts: { relayUrl: string; session: string; token: string; mode?: string; port?: number }) => Promise<{ ok?: boolean; error?: string }>;
 }
 function desktopBridge(): BasichomeBridge | undefined {
   if (typeof window === "undefined") return undefined;
@@ -32,7 +32,7 @@ export function LocalAgentWorkbench() {
   const actions = useLocalAgentActions();
   const { push } = useRouter();
   const [prompt, setPrompt] = useState(STARTER_PROMPT);
-  const [target, setTarget] = useState<RuntimeTarget>("auto");
+  const [where, setWhere] = useState<"cloud" | "computer">("cloud");
   const [triggering, setTriggering] = useState(false);
   const [triggerError, setTriggerError] = useState<string | null>(null);
   const [isDesktop, setIsDesktop] = useState(false);
@@ -40,6 +40,35 @@ export function LocalAgentWorkbench() {
 
   useEffect(() => {
     setIsDesktop(Boolean(desktopBridge()?.isDesktop));
+    // Hand-off from a just-recorded routine (the pill writes this on Stop, same
+    // origin = shared localStorage) so the loop continues into building an
+    // automation instead of dead-ending at a document.
+    try {
+      const handoff = window.localStorage.getItem("basichome:routine-prompt");
+      if (handoff) {
+        setPrompt(handoff);
+        window.localStorage.removeItem("basichome:routine-prompt");
+      }
+    } catch {
+      /* localStorage unavailable — ignore */
+    }
+  }, []);
+
+  // If Home is already open when a routine recording stops, pick up the hand-off
+  // live (storage events fire in other windows of the same origin).
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "basichome:routine-prompt" && e.newValue) {
+        setPrompt(e.newValue);
+        try {
+          window.localStorage.removeItem("basichome:routine-prompt");
+        } catch {
+          /* ignore */
+        }
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
   }, []);
 
   // Model B — "Run on my computer": provision a relay session, bridge the local
@@ -63,9 +92,20 @@ export function LocalAgentWorkbench() {
         setTriggerError(prov.error ?? "Local runs aren't available.");
         return;
       }
-      const bridged = await bh.localRelayStart({ relayUrl: prov.relayUrl, session: prov.session, token: prov.token });
+      // attach (not managed): drive the user's REAL Chrome on the debug port so
+      // their logins/cookies are used, instead of a throwaway isolated profile.
+      const bridged = await bh.localRelayStart({
+        relayUrl: prov.relayUrl,
+        session: prov.session,
+        token: prov.token,
+        mode: "attach",
+        port: 9222,
+      });
       if (!bridged?.ok) {
-        setTriggerError(bridged?.error ?? "Could not connect your browser.");
+        setTriggerError(
+          bridged?.error ??
+            "Couldn't reach your Chrome. Open Chrome with remote debugging on (chrome --remote-debugging-port=9222), then try again.",
+        );
         return;
       }
       const run = await fetch("/api/runs/trigger-local", {
@@ -105,10 +145,7 @@ export function LocalAgentWorkbench() {
     setTriggering(true);
     setTriggerError(null);
     try {
-      const goal =
-        target === "local_browser" || target === "basics_cloud"
-          ? `Use the browser if needed to: ${task}`
-          : task;
+      const goal = task;
       const res = await fetch("/api/runs/trigger", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -130,8 +167,8 @@ export function LocalAgentWorkbench() {
   return (
     <div className="space-y-4">
       <div className="grid gap-3 md:grid-cols-2">
-        <WorkbenchMetric icon={Monitor} label="Target" value={activeRun ? targetLabel(activeRun.resolution.selectedTarget) : "Auto"} detail="Cloud by default; run on your own computer when you choose." />
-        <WorkbenchMetric icon={Brain} label="Runtime" value={activeRun ? runtimeLabel(activeRun) : "Basics Cloud"} detail="Where this task runs. Watch it live, or review it after." />
+        <WorkbenchMetric icon={Monitor} label="Where it runs" value={activeRun ? targetLabel(activeRun.resolution.selectedTarget) : where === "computer" ? "My computer" : "Cloud"} detail="Basics Cloud, or your own Chrome when you choose." />
+        <WorkbenchMetric icon={Brain} label="Status" value={activeRun ? runtimeLabel(activeRun) : "Idle"} detail="Where this task runs. Watch it live, or review it after." />
       </div>
 
       <div className="rounded-lg border bg-muted/20 p-4">
@@ -153,25 +190,35 @@ export function LocalAgentWorkbench() {
           </div>
           <div className="space-y-3">
             <div className="space-y-2">
-              <label htmlFor="local-agent-target" className="font-medium text-sm">
-                Engine / target
+              <label htmlFor="run-where" className="font-medium text-sm">
+                Where it runs
               </label>
-              <NativeSelect id="local-agent-target" value={target} onChange={(event) => setTarget(event.target.value as RuntimeTarget)} className="w-full bg-background">
-                <NativeSelectOption value="auto">Auto</NativeSelectOption>
-                <NativeSelectOption value="basics_cloud">Cloud agent</NativeSelectOption>
-                <NativeSelectOption value="local_browser">Cloud browser</NativeSelectOption>
+              <NativeSelect
+                id="run-where"
+                value={where}
+                onChange={(event) => setWhere(event.target.value as "cloud" | "computer")}
+                className="w-full bg-background"
+              >
+                <NativeSelectOption value="cloud">Cloud (recommended)</NativeSelectOption>
+                {isDesktop ? (
+                  <NativeSelectOption value="computer">My computer — your Chrome</NativeSelectOption>
+                ) : null}
               </NativeSelect>
+              <p className="text-muted-foreground text-xs">
+                {where === "computer"
+                  ? "Drives your own Chrome with your logins. Keep Chrome open."
+                  : "Runs on Basics Cloud — watch it live, review it after."}
+              </p>
             </div>
-            <Button type="button" className="w-full" onClick={startRun} disabled={triggering}>
+            <Button
+              type="button"
+              className="w-full"
+              onClick={() => void (where === "computer" ? runOnMyComputer() : startRun())}
+              disabled={triggering}
+            >
               <Play className="size-4" />
-              {triggering ? "Starting cloud run…" : "Start run"}
+              {triggering ? "Starting…" : where === "computer" ? "Run on my computer" : "Start run"}
             </Button>
-            {isDesktop ? (
-              <Button type="button" variant="outline" className="w-full" onClick={runOnMyComputer} disabled={triggering}>
-                <Monitor className="size-4" />
-                Run on my computer
-              </Button>
-            ) : null}
             {triggerError ? <p className="text-destructive text-xs">{triggerError}</p> : null}
           </div>
         </div>
