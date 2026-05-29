@@ -4,7 +4,9 @@ import { useState } from "react";
 
 import { toast } from "sonner";
 
-import { CheckCircle2, Globe, KeyRound, Loader2, Lock, Plug, RotateCw, TriangleAlertIcon } from "@/icons";
+import { useRouter } from "next/navigation";
+
+import { CheckCircle2, Globe, KeyRound, Loader2, Lock, Plug, RotateCw, Trash2, TriangleAlertIcon } from "@/icons";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -64,6 +66,7 @@ function isExpired(iso: string | null): boolean {
 }
 
 export function ConnectionsConsole({ data }: { data: ConnectionsData }) {
+  const { refresh } = useRouter();
   const [connecting, setConnecting] = useState<string | null>(null);
 
   // Browser-site live-view login flow.
@@ -71,6 +74,23 @@ export function ConnectionsConsole({ data }: { data: ConnectionsData }) {
   const [openingSite, setOpeningSite] = useState<string | null>(null);
   const [session, setSession] = useState<BrowserSiteSession | null>(null);
   const [savingCookies, setSavingCookies] = useState(false);
+  const [removingHost, setRemovingHost] = useState<string | null>(null);
+
+  // Delete a saved login so users control what agents can reuse.
+  async function removeSite(host: string) {
+    setRemovingHost(host);
+    try {
+      const res = await fetch(`/api/browser-sites/${encodeURIComponent(host)}`, { method: "DELETE" });
+      const body = await res.json();
+      if (!res.ok || !body.ok) throw new Error(body.error || "Could not delete this login.");
+      toast.success(`Removed ${host}`);
+      refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not delete this login.");
+    } finally {
+      setRemovingHost(null);
+    }
+  }
 
   /** Normalise a typed host: strip scheme, path, and trailing dots. */
   function normalizeHost(raw: string): string {
@@ -237,6 +257,8 @@ export function ConnectionsConsole({ data }: { data: ConnectionsData }) {
         onSiteHostChange={setSiteHost}
         openingSite={openingSite}
         onOpenLogin={openLogin}
+        onDelete={removeSite}
+        removingHost={removingHost}
         sessionActive={session !== null}
       />
 
@@ -477,6 +499,8 @@ function BrowserSitesCard({
   onSiteHostChange,
   openingSite,
   onOpenLogin,
+  onDelete,
+  removingHost,
   sessionActive,
 }: {
   sites: ConnectionBrowserSite[];
@@ -484,6 +508,8 @@ function BrowserSitesCard({
   onSiteHostChange: (value: string) => void;
   openingSite: string | null;
   onOpenLogin: (host: string) => void;
+  onDelete: (host: string) => void;
+  removingHost: string | null;
   sessionActive: boolean;
 }) {
   const busy = openingSite !== null || sessionActive;
@@ -579,22 +605,40 @@ function BrowserSitesCard({
                       {site.expiresAt ? new Date(site.expiresAt).toLocaleDateString() : "—"}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant={expired ? "default" : "outline"}
-                        className="gap-1.5"
-                        disabled={busy}
-                        onClick={() => onOpenLogin(site.host)}
-                        data-testid={`relogin-${site.host}`}
-                      >
-                        {openingSite === site.host ? (
-                          <Loader2 className="size-3.5 animate-spin" />
-                        ) : (
-                          <RotateCw data-icon="inline-start" />
-                        )}
-                        Re-login
-                      </Button>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={expired ? "default" : "outline"}
+                          className="gap-1.5"
+                          disabled={busy}
+                          onClick={() => onOpenLogin(site.host)}
+                          data-testid={`relogin-${site.host}`}
+                        >
+                          {openingSite === site.host ? (
+                            <Loader2 className="size-3.5 animate-spin" />
+                          ) : (
+                            <RotateCw data-icon="inline-start" />
+                          )}
+                          Re-login
+                        </Button>
+                        <Button
+                          type="button"
+                          size="icon-sm"
+                          variant="ghost"
+                          className="text-muted-foreground hover:text-destructive"
+                          disabled={removingHost === site.host}
+                          onClick={() => onDelete(site.host)}
+                          aria-label={`Remove ${site.host}`}
+                          data-testid={`remove-site-${site.host}`}
+                        >
+                          {removingHost === site.host ? (
+                            <Loader2 className="size-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="size-4" />
+                          )}
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
