@@ -120,10 +120,8 @@ export function RunsTable() {
               <TableRow>
                 <TableHead>Status</TableHead>
                 <TableHead>Workflow</TableHead>
-                <TableHead>
-                  <span className="text-right">Steps</span>
-                </TableHead>
-                <TableHead>Cost</TableHead>
+                <TableHead className="text-right">Steps</TableHead>
+                <TableHead className="text-right">Cost</TableHead>
                 <TableHead>
                   <button
                     type="button"
@@ -166,7 +164,7 @@ export function RunsTable() {
                           {run.workflowName}
                         </Link>
                         <span className="font-mono text-muted-foreground text-xs">
-                          {run.id}
+                          {run.id.slice(0, 8)}
                           {run.trigger !== "scheduled" && (
                             <>
                               {" · "}
@@ -177,10 +175,10 @@ export function RunsTable() {
                         </span>
                       </div>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="text-right">
                       <span className="tabular-nums text-sm">{run.stepCount}</span>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="text-right">
                       {run.costCents != null ? (
                         <span className="tabular-nums text-sm">${(run.costCents / 100).toFixed(2)}</span>
                       ) : (
