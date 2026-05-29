@@ -42,8 +42,6 @@ import {
   createSession,
   stopSession,
 } from '../lib/browserbase.js'
-import { attach, goto_url } from '@basics/harness'
-import { logger } from '../middleware/logger.js'
 import type { WorkspaceToken } from '../lib/jwt.js'
 
 type Vars = { requestId: string; workspace?: WorkspaceToken }
@@ -140,28 +138,6 @@ browserSitesRoute.post(
       persistContext: true,
       // 30-minute session ceiling — operator should be done in under 5.
       timeoutMs: 30 * 60_000,
-    })
-
-    // Drive the fresh session to the target so the live view opens on the
-    // site's own page (its login screen), not the default about:blank. The
-    // operator otherwise sees a blank window with nowhere to sign in. Bounded
-    // + best-effort: if navigation is slow or unavailable the connect still
-    // succeeds and the live view just starts blank.
-    await Promise.race([
-      (async () => {
-        const cdpSession = await attach({ wsUrl: session.cdpWsUrl })
-        try {
-          await goto_url(cdpSession, initialUrl)
-        } finally {
-          await cdpSession.detach().catch(() => {})
-        }
-      })(),
-      new Promise((resolve) => setTimeout(resolve, 20_000)),
-    ]).catch((err: unknown) => {
-      logger.warn(
-        { host, err: err instanceof Error ? err.message : String(err) },
-        'browser-sites connect: initial navigation failed; live view may start blank',
-      )
     })
 
     const pendingPtr: StorageStatePointer = {
