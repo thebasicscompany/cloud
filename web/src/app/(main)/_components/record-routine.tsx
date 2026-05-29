@@ -17,7 +17,7 @@ import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui
 interface PillBridge {
   isDesktop?: boolean;
   openPill?: () => void;
-  lensStatus?: () => Promise<{ supported?: boolean }>;
+  lensStatus?: () => Promise<{ supported?: boolean; installed?: boolean }>;
 }
 function bridge(): PillBridge | undefined {
   if (typeof window === "undefined") return undefined;
@@ -25,18 +25,22 @@ function bridge(): PillBridge | undefined {
 }
 
 export function RecordRoutine() {
-  const [supported, setSupported] = useState(false);
+  // Only show once Lens is actually present: recording captures the on-screen
+  // demonstration through the Lens engine, so without it the button would
+  // half-work (narration only, no captured actions). Settings → Capture teaches
+  // the not-installed state and where to get it.
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     const bh = bridge();
     if (!bh?.isDesktop || !bh.openPill || !bh.lensStatus) return;
     void bh
       .lensStatus()
-      .then((s) => setSupported(Boolean(s?.supported)))
-      .catch(() => setSupported(false));
+      .then((s) => setReady(Boolean(s?.supported && s?.installed)))
+      .catch(() => setReady(false));
   }, []);
 
-  if (!supported) return null;
+  if (!ready) return null;
 
   return (
     <SidebarMenu>
