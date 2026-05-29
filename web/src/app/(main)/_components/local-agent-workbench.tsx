@@ -131,7 +131,7 @@ export function LocalAgentWorkbench() {
     <div className="space-y-4">
       <div className="grid gap-3 md:grid-cols-2">
         <WorkbenchMetric icon={Monitor} label="Target" value={activeRun ? targetLabel(activeRun.resolution.selectedTarget) : "Auto"} detail="Cloud by default; run on your own computer when you choose." />
-        <WorkbenchMetric icon={Brain} label="Runtime" value={activeRun ? runtimeLabel(activeRun) : "Basics Cloud"} detail="One run contract powers pill, dashboard, and logs." />
+        <WorkbenchMetric icon={Brain} label="Runtime" value={activeRun ? runtimeLabel(activeRun) : "Basics Cloud"} detail="Where this task runs — watch it live, review it after." />
       </div>
 
       <div className="rounded-lg border bg-muted/20 p-4">
@@ -148,7 +148,7 @@ export function LocalAgentWorkbench() {
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
               className="min-h-24 resize-none bg-background"
-              placeholder="Tell basichome what to do locally..."
+              placeholder="Tell basichome what to do…"
             />
           </div>
           <div className="space-y-3">
@@ -185,11 +185,8 @@ export function LocalAgentWorkbench() {
                 <div className="flex flex-wrap items-center gap-2">
                 <Badge>{statusLabel(activeRun)}</Badge>
                 <Badge variant="outline">{targetLabel(activeRun.resolution.selectedTarget)}</Badge>
-                <Badge variant="outline">{activeRun.resolution.authMode.replaceAll("_", " ")}</Badge>
-                <Badge variant="secondary">{activeRun.resolution.costBearer.replaceAll("_", " ")}</Badge>
               </div>
                 <h3 className="mt-3 font-semibold text-base">{activeRun.taskTitle}</h3>
-                <p className="mt-1 font-mono text-muted-foreground text-xs">{activeRun.runId}</p>
               </div>
               <div className="flex flex-wrap gap-2">
                 {canPause ? (
@@ -242,18 +239,11 @@ export function LocalAgentWorkbench() {
                 </Link>
               </Button>
             </div>
-            <p className="mt-3 text-muted-foreground text-xs">
-              Every control writes a normalized event with run id, actor, device, target, runtime, and timestamp.
-            </p>
-            <div className="mt-3 rounded-lg border bg-muted/20 p-2 text-muted-foreground text-xs">
-              <KeyRound className="mr-1 inline size-3.5" />
-              Engine auth and cost stay explicit: your local engine account for local runs, workspace credits for cloud.
-            </div>
           </div>
         </div>
       ) : (
         <div className="rounded-lg border border-dashed p-5 text-muted-foreground text-sm">
-          No active local run. Start a task to see the overlay pill, run detail, and logs update together.
+          Nothing running yet. Describe a task above and hit Start — you&apos;ll see its status, controls, and results here.
         </div>
       )}
     </div>

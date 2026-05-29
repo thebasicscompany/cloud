@@ -73,12 +73,9 @@ export function HomeDashboard() {
 
       <PendingActionsBanner />
 
-      {/* Hero — talk to the agent */}
-      <Card>
-        <CardContent className="pt-6">
-          <LocalAgentWorkbench />
-        </CardContent>
-      </Card>
+      {/* Hero — talk to the agent. No outer card: the workbench's own panels are
+          the single containment layer (both Hallmark + impeccable: no nested cards). */}
+      <LocalAgentWorkbench />
 
       {pending.length > 0 ? (
         <section className="space-y-3">
