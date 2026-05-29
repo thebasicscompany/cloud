@@ -41,6 +41,19 @@ function Metric({ label, value, hint }: { label: string; value: number; hint?: s
   );
 }
 
+function capturedViaLabel(via: string | null): string {
+  switch (via) {
+    case "browserbase_liveview":
+      return "Signed in here";
+    case "sync_local_profile":
+      return "Your computer";
+    case "manual_upload":
+      return "Uploaded";
+    default:
+      return "—";
+  }
+}
+
 function statusVariant(status: string | null): "secondary" | "destructive" | "outline" {
   const s = (status ?? "").toLowerCase();
   if (s === "connected" || s === "active" || s === "ok") return "secondary";
@@ -71,9 +84,9 @@ export function AgentConsole({
             <h1 className="text-xl font-semibold">Agent</h1>
           </div>
           <p className="max-w-2xl text-sm text-muted-foreground">
-            Live view of the self-healing cloud agent: the skills and helper modules it
-            authors, the managed-browser cookie sessions it reuses, and the
-            connections it acts through. Cookie values and credential secrets stay redacted.
+            A live look at what your agent has learned: the routines it saved from past
+            work, the sites it stays signed in to, and the apps it can act through.
+            Passwords and cookie values are always hidden.
           </p>
         </div>
         {workspaces.length > 0 ? (
@@ -110,24 +123,24 @@ export function AgentConsole({
       ) : (
         <>
           <div className="flex flex-wrap gap-2">
-            <Metric label="Skills" value={metrics.skills} hint={`${metrics.pendingSkills} pending review`} />
-            <Metric label="Helper modules" value={metrics.helpers} />
-            <Metric label="Browser sites" value={metrics.browserSites} />
-            <Metric label="Sessions" value={metrics.totalSessions} hint={`${metrics.activeSessions} active`} />
+            <Metric label="Saved routines" value={metrics.skills} hint={`${metrics.pendingSkills} waiting for review`} />
+            <Metric label="Shortcuts" value={metrics.helpers} />
+            <Metric label="Signed-in sites" value={metrics.browserSites} />
+            <Metric label="Browser runs" value={metrics.totalSessions} hint={`${metrics.activeSessions} active`} />
             <Metric label="Connections" value={metrics.connections} hint={`${metrics.connectedCount} connected`} />
-            <Metric label="Connected tools" value={metrics.toolkits} />
+            <Metric label="Connected apps" value={metrics.toolkits} />
           </div>
 
           <Tabs defaultValue="skills" className="w-full">
             <TabsList>
               <TabsTrigger value="skills">
-                <Wrench className="size-4" /> Skills
+                <Wrench className="size-4" /> Routines
               </TabsTrigger>
               <TabsTrigger value="helpers">
-                <Workflow className="size-4" /> Helpers
+                <Workflow className="size-4" /> Shortcuts
               </TabsTrigger>
               <TabsTrigger value="browser">
-                <Globe className="size-4" /> Browser cookies
+                <Globe className="size-4" /> Signed-in sites
               </TabsTrigger>
               <TabsTrigger value="connections">
                 <KeyRound className="size-4" /> Connections
@@ -138,22 +151,26 @@ export function AgentConsole({
             <TabsContent value="skills" className="mt-4">
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">Learned skills</CardTitle>
+                  <CardTitle className="text-base">Saved routines</CardTitle>
                   <CardDescription>
-                    Reusable playbooks the agent wrote from successful runs (`skill_write`). Pending
-                    rows are invisible to the LLM until a human approves them.
+                    Step-by-step routines your agent saved from work that went well, so it can
+                    repeat them faster next time. New ones stay hidden from the agent until you
+                    approve them.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   {data.skills.length === 0 ? (
-                    <p className="py-6 text-center text-sm text-muted-foreground">No skills yet.</p>
+                    <p className="py-6 text-center text-sm text-muted-foreground">
+                      No saved routines yet. Your agent saves one whenever a task goes well and is
+                      worth repeating.
+                    </p>
                   ) : (
                     <Table>
                       <TableHeader>
                         <TableRow>
                           <TableHead>Name</TableHead>
-                          <TableHead>Target</TableHead>
-                          <TableHead>Integrations</TableHead>
+                          <TableHead>Where it runs</TableHead>
+                          <TableHead>Apps used</TableHead>
                           <TableHead className="text-right">Confidence</TableHead>
                           <TableHead>Status</TableHead>
                         </TableRow>
@@ -207,15 +224,18 @@ export function AgentConsole({
             <TabsContent value="helpers" className="mt-4">
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">Agent helper modules</CardTitle>
+                  <CardTitle className="text-base">Shortcuts</CardTitle>
                   <CardDescription>
-                    TypeScript pipeline modules the agent authored (`helper_write`). On the
-                    dispatcher fast-path they can run directly, skipping the LLM hot loop.
+                    Small automations your agent built to handle repeat work directly, without
+                    thinking each step through again. Faster and cheaper than a full run.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   {data.helpers.length === 0 ? (
-                    <p className="py-6 text-center text-sm text-muted-foreground">No helpers yet.</p>
+                    <p className="py-6 text-center text-sm text-muted-foreground">
+                      No shortcuts yet. Your agent builds these on its own to speed up work it does
+                      often.
+                    </p>
                   ) : (
                     <Table>
                       <TableHeader>
@@ -236,7 +256,7 @@ export function AgentConsole({
                             <TableCell className="text-right tabular-nums">v{h.version ?? 1}</TableCell>
                             <TableCell>
                               <Badge variant={h.active ? "secondary" : "outline"}>
-                                {h.active ? "Active" : "Superseded"}
+                                {h.active ? "Active" : "Replaced"}
                               </Badge>
                             </TableCell>
                           </TableRow>
@@ -253,26 +273,30 @@ export function AgentConsole({
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-base">
-                    Managed-browser cookie sessions
+                    Signed-in sites
                     <Badge variant="outline" className="gap-1 font-normal">
-                      <Lock className="size-3" /> values redacted
+                      <Lock className="size-3" /> values hidden
                     </Badge>
                   </CardTitle>
                   <CardDescription>
-                    Saved login state per site reused across managed-browser runs. The cookie blob
-                    (`storage_state_json`) is never read by basichome — only metadata is shown.
+                    Sites your agent stays signed in to, so it can pick up where you left off
+                    without asking for a password each time. The saved login is encrypted —
+                    basichome only shows which sites and when they were last checked.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   {data.browserSessions.length === 0 ? (
-                    <p className="py-6 text-center text-sm text-muted-foreground">No saved sites yet.</p>
+                    <p className="py-6 text-center text-sm text-muted-foreground">
+                      No signed-in sites yet. Sign in to a site once and your agent can reuse it
+                      later.
+                    </p>
                   ) : (
                     <Table>
                       <TableHeader>
                         <TableRow>
                           <TableHead>Site</TableHead>
-                          <TableHead>Captured via</TableHead>
-                          <TableHead>Last verified</TableHead>
+                          <TableHead>Saved from</TableHead>
+                          <TableHead>Last checked</TableHead>
                           <TableHead>Expires</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -283,7 +307,7 @@ export function AgentConsole({
                               <div className="font-medium">{b.displayName ?? b.host}</div>
                               <div className="text-xs text-muted-foreground">{b.host}</div>
                             </TableCell>
-                            <TableCell className="text-xs text-muted-foreground">{b.capturedVia ?? "—"}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground">{capturedViaLabel(b.capturedVia)}</TableCell>
                             <TableCell className="text-xs text-muted-foreground">
                               {formatRelative(b.lastVerifiedAt ?? undefined)}
                             </TableCell>
@@ -305,14 +329,14 @@ export function AgentConsole({
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-base">
-                      <ShieldCheck className="size-4" /> Credentials &amp; connections
+                      <ShieldCheck className="size-4" /> Connections
                       <Badge variant="outline" className="gap-1 font-normal">
-                        <Lock className="size-3" /> secrets redacted
+                        <Lock className="size-3" /> secrets hidden
                       </Badge>
                     </CardTitle>
                     <CardDescription>
-                      The credentials the agent acts through. Ciphertext is
-                      KMS-encrypted and never selected by basichome.
+                      The apps and accounts your agent can act through. Sign-in details are
+                      encrypted and never shown.
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -323,8 +347,8 @@ export function AgentConsole({
                         <TableHeader>
                           <TableRow>
                             <TableHead>Connection</TableHead>
-                            <TableHead>Kind</TableHead>
-                            <TableHead>Source</TableHead>
+                            <TableHead>Type</TableHead>
+                            <TableHead>Added from</TableHead>
                             <TableHead>Last used</TableHead>
                             <TableHead>Status</TableHead>
                           </TableRow>
@@ -353,12 +377,14 @@ export function AgentConsole({
 
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-base">Cached tools</CardTitle>
-                    <CardDescription>Tool schemas the agent resolves calls against.</CardDescription>
+                    <CardTitle className="text-base">Available actions</CardTitle>
+                    <CardDescription>What your agent can do inside each connected app.</CardDescription>
                   </CardHeader>
                   <CardContent>
                     {data.toolkits.length === 0 ? (
-                      <p className="py-6 text-center text-sm text-muted-foreground">No cached toolsets.</p>
+                      <p className="py-6 text-center text-sm text-muted-foreground">
+                        No connected apps yet. Connect an app to give your agent actions it can take.
+                      </p>
                     ) : (
                       <div className="flex flex-wrap gap-2">
                         {data.toolkits.map((t) => (

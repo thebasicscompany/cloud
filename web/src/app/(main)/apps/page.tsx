@@ -18,8 +18,9 @@ export default async function AppsPage() {
       <header className="space-y-1">
         <h1 className="font-semibold text-2xl tracking-tight">Apps</h1>
         <p className="max-w-2xl text-muted-foreground text-sm">
-          Typed surfaces your runs and automations write into — a CRM fed by your GTM agent, a digest fed by your
-          inbox agent. You can add and edit records too; agents read from these the same way you do.
+          Simple databases your runs and automations fill in, like a CRM your sales agent keeps up to
+          date or a daily digest from your inbox agent. You can add and edit records yourself, and your
+          agents read them the same way you do.
         </p>
       </header>
       <AppsOverview apps={apps} />
