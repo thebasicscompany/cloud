@@ -361,14 +361,14 @@ function EventDetail({
 
       <div className="rounded-md border p-3">
         <div className="flex items-center justify-between gap-2">
-          <h3 className="font-medium text-sm">Replay and eval trace</h3>
+          <h3 className="font-medium text-sm">Replay detail</h3>
           <Badge variant="secondary">{relatedCount} events</Badge>
         </div>
         <p className="mt-1 text-muted-foreground text-xs">
-          {replay?.replayable ? "This object has enough event pointers for replay or eval construction." : "No replay JSONL or failure/completion signal is attached yet."}
+          {replay?.replayable ? "Enough detail was captured to replay this run or learn from it." : "Not enough detail was captured to replay this yet."}
         </p>
         <div className="mt-2 text-muted-foreground text-xs">
-          Export preview: {replay?.training_export_preview.event_count ?? 0} events, upload off, raw capture excluded.
+          {replay?.training_export_preview.event_count ?? 0} events captured. Nothing is uploaded, and raw screen data is never included.
         </div>
       </div>
 

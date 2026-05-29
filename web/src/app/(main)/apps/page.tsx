@@ -6,7 +6,7 @@ import { AppsOverview } from "./_components/apps-overview";
 
 export const metadata: Metadata = {
   title: "Apps | basichome",
-  description: "Workspace apps where your runs and automations drop outputs — and you can add to and read from.",
+  description: "Simple databases your runs and automations fill in, that you can add to and read from too.",
 };
 
 export const dynamic = "force-dynamic";
