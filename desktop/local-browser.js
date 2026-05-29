@@ -57,7 +57,58 @@ function findChrome() {
   return null;
 }
 
-// Resolve the CDP websocket endpoint by polling /json/version on the debug port.
+// Chrome user-data dirs that may hold a DevToolsActivePort file. Chrome 147+
+// disables the /json/* HTTP discovery endpoints on the default profile (returns
+// 404), but still writes the live WebSocket path to <user-data>/DevToolsActivePort
+// (line 1 = port, line 2 = ws path). This is how browser-harness connects to a
+// user's own Chrome — we mirror it so the desktop's cookie export works too.
+function devToolsProfileDirs() {
+  const home = os.homedir();
+  if (process.platform === "win32") {
+    const local = process.env["LOCALAPPDATA"] || path.join(home, "AppData", "Local");
+    return [
+      path.join(local, "Google", "Chrome", "User Data"),
+      path.join(local, "Google", "Chrome SxS", "User Data"),
+      path.join(local, "Chromium", "User Data"),
+      path.join(local, "Microsoft", "Edge", "User Data"),
+      path.join(local, "BraveSoftware", "Brave-Browser", "User Data"),
+    ];
+  }
+  if (process.platform === "darwin") {
+    const as = path.join(home, "Library", "Application Support");
+    return [
+      path.join(as, "Google", "Chrome"),
+      path.join(as, "Chromium"),
+      path.join(as, "Microsoft Edge"),
+      path.join(as, "BraveSoftware", "Brave-Browser"),
+    ];
+  }
+  return [
+    path.join(home, ".config", "google-chrome"),
+    path.join(home, ".config", "chromium"),
+    path.join(home, ".config", "microsoft-edge"),
+    path.join(home, ".config", "BraveSoftware", "Brave-Browser"),
+  ];
+}
+
+// Read the live ws:// endpoint for `port` from a DevToolsActivePort file.
+function wsFromDevToolsActivePort(port) {
+  for (const base of devToolsProfileDirs()) {
+    try {
+      const lines = fs.readFileSync(path.join(base, "DevToolsActivePort"), "utf8").split(/\r?\n/);
+      const filePort = (lines[0] || "").trim();
+      const wsPath = (lines[1] || "").trim();
+      if (filePort === String(port) && wsPath) return `ws://127.0.0.1:${port}${wsPath}`;
+    } catch {
+      // no DevToolsActivePort here — try the next profile dir
+    }
+  }
+  return null;
+}
+
+// Resolve the CDP websocket endpoint. Prefer /json/version; if Chrome answers
+// but the endpoint is locked down (404 on Chrome 147+ default profile) or the
+// body isn't usable, fall back to the DevToolsActivePort file.
 function resolveCdp(port, timeoutMs = 8000) {
   const deadline = Date.now() + timeoutMs;
   return new Promise((resolve, reject) => {
@@ -66,12 +117,21 @@ function resolveCdp(port, timeoutMs = 8000) {
         let body = "";
         res.on("data", (d) => (body += d));
         res.on("end", () => {
-          try {
-            const json = JSON.parse(body);
-            resolve({ webSocketDebuggerUrl: json.webSocketDebuggerUrl, browser: json.Browser, port });
-          } catch {
-            retry();
+          if (res.statusCode === 200) {
+            try {
+              const json = JSON.parse(body);
+              if (json.webSocketDebuggerUrl) {
+                return resolve({ webSocketDebuggerUrl: json.webSocketDebuggerUrl, browser: json.Browser, port });
+              }
+            } catch {
+              // fall through to the DevToolsActivePort fallback
+            }
           }
+          // Chrome responded (e.g. 404 on 147+) but /json isn't usable — the
+          // WS path is still in DevToolsActivePort.
+          const ws = wsFromDevToolsActivePort(port);
+          if (ws) return resolve({ webSocketDebuggerUrl: ws, browser: null, port });
+          retry();
         });
       });
       req.on("error", retry);
