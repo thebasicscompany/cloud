@@ -224,8 +224,8 @@ export function BrowserWorkbench({ savedSites }: { savedSites: ConnectionBrowser
           <div>
             <h2 className="font-semibold text-base">Sign in to a site</h2>
             <p className="mt-1 max-w-2xl text-muted-foreground text-sm">
-              Sign in once in a secure cloud window. basichome saves the session so agents stay logged in — your
-              password is never entered into basichome or stored in logs.
+              Sign in once in a secure cloud window. basichome saves the session so your agents stay
+              logged in. Your password is never entered into basichome or stored in logs.
             </p>
           </div>
           <Badge variant="outline" className="gap-1">

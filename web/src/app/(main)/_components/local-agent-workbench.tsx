@@ -131,7 +131,7 @@ export function LocalAgentWorkbench() {
     <div className="space-y-4">
       <div className="grid gap-3 md:grid-cols-2">
         <WorkbenchMetric icon={Monitor} label="Target" value={activeRun ? targetLabel(activeRun.resolution.selectedTarget) : "Auto"} detail="Cloud by default; run on your own computer when you choose." />
-        <WorkbenchMetric icon={Brain} label="Runtime" value={activeRun ? runtimeLabel(activeRun) : "Basics Cloud"} detail="Where this task runs — watch it live, review it after." />
+        <WorkbenchMetric icon={Brain} label="Runtime" value={activeRun ? runtimeLabel(activeRun) : "Basics Cloud"} detail="Where this task runs. Watch it live, or review it after." />
       </div>
 
       <div className="rounded-lg border bg-muted/20 p-4">
