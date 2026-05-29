@@ -26,7 +26,7 @@ export function IntegrationsSettingsView() {
       <div className="space-y-1">
         <h2 className="text-lg font-semibold tracking-tight">Integrations</h2>
         <p className="text-sm text-muted-foreground">
-          Slack, SaaS OAuth, and credential scopes used by workflows and checks.
+          The apps and accounts your automations use.
         </p>
       </div>
 

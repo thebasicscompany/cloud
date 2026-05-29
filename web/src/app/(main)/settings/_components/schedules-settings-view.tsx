@@ -37,7 +37,7 @@ export function SchedulesSettingsView() {
       <div className="space-y-1">
         <h2 className="text-lg font-semibold tracking-tight">Schedules</h2>
         <p className="text-sm text-muted-foreground">
-          Automations with a cron trigger. Each fires a cloud run on its schedule. Edit on the automation page.
+          Automations that run on a timer. Open one to change when it runs.
         </p>
       </div>
 
@@ -47,7 +47,6 @@ export function SchedulesSettingsView() {
             <TableRow>
               <TableHead>Automation</TableHead>
               <TableHead>Schedule</TableHead>
-              <TableHead>Cron</TableHead>
               <TableHead className="text-right"></TableHead>
             </TableRow>
           </TableHeader>
@@ -55,7 +54,7 @@ export function SchedulesSettingsView() {
             {isLoading ? (
               Array.from({ length: 5 }).map((_, i) => (
                 <TableRow key={i}>
-                  {Array.from({ length: 4 }).map((_x, j) => (
+                  {Array.from({ length: 3 }).map((_x, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-4 w-full max-w-[160px]" />
                     </TableCell>
@@ -64,8 +63,8 @@ export function SchedulesSettingsView() {
               ))
             ) : rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={4} className="h-24 text-center text-muted-foreground text-sm">
-                  No scheduled automations yet.
+                <TableCell colSpan={3} className="h-24 text-center text-muted-foreground text-sm">
+                  No scheduled automations yet. Set up an automation and give it a schedule.
                 </TableCell>
               </TableRow>
             ) : (
@@ -75,7 +74,6 @@ export function SchedulesSettingsView() {
                   <TableCell className="text-muted-foreground text-sm">
                     {formatCron(row.cron)} · {row.timezone}
                   </TableCell>
-                  <TableCell className="font-mono text-muted-foreground text-xs">{row.cron || "—"}</TableCell>
                   <TableCell className="text-right">
                     <div className="inline-flex items-center gap-2">
                       <Badge variant={row.enabled ? "default" : "secondary"}>{row.enabled ? "On" : "Off"}</Badge>

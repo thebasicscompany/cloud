@@ -27,7 +27,7 @@ export function TrustSettingsView() {
       <div className="space-y-1">
         <h2 className="text-lg font-semibold tracking-tight">Trust</h2>
         <p className="text-sm text-muted-foreground">
-          Auto-approval grants narrow by action pattern and params. Approval middleware checks here before humans see a prompt.
+          Actions you've allowed your agent to take without asking each time. It checks these before stopping to ask you.
         </p>
       </div>
 

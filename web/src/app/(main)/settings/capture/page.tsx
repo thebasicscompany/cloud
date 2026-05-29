@@ -76,8 +76,8 @@ export default function CaptureSettingsPage() {
           Capture
         </h2>
         <p className="text-muted-foreground text-sm">
-          Lens captures screen + accessibility context <span className="font-medium">locally</span> so basichome can
-          suggest automations and learn routines you record. Raw capture never leaves this device.
+          Lens watches your screen <span className="font-medium">on this device</span> so basichome can
+          suggest automations and learn routines you record. Nothing it sees ever leaves your computer.
         </p>
       </div>
 
@@ -108,8 +108,8 @@ export default function CaptureSettingsPage() {
                   {status.recording ? <Badge>Recording routine</Badge> : null}
                 </div>
                 <p className="text-muted-foreground text-sm">
-                  Always-on local capture. Powers passive automation suggestions over time — token-free (no model runs
-                  while watching; distillation runs in batches).
+                  Runs quietly in the background and suggests automations over time. It doesn&apos;t use any
+                  AI credits while watching.
                 </p>
               </div>
               <Switch
@@ -125,8 +125,8 @@ export default function CaptureSettingsPage() {
             <div className="space-y-1">
               <h3 className="font-medium text-sm">Record a routine</h3>
               <p className="text-muted-foreground text-sm">
-                Open the floating pill, demonstrate a workflow in your apps, and talk it through — basichome saves it as
-                a routine the agent can turn into an automation.
+                Open the recorder, show basichome a task in your apps while talking it through, and it saves
+                it as a routine your agent can turn into an automation.
               </p>
             </div>
             <Button type="button" variant="outline" onClick={() => bridge()?.openPill?.()}>
@@ -143,9 +143,8 @@ export default function CaptureSettingsPage() {
           <div className="space-y-1 text-sm">
             <h3 className="font-medium">What leaves this device</h3>
             <p className="text-muted-foreground">
-              Nothing raw. Screenshots, OCR text, and audio stay local; only approved, distilled summaries or routines
-              you explicitly save can sync — and the agent is workspace-scoped, so it never sees another workspace&apos;s
-              capture.
+              Nothing raw. Screenshots, text, and audio stay on this device. Only summaries or routines you
+              approve can sync, and your agent only ever sees this workspace&apos;s data, never another&apos;s.
             </p>
           </div>
         </div>
