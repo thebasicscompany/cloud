@@ -20,6 +20,7 @@ type SignInState =
   | { phase: "live"; host: string; sessionId: string; liveViewUrl: string }
   | { phase: "finalizing"; host: string }
   | { phase: "done"; host: string }
+  | { phase: "needs_debug"; host: string }
   | { phase: "error"; message: string };
 
 export function BrowserWorkbench({ savedSites }: { savedSites: ConnectionBrowserSite[] }) {
@@ -68,10 +69,19 @@ export function BrowserWorkbench({ savedSites }: { savedSites: ConnectionBrowser
     setSignIn({ phase: "finalizing", host });
     try {
       const res = await bh.exportLocalCookies(host);
-      if (!res?.ok) throw new Error(res?.error || "Could not read cookies from your local Chrome.");
+      if (!res?.ok) {
+        const err = res?.error ?? "";
+        // Chrome isn't reachable over the debug protocol — guide the user to
+        // enable it (same prerequisite browser-harness has), then retry.
+        if (/CDP not reachable|no CDP|debug port|ECONNREFUSED/i.test(err)) {
+          setSignIn({ phase: "needs_debug", host });
+          return;
+        }
+        throw new Error(err || "Could not read cookies from your local Chrome.");
+      }
       const cookies = Array.isArray(res.cookies) ? res.cookies : [];
       if (cookies.length === 0)
-        throw new Error(`No cookies found for ${host}. Sign in to it in your Chrome first (and make sure Chrome is the one Basichome can reach).`);
+        throw new Error(`You're not signed in to ${host} in your Chrome yet — sign in there first, then try again.`);
       const save = await fetch("/api/browser-sites/local-cookies", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -295,6 +305,31 @@ export function BrowserWorkbench({ savedSites }: { savedSites: ConnectionBrowser
             <CheckCircle2 className="size-4" />
             Saved {signIn.host}. Agents can now use this session.
           </p>
+        ) : null}
+        {signIn.phase === "needs_debug" ? (
+          <div className="mt-3 rounded-lg border bg-muted/30 p-3 text-sm">
+            <p className="font-medium text-foreground">Turn on remote debugging in Chrome first</p>
+            <p className="mt-1 text-muted-foreground">
+              To reuse your local <span className="font-medium">{signIn.host}</span> login, Basichome needs to read it from
+              your Chrome — which requires remote debugging to be on (one-time):
+            </p>
+            <ol className="mt-2 ml-4 list-decimal space-y-1 text-muted-foreground">
+              <li>Quit Chrome completely.</li>
+              <li>
+                Relaunch it with debugging on:{" "}
+                <code className="rounded bg-background px-1 py-0.5 font-mono text-xs">chrome --remote-debugging-port=9222</code>
+              </li>
+              <li>Make sure you&apos;re signed in to {signIn.host} there, then click “Use my local login” again.</li>
+            </ol>
+            <div className="mt-2.5 flex gap-2">
+              <Button type="button" size="sm" onClick={() => void useMyLocalLogin()}>
+                Try again
+              </Button>
+              <Button type="button" size="sm" variant="ghost" onClick={() => setSignIn({ phase: "idle" })}>
+                Cancel
+              </Button>
+            </div>
+          </div>
         ) : null}
         {signIn.phase === "error" ? <p className="mt-3 text-destructive text-sm">{signIn.message}</p> : null}
       </section>
