@@ -24,6 +24,7 @@ export async function POST(req: Request) {
     icon?: unknown;
     body?: unknown;
     workspaceId?: unknown;
+    sourceRunId?: unknown;
   } = {};
   try {
     body = (await req.json()) as typeof body;
@@ -50,6 +51,9 @@ export async function POST(req: Request) {
       icon: typeof body.icon === "string" ? body.icon : "document",
       body: typeof body.body === "string" ? body.body : "",
       status: "draft",
+      ...(typeof body.sourceRunId === "string" && body.sourceRunId
+        ? { source_run_id: body.sourceRunId }
+        : {}),
     })
     .select("id,slug")
     .maybeSingle();

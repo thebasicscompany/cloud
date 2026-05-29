@@ -91,6 +91,33 @@ export async function getDocuments(workspaceId?: string): Promise<DocSummary[]> 
   }));
 }
 
+/** Documents a specific run produced (doc_write with source_run_id = runId). */
+export async function getRunOutputs(runId: string, workspaceId?: string): Promise<DocSummary[]> {
+  const ws = workspaceId ?? PRIMARY_WORKSPACE_ID;
+  const supabase = getAdminClient();
+  if (!supabase || !runId) return [];
+  const { data: rows } = await supabase
+    .from("workspace_documents")
+    .select("id,slug,title,summary,icon,status,pinned,source_run_id,source_automation_id,updated_at")
+    .eq("workspace_id", ws)
+    .eq("source_run_id", runId)
+    .neq("status", "archived")
+    .order("updated_at", { ascending: false });
+  if (!rows || rows.length === 0) return [];
+  const autoNames = await resolveSources(supabase, rows);
+  return rows.map((r) => ({
+    id: r.id as string,
+    slug: r.slug as string,
+    title: r.title as string,
+    summary: (r.summary as string) ?? "",
+    icon: (r.icon as string) ?? null,
+    status: (r.status as string) ?? "ready",
+    pinned: Boolean(r.pinned),
+    source: sourceOf(r, autoNames),
+    updatedAt: r.updated_at as string,
+  }));
+}
+
 export async function getDocument(slug: string, workspaceId?: string): Promise<DocDetail | null> {
   const ws = workspaceId ?? PRIMARY_WORKSPACE_ID;
   const supabase = getAdminClient();

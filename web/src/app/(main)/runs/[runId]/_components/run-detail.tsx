@@ -11,6 +11,7 @@ import { useRun } from "@/hooks/queries/use-runs";
 import { ConnectionNeededBanner } from "./connection-needed-banner";
 import { LiveView } from "./live-view";
 import { RunHeader } from "./run-header";
+import { RunOutputs } from "./run-outputs";
 import { RunMessageBox } from "./run-message-box";
 import { Timeline } from "./timeline";
 import { VerificationStrip } from "./verification-strip";
@@ -66,6 +67,8 @@ export function RunDetail({ runId }: { runId: string }) {
       />
 
       <ConnectionNeededBanner runId={run.id} />
+
+      <RunOutputs run={run} />
 
       {takeover ? (
         <div className="overflow-hidden rounded-lg border bg-card">
