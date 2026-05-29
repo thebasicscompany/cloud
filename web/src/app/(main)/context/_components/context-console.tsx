@@ -76,10 +76,10 @@ export function ContextConsole() {
       <Header />
 
       <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <Metric icon={Eye} label="Lens" value={labelForStatus(store.status.status)} detail="Event-driven local capture" tone={isRunning ? "good" : "warn"} />
-        <Metric icon={Lock} label="Raw store" value={`${store.rawPointers.length} local refs`} detail={`${rawSizeMb.toFixed(1)} MB metadata sample`} />
-        <Metric icon={Brain} label="Distilled" value={`${approvedCount} approved`} detail={`${pendingCount} waiting for approval`} />
-        <Metric icon={ShieldCheck} label="Agent API" value="Approved only" detail="0 raw items returned" tone="good" />
+        <Metric icon={Eye} label="Lens" value={labelForStatus(store.status.status)} detail="Watching your screen on this device" tone={isRunning ? "good" : "warn"} />
+        <Metric icon={Lock} label="On this device" value={`${store.rawPointers.length} items`} detail={`${rawSizeMb.toFixed(1)} MB`} />
+        <Metric icon={Brain} label="Summaries" value={`${approvedCount} approved`} detail={`${pendingCount} waiting`} />
+        <Metric icon={ShieldCheck} label="Agent access" value="Summaries only" detail="Never sees raw data" tone="good" />
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1fr_360px]">
@@ -87,7 +87,7 @@ export function ContextConsole() {
           <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
             <div>
               <h2 className="font-semibold text-base">Local capture controls</h2>
-              <p className="text-muted-foreground text-sm">Pause, resume, retention, and privacy boundary controls for this device.</p>
+              <p className="text-muted-foreground text-sm">Pause capture, choose how long data is kept, and see what stays private.</p>
             </div>
             <div className="flex flex-wrap gap-2">
               {isRunning ? (
@@ -108,7 +108,7 @@ export function ContextConsole() {
             </div>
           </div>
           <div className="grid gap-4 p-4 md:grid-cols-3">
-            <InfoBlock label="Storage" value={store.status.storageRoot} detail="Raw frames, OCR, audio, input, and app/window timelines stay here." />
+            <InfoBlock label="Storage" value={store.status.storageRoot} detail="Screen images, text, audio, and activity history all stay here." />
             <div className="space-y-2">
               <span className="text-sm font-medium">Retention</span>
               <NativeSelect
@@ -125,7 +125,7 @@ export function ContextConsole() {
             <InfoBlock
               label="Cloud boundary"
               value={store.status.rawUploadEnabled ? "Raw upload on" : "Raw upload off"}
-              detail="Approved summaries may cross later. Raw records remain local."
+              detail="Only summaries you approve can leave. Raw data stays on this device."
             />
           </div>
           {lastSweepCount !== null ? (
@@ -138,19 +138,19 @@ export function ContextConsole() {
         <div className="rounded-lg border bg-card p-4">
           <h2 className="font-semibold text-base">Privacy boundary</h2>
           <div className="mt-3 space-y-3">
-            <BoundaryRow label="Raw upload disabled" ok={!privacy.rawUploadEnabled} />
-            <BoundaryRow label="Raw refs are local only" ok={privacy.rawPointersLocalOnly} />
-            <BoundaryRow label="Agent query raw data blocked" ok={!privacy.agentQueryReturnsRaw} />
-            <BoundaryRow label="Training disabled in v1" ok />
+            <BoundaryRow label="Raw data is never uploaded" ok={!privacy.rawUploadEnabled} />
+            <BoundaryRow label="Raw data stays on this device" ok={privacy.rawPointersLocalOnly} />
+            <BoundaryRow label="Your agent can't read raw data" ok={!privacy.agentQueryReturnsRaw} />
+            <BoundaryRow label="Never used for training" ok />
           </div>
         </div>
       </section>
 
       <Tabs defaultValue="raw" className="space-y-3">
         <TabsList>
-          <TabsTrigger value="raw">Raw Local</TabsTrigger>
-          <TabsTrigger value="summaries">Distilled</TabsTrigger>
-          <TabsTrigger value="agent">Agent Query</TabsTrigger>
+          <TabsTrigger value="raw">On this device</TabsTrigger>
+          <TabsTrigger value="summaries">Summaries</TabsTrigger>
+          <TabsTrigger value="agent">Agent access</TabsTrigger>
           <TabsTrigger value="audit">Audit</TabsTrigger>
         </TabsList>
 
