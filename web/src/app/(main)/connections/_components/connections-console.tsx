@@ -196,7 +196,7 @@ export function ConnectionsConsole({ data }: { data: ConnectionsData }) {
         <div>
           <h1 className="font-semibold text-2xl tracking-tight">Connections</h1>
           <p className="mt-1 max-w-3xl text-muted-foreground text-sm">
-            Connect and reconnect Composio toolkits, model credentials, and saved browser logins for
+            Connect and reconnect your apps, model credentials, and saved browser logins for
             this workspace. Secret material is never shown here.
           </p>
         </div>
@@ -324,7 +324,7 @@ function ToolkitsCard({
       <CardHeader className="border-b">
         <div className="flex items-center gap-2">
           <Plug className="size-4 text-muted-foreground" />
-          <CardTitle>Composio toolkits</CardTitle>
+          <CardTitle>Connected apps</CardTitle>
         </div>
         <CardDescription>
           Integrations available to this workspace. Connect or reconnect to refresh OAuth access.

@@ -7,7 +7,7 @@ import { AgentConsole } from "./_components/agent-console";
 export const metadata: Metadata = {
   title: "Agent | basichome",
   description:
-    "Live view of the opencode self-healing cloud worker — learned skills, agent-authored helper modules, managed-browser cookie sessions, and Composio / direct-auth connections, scoped per workspace.",
+    "Live view of the self-healing cloud agent — learned skills, agent-authored helper modules, managed-browser cookie sessions, and your connections, scoped per workspace.",
 };
 
 // Reads live data from the Basics project via the service-role client, so it

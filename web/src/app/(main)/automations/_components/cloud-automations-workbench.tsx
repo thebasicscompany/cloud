@@ -44,7 +44,7 @@ export function CloudAutomationsWorkbench() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Automations</h1>
           <p className="mt-1 max-w-3xl text-muted-foreground text-sm">
-            Saved agent jobs — each runs a goal on a schedule or a Composio webhook trigger, in Basics Cloud, with every
+            Saved agent jobs — each runs a goal on a schedule or an event trigger, in Basics Cloud, with every
             run inspectable in Runs and Logs. Ask basichome to set one up.
           </p>
         </div>
@@ -54,7 +54,7 @@ export function CloudAutomationsWorkbench() {
         <Metric icon={Wrench} label="Saved" value={(automations ?? []).length.toString()} detail={`${active.length} active`} />
         <Metric icon={CalendarClock} label="Scheduled" value={scheduled.length.toString()} detail="Have a cron or webhook trigger." />
         <Metric icon={Clock} label="Runs (7d)" value={runs7d.toString()} detail="Cloud runs across all automations." />
-        <Metric icon={Globe} label="Runtime" value="Basics Cloud" detail="Fargate worker · Browserbase live view." />
+        <Metric icon={Globe} label="Runtime" value="Basics Cloud" detail="Managed cloud worker · live browser view." />
       </section>
 
       {isLoading ? (
@@ -136,7 +136,7 @@ export function CloudAutomationDetail({ id }: { id: string }) {
       <section className="grid gap-3 md:grid-cols-4">
         <Metric icon={CalendarClock} label="Schedule" value={schedule ? formatCron(schedule.cron) : "Manual"} detail={schedule ? schedule.timezone : "No registered cron"} />
         <Metric icon={ShieldCheck} label="Trust grants" value={activeTrust.length.toString()} detail={automation.approvalPolicy.mode.replaceAll("_", " ")} />
-        <Metric icon={Globe} label="Runtime" value="Basics Cloud" detail="SQS, Fargate worker, Browserbase live view." />
+        <Metric icon={Globe} label="Runtime" value="Basics Cloud" detail="Managed cloud worker with live browser view." />
         <Metric icon={FileSearch} label="Runs" value={runs.length.toString()} detail="Cloud runs recorded for this automation." />
       </section>
 

@@ -49,18 +49,21 @@ export function PendingActionsBanner() {
   });
 
   return (
-    <div className="rounded-lg border border-amber-400/60 bg-amber-50 p-4 dark:border-amber-800/50 dark:bg-amber-950/30">
-      <div className="flex items-start gap-3">
-        <TriangleAlertIcon className="mt-0.5 size-5 shrink-0 text-amber-600 dark:text-amber-400" />
-        <div className="min-w-0 flex-1 space-y-2.5">
-          <div className="space-y-0.5">
-            <p className="font-semibold text-foreground text-sm">
-              {items.length === 1 ? "1 thing needs you to connect" : `${items.length} things need you to connect`}
-            </p>
-            <p className="text-foreground/70 text-sm">
-              An agent paused because it needs access. Connect it below, then re-run.
-            </p>
-          </div>
+    /* Hallmark: neutral paper surface + hairline border; amber lives only in the
+       icon chip (accent as highlighter, never a full fill). */
+    <div className="flex items-start gap-3.5 rounded-xl border bg-card p-4 shadow-sm">
+      <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">
+        <TriangleAlertIcon className="size-4" />
+      </span>
+      <div className="min-w-0 flex-1 space-y-3">
+        <div className="space-y-1">
+          <p className="font-semibold text-foreground text-sm">
+            {items.length === 1 ? "1 thing needs you to connect" : `${items.length} things need you to connect`}
+          </p>
+          <p className="text-muted-foreground text-sm leading-relaxed">
+            An agent paused because it needs access. Connect it below, then re-run.
+          </p>
+        </div>
           <div className="flex flex-wrap items-center gap-2">
             {items.map((a) =>
               a.kind === "browser_login" ? (
@@ -82,6 +85,5 @@ export function PendingActionsBanner() {
           </div>
         </div>
       </div>
-    </div>
   );
 }

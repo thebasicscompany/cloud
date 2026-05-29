@@ -4,13 +4,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import { Brain, Code2, Clock, FileSearch, Globe, KeyRound, Monitor, Pause, Play, ShieldCheck, Square } from "@/icons";
+import { Brain, Clock, FileSearch, Globe, KeyRound, Monitor, Pause, Play, Square } from "@/icons";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
-import { useCodexEngineStatus } from "@/hooks/queries/use-codex-engine";
 import { useActiveLocalAgentRun, useLocalAgentActions } from "@/hooks/queries/use-local-agent-runtime";
 import type { LocalAgentRun, RuntimeTarget } from "@/types/local-agent";
 
@@ -30,7 +29,6 @@ function desktopBridge(): BasichomeBridge | undefined {
 
 export function LocalAgentWorkbench() {
   const { data: activeRun } = useActiveLocalAgentRun();
-  const { data: codexStatus } = useCodexEngineStatus();
   const actions = useLocalAgentActions();
   const { push } = useRouter();
   const [prompt, setPrompt] = useState(STARTER_PROMPT);
@@ -131,15 +129,9 @@ export function LocalAgentWorkbench() {
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 md:grid-cols-3">
-        <WorkbenchMetric icon={Monitor} label="Target" value={activeRun ? targetLabel(activeRun.resolution.selectedTarget) : "Auto"} detail="Local first, cloud when the task needs durability." />
-        <WorkbenchMetric icon={Brain} label="Runtime" value={activeRun ? runtimeLabel(activeRun) : "Basics Local"} detail="One run contract powers pill, dashboard, and logs." />
-        <WorkbenchMetric
-          icon={codexStatus?.state === "ready" ? Code2 : ShieldCheck}
-          label="Codex"
-          value={codexStatus ? codexStatusLabel(codexStatus.state) : "Checking"}
-          detail={codexStatus?.state === "ready" ? "Uses your local Codex account for app/code work." : "Explicit Codex runs fail closed until reconnected."}
-        />
+      <div className="grid gap-3 md:grid-cols-2">
+        <WorkbenchMetric icon={Monitor} label="Target" value={activeRun ? targetLabel(activeRun.resolution.selectedTarget) : "Auto"} detail="Cloud by default; run on your own computer when you choose." />
+        <WorkbenchMetric icon={Brain} label="Runtime" value={activeRun ? runtimeLabel(activeRun) : "Basics Cloud"} detail="One run contract powers pill, dashboard, and logs." />
       </div>
 
       <div className="rounded-lg border bg-muted/20 p-4">
@@ -255,7 +247,7 @@ export function LocalAgentWorkbench() {
             </p>
             <div className="mt-3 rounded-lg border bg-muted/20 p-2 text-muted-foreground text-xs">
               <KeyRound className="mr-1 inline size-3.5" />
-              Codex auth and cost stay explicit: local Codex account for local Codex runs, workspace credits for cloud.
+              Engine auth and cost stay explicit: your local engine account for local runs, workspace credits for cloud.
             </div>
           </div>
         </div>
@@ -301,16 +293,16 @@ function statusLabel(run: LocalAgentRun): string {
 
 function targetLabel(target: Exclude<RuntimeTarget, "auto">): string {
   if (target === "basics_cloud") return "Basics Cloud";
-  if (target === "codex_app_server") return "Codex app-server";
-  if (target === "codex_exec") return "Codex exec JSON";
+  if (target === "codex_app_server") return "Local engine";
+  if (target === "codex_exec") return "Local engine (exec)";
   if (target === "local_browser") return "Local browser";
   if (target === "local_app") return "Local app";
   return "Local device";
 }
 
 function runtimeLabel(run: LocalAgentRun): string {
-  if (run.resolution.runtime === "codex_app_server") return "Codex app-server";
-  if (run.resolution.runtime === "codex_exec") return "Codex exec JSON";
+  if (run.resolution.runtime === "codex_app_server") return "Local engine";
+  if (run.resolution.runtime === "codex_exec") return "Local engine (exec)";
   if (run.resolution.runtime === "basics_cloud_worker") return "Cloud worker";
   if (run.resolution.runtime === "basics_local_browser") return "Local browser";
   if (run.resolution.runtime === "basics_local_app") return "Local app";

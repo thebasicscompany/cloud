@@ -180,8 +180,8 @@ function permissionsForOS(os: ClientOS): readonly PermissionDef[] {
 const ENGINE_OPTIONS = [
   {
     id: "codex_local",
-    title: "Codex or local account",
-    detail: "Recommended first. Uses local auth where available and does not ask for API keys.",
+    title: "Managed cloud (recommended)",
+    detail: "Recommended first. Runs in Basics Cloud — no API keys to set up.",
     badge: "No key required",
   },
   {
@@ -766,7 +766,7 @@ function EngineStep({
           <div className="space-y-1">
             <h3 className="font-medium text-sm">No forced API key on first run</h3>
             <p className="text-muted-foreground text-sm">
-              The recommended mode lets the user use Codex or local auth where available. BYOK and workspace managed credits remain available when the task moves to cloud or team settings.
+              The recommended mode runs in Basics Cloud with managed credits — no API keys to set up. BYOK remains available in team settings if you want it.
             </p>
           </div>
         </div>

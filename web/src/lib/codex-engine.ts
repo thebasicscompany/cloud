@@ -1,32 +1,36 @@
 import type { LocalAgentEventType, LocalAgentLogEvent, LocalAgentTaskKind, LocalAgentToolCall, RuntimeTarget } from "@/types/local-agent";
 import type { CodexEngineStatus, CodexEngineStore, CodexPolicyDecision, CodexProjectionContext, CodexProjectionResult, CodexRuntimeMode } from "@/types/codex-engine";
 
-export const BASICHOME_CODEX_ENGINE_STORAGE_KEY = "basichome:codex-engine:v1";
+// v2: abandons any v1 store that defaulted to a fake "ready" local engine.
+export const BASICHOME_CODEX_ENGINE_STORAGE_KEY = "basichome:codex-engine:v2";
 
 const DEFAULT_CODEX_PATH = "/Applications/Codex.app/Contents/Resources/codex";
 const DEFAULT_CODEX_VERSION = "codex-cli 0.133.0";
 
+// Honest default: nothing is connected until the desktop app actually detects a
+// local engine. We never claim a local account the user hasn't set up — the UI
+// shows "Not connected" and cloud runs (Basics Cloud) are the default.
 export function createDefaultCodexEngineStore(): CodexEngineStore {
   return {
     schemaVersion: 1,
     status: {
       engineId: "codex",
-      displayName: "Codex",
-      available: true,
-      installed: true,
-      authenticated: true,
-      state: "ready",
-      cliPath: DEFAULT_CODEX_PATH,
-      cliVersion: DEFAULT_CODEX_VERSION,
+      displayName: "Local engine",
+      available: false,
+      installed: false,
+      authenticated: false,
+      state: "not_installed",
+      cliPath: undefined,
+      cliVersion: undefined,
       appServerAvailable: false,
-      execJsonAvailable: true,
+      execJsonAvailable: false,
       acpAdapterAvailable: false,
       authMode: "codex_local_account",
-      costBearer: "user_codex_subscription",
+      costBearer: "unknown_unavailable",
       model: "gpt-5",
       reasoningEffort: "low",
       lastCheckedAt: new Date().toISOString(),
-      reconnectHint: "Run `codex login` in the desktop environment if this account disconnects.",
+      installHint: "Optional: connect a local engine in Settings → Developer to run code/app tasks on this machine.",
     },
   };
 }

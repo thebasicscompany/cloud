@@ -70,7 +70,7 @@ function useElapsed(startedAt: string): string {
 }
 
 function lastStepLine(step: RunStep | undefined): string {
-  if (!step) return "Booting Browserbase session…";
+  if (!step) return "Booting cloud browser…";
   const p = step.payload;
   switch (p.kind) {
     case "model_thinking":

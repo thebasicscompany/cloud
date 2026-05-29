@@ -87,15 +87,17 @@ export function ConnectionNeededBanner({ runId }: { runId: string }) {
   const names = toolkits.map(titleCase);
 
   return (
-    <div className="rounded-lg border border-amber-400/60 bg-amber-50 p-4 dark:border-amber-800/50 dark:bg-amber-950/30">
-      <div className="flex items-start gap-3">
-        <TriangleAlertIcon className="mt-0.5 size-5 shrink-0 text-amber-600 dark:text-amber-400" />
+    <div className="rounded-xl border bg-card p-4 shadow-sm">
+      <div className="flex items-start gap-3.5">
+        <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">
+          <TriangleAlertIcon className="size-4" />
+        </span>
         <div className="min-w-0 flex-1 space-y-3">
-          <div className="space-y-0.5">
+          <div className="space-y-1">
             <p className="font-semibold text-foreground text-sm">
               This run needs you to connect something to finish.
             </p>
-            <p className="text-foreground/70 text-sm">
+            <p className="text-muted-foreground text-sm leading-relaxed">
               Connect the items below, then re-run — the agent will pick up where it left off.
             </p>
           </div>

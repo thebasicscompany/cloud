@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { CalendarClock, Building2, Code2, Eye, Plug, ShieldCheck, UserCog } from "@/icons";
+import { CalendarClock, Building2, Eye, Plug, ShieldCheck, UserCog } from "@/icons";
 
 import { cn } from "@/lib/utils";
 
@@ -14,7 +14,6 @@ const sections = [
   { title: "Integrations", url: "/settings/integrations", icon: Plug },
   { title: "Trust", url: "/settings/trust", icon: ShieldCheck },
   { title: "Schedules", url: "/settings/schedules", icon: CalendarClock },
-  { title: "Developer", url: "/settings/developer", icon: Code2 },
 ] as const;
 
 export function SettingsNav() {

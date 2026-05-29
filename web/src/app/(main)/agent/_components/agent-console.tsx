@@ -71,8 +71,8 @@ export function AgentConsole({
             <h1 className="text-xl font-semibold">Agent</h1>
           </div>
           <p className="max-w-2xl text-sm text-muted-foreground">
-            Live view of the opencode self-healing cloud worker: the skills and helper modules it
-            authors, the managed-browser cookie sessions it reuses, and the Composio / direct-auth
+            Live view of the self-healing cloud agent: the skills and helper modules it
+            authors, the managed-browser cookie sessions it reuses, and the
             connections it acts through. Cookie values and credential secrets stay redacted.
           </p>
         </div>
@@ -115,7 +115,7 @@ export function AgentConsole({
             <Metric label="Browser sites" value={metrics.browserSites} />
             <Metric label="Sessions" value={metrics.totalSessions} hint={`${metrics.activeSessions} active`} />
             <Metric label="Connections" value={metrics.connections} hint={`${metrics.connectedCount} connected`} />
-            <Metric label="Composio toolsets" value={metrics.toolkits} />
+            <Metric label="Connected tools" value={metrics.toolkits} />
           </div>
 
           <Tabs defaultValue="skills" className="w-full">
@@ -311,7 +311,7 @@ export function AgentConsole({
                       </Badge>
                     </CardTitle>
                     <CardDescription>
-                      Composio and direct-auth credentials the agent acts through. Ciphertext is
+                      The credentials the agent acts through. Ciphertext is
                       KMS-encrypted and never selected by basichome.
                     </CardDescription>
                   </CardHeader>
@@ -353,8 +353,8 @@ export function AgentConsole({
 
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-base">Cached Composio toolsets</CardTitle>
-                    <CardDescription>Tool schemas the worker resolves Composio calls against.</CardDescription>
+                    <CardTitle className="text-base">Cached tools</CardTitle>
+                    <CardDescription>Tool schemas the agent resolves calls against.</CardDescription>
                   </CardHeader>
                   <CardContent>
                     {data.toolkits.length === 0 ? (

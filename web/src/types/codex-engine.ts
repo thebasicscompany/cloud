@@ -27,7 +27,7 @@ export type CodexEngineState =
 
 export type CodexEngineStatus = {
   engineId: "codex";
-  displayName: "Codex";
+  displayName: string;
   available: boolean;
   installed: boolean;
   authenticated: boolean;

@@ -7,7 +7,7 @@ import { ConnectionsConsole } from "./_components/connections-console";
 export const metadata: Metadata = {
   title: "Connections | basichome",
   description:
-    "Connect and reconnect Composio toolkits, model credentials, and saved browser logins for this workspace.",
+    "Connect and reconnect your apps, model credentials, and saved browser logins for this workspace.",
 };
 
 export const dynamic = "force-dynamic";
