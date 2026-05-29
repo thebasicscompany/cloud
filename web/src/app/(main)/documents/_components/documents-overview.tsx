@@ -143,7 +143,7 @@ function DocReader({ slug, onClose }: { slug: string; onClose: () => void }) {
             </DialogDescription>
           </div>
           {doc ? (
-            <Button type="button" size="sm" variant="outline" onClick={() => setEditing(true)}>
+            <Button type="button" size="sm" variant="outline" className="mr-8 shrink-0" onClick={() => setEditing(true)}>
               <Pencil className="size-4" />
               Edit
             </Button>

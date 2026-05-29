@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 import { ExternalLink, Hand, Maximize2, Monitor } from "@/icons";
 
 import { Badge } from "@/components/ui/badge";
@@ -21,7 +23,35 @@ export function LiveView({ run, takeover, fullBleed, onToggleTakeover }: Props) 
   // Only embed the live Browserbase view while the session is actually live.
   // Completed runs show a recording (if any); non-browser runs show the result.
   const liveSession = isLive && Boolean(run.liveUrl);
-  const externalUrl = liveSession ? run.liveUrl : run.recordingUrl;
+
+  // The stored liveUrl is pinned to the session's first tab (about:blank). While
+  // the run is live, poll for the ACTIVE tab's view so the embed follows the
+  // agent's real work instead of showing a blank page (#32).
+  const [activeUrl, setActiveUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!liveSession) {
+      setActiveUrl(null);
+      return;
+    }
+    let on = true;
+    const poll = () => {
+      fetch(`/api/runs/${run.id}/live-view`, { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d: { liveViewUrl?: string | null } | null) => {
+          if (on && d?.liveViewUrl) setActiveUrl(d.liveViewUrl);
+        })
+        .catch(() => {});
+    };
+    poll();
+    const t = setInterval(poll, 5000);
+    return () => {
+      on = false;
+      clearInterval(t);
+    };
+  }, [liveSession, run.id]);
+
+  const embedUrl = liveSession ? (activeUrl ?? run.liveUrl) : run.recordingUrl;
+  const externalUrl = embedUrl;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -68,7 +98,7 @@ export function LiveView({ run, takeover, fullBleed, onToggleTakeover }: Props) 
           >
             <BrowserChrome url={run.browserUrl ?? (liveSession ? "browserbase · live session" : "browserbase · recording")} />
             <iframe
-              src={(liveSession ? run.liveUrl : run.recordingUrl) ?? undefined}
+              src={embedUrl ?? undefined}
               title={liveSession ? "Browserbase live view" : "Run recording"}
               className="w-full flex-1 border-0 bg-white"
               sandbox="allow-scripts allow-same-origin allow-forms"

@@ -4,17 +4,18 @@ import { useEffect, useState } from "react";
 
 import Link from "next/link";
 
-import { ExternalLink, Loader2, Plug, TriangleAlertIcon } from "@/icons";
+import { ExternalLink, Globe, Loader2, Plug, TriangleAlertIcon } from "@/icons";
 
 import { Button } from "@/components/ui/button";
 
 /**
- * Actionable amber banner shown on a run that is blocked because a Composio
- * toolkit isn't connected. Reads the toolkits this run needs from
- * GET /api/runs/[id]/connection-needs (sourced from `connection_expired`
- * activity rows). For each toolkit it offers a one-click "Connect" that mints a
- * Composio OAuth link via POST /api/connections/connect and opens it in a new
- * tab. Renders nothing when the run has no outstanding connection needs.
+ * Actionable amber banner shown on a run blocked because it needs the user to
+ * connect something — a Composio toolkit OR a browser login. Reads both from
+ * GET /api/runs/[id]/connection-needs:
+ *  - toolkits → one-click "Connect" (mints a Composio OAuth link).
+ *  - browserSites → one-click "Sign in to <host>" (deep-links the Browser
+ *    sign-in flow, prefilled).
+ * Renders nothing when the run has no outstanding needs.
  */
 function titleCase(slug: string): string {
   return slug
@@ -24,8 +25,16 @@ function titleCase(slug: string): string {
     .join(" ");
 }
 
+function hostLabel(host: string): string {
+  // "youtube.com" → "YouTube", "linkedin.com" → "LinkedIn", else the bare host.
+  const base = host.replace(/\.(com|org|net|io|co|app|dev)$/i, "");
+  const known: Record<string, string> = { youtube: "YouTube", linkedin: "LinkedIn", gmail: "Gmail", x: "X" };
+  return known[base.toLowerCase()] ?? base.charAt(0).toUpperCase() + base.slice(1);
+}
+
 export function ConnectionNeededBanner({ runId }: { runId: string }) {
   const [toolkits, setToolkits] = useState<string[]>([]);
+  const [browserSites, setBrowserSites] = useState<string[]>([]);
   const [connecting, setConnecting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,12 +42,12 @@ export function ConnectionNeededBanner({ runId }: { runId: string }) {
     let active = true;
     fetch(`/api/runs/${runId}/connection-needs`)
       .then((res) => (res.ok ? res.json() : null))
-      .then((data: { toolkits?: unknown } | null) => {
+      .then((data: { toolkits?: unknown; browserSites?: unknown } | null) => {
         if (!active) return;
-        const list = Array.isArray(data?.toolkits)
-          ? (data.toolkits as unknown[]).filter((t): t is string => typeof t === "string")
-          : [];
-        setToolkits(list);
+        const toList = (v: unknown) =>
+          Array.isArray(v) ? (v as unknown[]).filter((t): t is string => typeof t === "string") : [];
+        setToolkits(toList(data?.toolkits));
+        setBrowserSites(toList(data?.browserSites));
       })
       .catch(() => {
         // Best-effort: a fetch failure just hides the banner.
@@ -73,26 +82,21 @@ export function ConnectionNeededBanner({ runId }: { runId: string }) {
     }
   }
 
-  if (toolkits.length === 0) return null;
+  if (toolkits.length === 0 && browserSites.length === 0) return null;
 
   const names = toolkits.map(titleCase);
-  const label =
-    names.length === 1
-      ? names[0]
-      : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 
   return (
-    <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4">
+    <div className="rounded-lg border border-amber-400/60 bg-amber-50 p-4 dark:border-amber-800/50 dark:bg-amber-950/30">
       <div className="flex items-start gap-3">
-        <TriangleAlertIcon className="mt-0.5 size-5 shrink-0 text-amber-600 dark:text-amber-500" />
+        <TriangleAlertIcon className="mt-0.5 size-5 shrink-0 text-amber-600 dark:text-amber-400" />
         <div className="min-w-0 flex-1 space-y-3">
-          <div>
-            <p className="font-medium text-amber-900 text-sm dark:text-amber-200">
-              The agent needs {label} connected to finish this.
+          <div className="space-y-0.5">
+            <p className="font-semibold text-foreground text-sm">
+              This run needs you to connect something to finish.
             </p>
-            <p className="text-amber-800/80 text-xs dark:text-amber-300/70">
-              Connect {toolkits.length === 1 ? "it" : "them"} so the agent can pick up where it
-              left off.
+            <p className="text-foreground/70 text-sm">
+              Connect the items below, then re-run — the agent will pick up where it left off.
             </p>
           </div>
 
@@ -113,9 +117,17 @@ export function ConnectionNeededBanner({ runId }: { runId: string }) {
                 Connect {names[i]}
               </Button>
             ))}
+            {browserSites.map((host) => (
+              <Button key={host} asChild size="sm" className="h-8 gap-1.5">
+                <Link href={`/browser?signin=${encodeURIComponent(host)}`}>
+                  <Globe className="size-3.5" />
+                  Sign in to {hostLabel(host)}
+                </Link>
+              </Button>
+            ))}
             <Button asChild variant="ghost" size="sm" className="h-8 gap-1.5">
-              <Link href="/connections">
-                Manage connections
+              <Link href={browserSites.length > 0 && toolkits.length === 0 ? "/browser" : "/connections"}>
+                {browserSites.length > 0 && toolkits.length === 0 ? "Browser logins" : "Manage connections"}
                 <ExternalLink className="size-3.5" />
               </Link>
             </Button>

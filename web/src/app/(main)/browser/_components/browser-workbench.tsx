@@ -36,6 +36,19 @@ export function BrowserWorkbench({ savedSites }: { savedSites: ConnectionBrowser
   useEffect(() => {
     const bh = (window as unknown as { basichome?: { exportLocalCookies?: unknown } }).basichome;
     setIsDesktop(typeof bh?.exportLocalCookies === "function");
+    // Deep-link from the run "Sign in to <host>" banner: /browser?signin=youtube.com
+    try {
+      const want = new URLSearchParams(window.location.search).get("signin");
+      if (want) {
+        const host = want.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "");
+        if (host) {
+          setSignInHost(host);
+          document.getElementById("signin-host")?.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }
+    } catch {
+      // no query params — ignore
+    }
   }, []);
 
   // "Use my local login" — export this host's cookies from the user's local

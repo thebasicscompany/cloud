@@ -1,5 +1,6 @@
 import "server-only";
 
+import { getConnections, PRIMARY_WORKSPACE_ID } from "@/lib/connections-data";
 import { getAdminClient } from "@/lib/supabase/admin";
 import type { Run, RunStatus, RunStep, RunStepKind, RunStepPayload, RunTrigger } from "@/types/runs";
 import type {
@@ -353,6 +354,150 @@ export async function getRunConnectionNeeds(runId: string): Promise<string[]> {
   }
 
   return [...slugs];
+}
+
+/**
+ * Hosts this run is blocked on because it needs a browser login the workspace
+ * doesn't have (derived from `browser_login_required` activity rows). Hosts that
+ * are now connected (saved + unexpired in workspace_browser_sites) are dropped
+ * so the banner clears once the user signs in. Used by the run banner to offer
+ * a one-click "Sign in to <host>".
+ */
+export async function getRunBrowserLoginNeeds(runId: string): Promise<string[]> {
+  const supabase = getAdminClient();
+  if (!supabase) return [];
+
+  const { data } = await supabase
+    .from("cloud_activity")
+    .select("payload,workspace_id")
+    .eq("agent_run_id", runId)
+    .eq("activity_type", "browser_login_required")
+    .limit(200);
+
+  const hosts = new Set<string>();
+  let workspaceId: string | undefined;
+  for (const row of data ?? []) {
+    workspaceId = (row.workspace_id as string) ?? workspaceId;
+    const payload = (row.payload ?? {}) as Record<string, unknown>;
+    const host = typeof payload.host === "string" ? payload.host.trim().toLowerCase().replace(/^www\./, "") : "";
+    if (host) hosts.add(host);
+  }
+  if (hosts.size === 0) return [];
+
+  // Drop hosts already connected so the banner disappears once fixed.
+  if (workspaceId) {
+    const { data: saved } = await supabase
+      .from("workspace_browser_sites")
+      .select("host")
+      .eq("workspace_id", workspaceId)
+      .gt("expires_at", new Date().toISOString());
+    for (const s of saved ?? []) hosts.delete(((s.host as string) ?? "").toLowerCase().replace(/^www\./, ""));
+  }
+  return [...hosts];
+}
+
+/**
+ * The live-view URL for a run's CURRENTLY ACTIVE browser tab. The run's stored
+ * `live_view_url` is pinned to the session's first target (often about:blank)
+ * while the agent works in a new tab — so we resolve the active tab live via
+ * the Browserbase debug API and prefer the last non-blank page. Returns null
+ * (caller falls back to the stored URL) if the key/session/page isn't available.
+ */
+export async function getActiveLiveViewUrl(runId: string): Promise<string | null> {
+  const supabase = getAdminClient();
+  if (!supabase) return null;
+  const { data: run } = await supabase
+    .from("cloud_runs")
+    .select("browserbase_session_id")
+    .eq("id", runId)
+    .maybeSingle();
+  const sid = (run?.browserbase_session_id as string | undefined) ?? undefined;
+  const key = process.env.BROWSERBASE_API_KEY;
+  if (!sid || !key) return null;
+  try {
+    const res = await fetch(`https://api.browserbase.com/v1/sessions/${sid}/debug`, {
+      headers: { "X-BB-API-Key": key },
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as {
+      debuggerFullscreenUrl?: string;
+      pages?: Array<{ url?: string; debuggerFullscreenUrl?: string; debuggerUrl?: string }>;
+    };
+    const pages = json.pages ?? [];
+    // Prefer the last non-about:blank page — that's the tab the agent is on.
+    const real = [...pages].reverse().find((p) => p.url && !p.url.startsWith("about:"));
+    const pick = real ?? pages[pages.length - 1];
+    return pick?.debuggerFullscreenUrl ?? pick?.debuggerUrl ?? json.debuggerFullscreenUrl ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export interface PendingActionRow {
+  runId: string;
+  kind: "browser_login" | "connection";
+  label: string; // host or toolkit slug
+}
+
+/**
+ * Workspace-wide "waiting on you" list — recent runs blocked needing the user to
+ * connect a browser login or a Composio toolkit. Powers the home banner so these
+ * action-requests aren't buried inside individual runs. Browser-login hosts that
+ * are already saved (connected) are dropped.
+ */
+export async function getWorkspacePendingActions(workspaceId?: string): Promise<PendingActionRow[]> {
+  const ws = workspaceId ?? PRIMARY_WORKSPACE_ID;
+  const supabase = getAdminClient();
+  if (!supabase) return [];
+
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const { data } = await supabase
+    .from("cloud_activity")
+    .select("agent_run_id,activity_type,payload,created_at")
+    .eq("workspace_id", ws)
+    .in("activity_type", ["browser_login_required", "connection_expired"])
+    .gt("created_at", sevenDaysAgo)
+    .order("created_at", { ascending: false })
+    .limit(200);
+
+  const { data: saved } = await supabase
+    .from("workspace_browser_sites")
+    .select("host")
+    .eq("workspace_id", ws)
+    .gt("expires_at", new Date().toISOString());
+  const savedHosts = new Set((saved ?? []).map((s) => ((s.host as string) ?? "").toLowerCase().replace(/^www\./, "")));
+
+  // Drop Composio needs for toolkits that are ALREADY connected now (the
+  // connection_expired row may be stale from before the user connected it).
+  const conn = await getConnections(ws).catch(() => null);
+  const connectedToolkits = new Set(
+    (conn?.toolkits ?? []).map((t) => t.slug.toLowerCase()).concat((conn?.credentials ?? []).map((c) => c.kind.toLowerCase())),
+  );
+
+  const seen = new Set<string>();
+  const out: PendingActionRow[] = [];
+  for (const row of data ?? []) {
+    const runId = (row.agent_run_id as string) ?? "";
+    const payload = (row.payload ?? {}) as Record<string, unknown>;
+    if (!runId) continue;
+    if (row.activity_type === "browser_login_required") {
+      const host = typeof payload.host === "string" ? payload.host.toLowerCase().replace(/^www\./, "") : "";
+      if (!host || savedHosts.has(host)) continue;
+      const k = `b:${runId}:${host}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push({ runId, kind: "browser_login", label: host });
+    } else {
+      const slug = String(payload.toolkitSlug ?? payload.toolkit_slug ?? payload.toolkit ?? "").toLowerCase();
+      if (!slug || connectedToolkits.has(slug)) continue; // skip already-connected toolkits
+      const k = `c:${runId}:${slug}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push({ runId, kind: "connection", label: slug });
+    }
+  }
+  return out.slice(0, 8);
 }
 
 export interface AgentSummaryRow {

@@ -82,6 +82,16 @@ function createMainWindow() {
     title: "Basichome",
     backgroundColor: "#f3f3f3",
     autoHideMenuBar: true,
+    icon: path.join(__dirname, "build", "icon.png"),
+    // Custom title bar: hide the OS chrome and overlay native window controls
+    // (min/maximize/close) so the app's own top bar reads as the title bar.
+    // titleBarOverlay is supported on Windows + macOS; Linux keeps the default.
+    ...(process.platform !== "linux"
+      ? {
+          titleBarStyle: "hidden",
+          titleBarOverlay: { color: "#f3f3f3", symbolColor: "#52525b", height: 44 },
+        }
+      : {}),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,

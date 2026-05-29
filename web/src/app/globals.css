@@ -139,6 +139,21 @@
     cursor: not-allowed;
   }
 
+  /*
+   * Electron custom title bar: the app's top header doubles as the draggable
+   * title-bar region (the window uses titleBarStyle:hidden + overlay controls).
+   * `-webkit-app-region` is ignored by normal browsers, so this is a no-op on
+   * the web. Interactive children must opt out of dragging to stay clickable.
+   */
+  .app-drag-region {
+    -webkit-app-region: drag;
+    /* leave room on the right for the native window-control overlay (Win/Mac) */
+    padding-right: env(titlebar-area-x, 0);
+  }
+  .app-drag-region :is(button, a, input, select, textarea, [role="button"], [data-slot="sidebar-trigger"], [data-slot]) {
+    -webkit-app-region: no-drag;
+  }
+
   *::-webkit-scrollbar-track {
     background: transparent;
   }

@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ChevronRight, Wrench } from "@/icons";
 
 import { LocalAgentWorkbench } from "@/app/(main)/_components/local-agent-workbench";
+import { PendingActionsBanner } from "@/app/(main)/_components/pending-actions-banner";
 import { PendingCard } from "@/app/(main)/approvals/_components/pending-card";
 import { StatusPill } from "@/app/(main)/runs/_components/status-pill";
 import { Badge } from "@/components/ui/badge";
@@ -69,6 +70,8 @@ export function HomeDashboard() {
           Talk to your agent, run work locally or in the cloud, and review what it produced.
         </p>
       </header>
+
+      <PendingActionsBanner />
 
       {/* Hero — talk to the agent */}
       <Card>

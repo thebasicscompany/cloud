@@ -1,5 +1,6 @@
 "use client";
 
+import { ConnectionLogo } from "@/components/connection-logo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -43,7 +44,13 @@ export function IntegrationsSettingsView() {
               <Card key={row.id} size="sm">
                 <CardHeader>
                   <div className="flex items-start justify-between gap-2">
-                    <CardTitle className="text-base">{row.name}</CardTitle>
+                    <div className="flex items-center gap-2.5">
+                      <ConnectionLogo
+                        slug={row.id.startsWith("toolkit:") ? row.id.slice(8) : row.name}
+                        className="size-6 shrink-0"
+                      />
+                      <CardTitle className="text-base">{row.name}</CardTitle>
+                    </div>
                     <Badge variant={meta.variant}>{meta.label}</Badge>
                   </div>
                   <CardDescription>{row.description}</CardDescription>

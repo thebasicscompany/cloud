@@ -96,7 +96,9 @@ export function VoiceButton({ onTranscript }: VoiceButtonProps) {
 
     let ws: WebSocket;
     try {
-      ws = new WebSocket(DG_WS_URL, ["token", token]);
+      // Scoped access tokens (from /v1/auth/grant) use the "bearer" subprotocol;
+      // "token" is only for raw API keys. Using the wrong one fails the handshake.
+      ws = new WebSocket(DG_WS_URL, ["bearer", token]);
     } catch {
       cleanup();
       setError("Could not connect to voice service.");

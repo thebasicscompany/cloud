@@ -121,26 +121,35 @@ interface AppSummaryForPrompt {
 }
 
 function composeAppsContext(apps: ReadonlyArray<AppSummaryForPrompt>): string {
-  if (apps.length === 0) return "";
-  const lines = apps.map(
-    (a) => `- ${a.slug} — "${a.name}" (${a.kind})${a.field_keys.length ? `; fields: ${a.field_keys.join(", ")}` : ""}`,
-  );
-  return `<apps>
-This workspace has Apps — typed surfaces (table/board/list) where outputs accumulate and the user reads/edits them. When a result is structured and durable (a lead, a digest entry, a row), persist it with \`app_emit({appSlug, data, status?, dedupKey?})\` instead of only returning text. Read prior data with \`app_query({appSlug})\`. Create a new app by calling app_emit with appName+appKind for a slug that doesn't exist yet.
+  const lines = apps.length
+    ? apps.map(
+        (a) => `- ${a.slug} — "${a.name}" (${a.kind})${a.field_keys.length ? `; fields: ${a.field_keys.join(", ")}` : ""}`,
+      )
+    : ["- (no apps yet — create one with app_emit using appName+appKind when output is structured/repeating)"];
+  return `<outputs>
+PERSIST YOUR OUTPUT — don't just return text. A run's final text goes into the run log, which users don't browse. Anything a user would want to keep, re-read, find later, or act on MUST be written to a durable surface before you finish:
+- Long-form / narrative (a report, summary, digest, plan, brief, drafted email/message, list of findings) ⇒ \`doc_write({title, body, summary?, dedupKey?})\` (markdown). It appears in Documents.
+- Structured / repeating records (a lead, a row, a tracked item, a digest entry that accrues over time) ⇒ \`app_emit({appSlug, data, status?, dedupKey?})\`. It appears in Apps. Read prior rows with \`app_query({appSlug})\`. Make a new app by calling app_emit with appName+appKind for a slug that doesn't exist yet.
+Default to persisting. For a scheduled automation especially, EVERY run should leave a durable artifact (a new Document, or a row appended to its App) so the user has something to open — not just a log entry. Use a stable dedupKey so re-runs update rather than duplicate. Only skip persistence for trivial/conversational answers. Still also return a short summary as your final answer.
 
-For long-form narrative output (a report, plan, brief, or drafted message), write a Document with \`doc_write({title, body, summary?, dedupKey?})\` (markdown body) so the user can review it in the Documents area.
-
+Apps available in this workspace:
 ${lines.join("\n")}
-</apps>`;
+</outputs>`;
 }
 
 function composeBrowserSitesContext(hosts: ReadonlyArray<string>): string {
   const saved = hosts.length ? hosts.map((h) => `- ${h}`).join("\n") : "- (none saved yet)";
   return `<browser_sites>
-This run's cloud browser is signed in to these sites (saved logins / cookies — navigate to them and you are already authenticated):
+This run's cloud browser already has a saved login (cookies) for these hosts — navigate to them and you are authenticated:
 ${saved}
 
-If a task or automation needs to act on a gated site that is NOT in this list, do NOT try to log in with a password and do NOT treat a sign-in wall as a dead end. Instead, surface it clearly to the user as a required setup step: tell them to open Basichome → Browser → "Sign in to a site", sign in once in the secure cloud window for that host, and re-run. When you are setting up a NEW automation, list every gated site it will need up front (alongside any Composio connections) so the user can connect them before the first scheduled run. Treat missing browser logins with the same priority as missing Composio connections.
+YOU must figure out which logins a task needs — the user will NOT spell it out. Before acting, infer the site(s) the goal implies and whether they need a signed-in session:
+- Phrasing like "my …", "my account", a personal feed/inbox/dashboard/DMs/history/subscriptions/orders, or anything user-specific ⇒ that site needs a login. (e.g. "my YouTube subscriptions" ⇒ youtube.com login; "my Gmail" ⇒ Gmail; "my LinkedIn messages" ⇒ linkedin.com.)
+- Public, non-personalized info (search results, public pages, prices) ⇒ usually no login.
+
+For each needed site: if it's in the saved list above, just use it. If it is NOT, do NOT type a password and do NOT treat a sign-in wall as a dead end — and do NOT fabricate results. Instead, CALL the \`request_browser_login({host, reason})\` tool — this surfaces a one-click "Sign in to <host>" prompt to the user on the run and on their Home screen (without it, the user never sees that a login is needed). Then stop and tell them to connect it and re-run. At RUNTIME, also treat any logged-out signal (a sign-in/login wall, a "Sign in" call-to-action, or the absence of the user's personalized content) as exactly this — call request_browser_login and stop, never guess around it.
+
+When SETTING UP a new automation, enumerate every gated site it will touch up front — alongside any Composio connections — so the user can connect them before the first run. Missing browser logins are first-class setup requirements, same priority as Composio connections.
 </browser_sites>`;
 }
 
@@ -800,11 +809,10 @@ export const BasicsBrowserPlugin: Plugin = async (_input) => {
           const helperFragment = composeHelperContext(rt.helpers);
           if (helperFragment) output.system.unshift(helperFragment);
         }
-        // Apps fragment — lets the agent see existing app surfaces.
-        if (rt.apps.length > 0) {
-          const appsFragment = composeAppsContext(rt.apps);
-          if (appsFragment) output.system.unshift(appsFragment);
-        }
+        // Outputs fragment — ALWAYS injected (even with no apps yet) so the
+        // agent persists results to Documents/Apps instead of only the run log.
+        const appsFragment = composeAppsContext(rt.apps);
+        if (appsFragment) output.system.unshift(appsFragment);
         // Browser-sites fragment — which gated sites are signed in, and to
         // request (not brute-force) logins for ones that aren't.
         output.system.unshift(composeBrowserSitesContext(rt.browserSites));

@@ -18,6 +18,7 @@ import {
   CommandList,
   CommandSeparator,
 } from "@/components/ui/command";
+import { useIsMac } from "@/lib/use-platform";
 import type { NavMainItem } from "@/navigation/sidebar/sidebar-items";
 import { sidebarItems } from "@/navigation/sidebar/sidebar-items";
 
@@ -79,6 +80,7 @@ export function SearchDialog() {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const router = useRouter();
+  const isMac = useIsMac();
 
   React.useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -142,7 +144,7 @@ export function SearchDialog() {
         <Search data-icon="inline-start" />
         Search
         <kbd className="inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-medium text-[10px]">
-          <span className="text-xs">⌘</span>J
+          <span className={isMac ? "text-xs" : "text-[10px]"}>{isMac ? "⌘" : "Ctrl"}</span>J
         </kbd>
       </Button>
       <CommandDialog open={open} onOpenChange={handleOpenChange}>

@@ -8,6 +8,7 @@ import { CheckCircle2, Globe, KeyRound, Loader2, Lock, Plug, RotateCw, TriangleA
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConnectionLogo } from "@/components/connection-logo";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
@@ -346,8 +347,13 @@ function ToolkitsCard({
               {toolkits.map((tk) => (
                 <TableRow key={tk.slug}>
                   <TableCell>
-                    <div className="font-medium">{credentialLabel(tk.slug)}</div>
-                    <div className="font-mono text-muted-foreground text-xs">{tk.slug}</div>
+                    <div className="flex items-center gap-2.5">
+                      <ConnectionLogo slug={tk.slug} className="size-6 shrink-0" />
+                      <div>
+                        <div className="font-medium">{credentialLabel(tk.slug)}</div>
+                        <div className="font-mono text-muted-foreground text-xs">{tk.slug}</div>
+                      </div>
+                    </div>
                   </TableCell>
                   <TableCell className="hidden text-muted-foreground text-sm sm:table-cell">
                     v{tk.schemaVersion ?? "—"}
@@ -413,8 +419,13 @@ function CredentialsCard({
                 return (
                   <TableRow key={cred.id} className={meta.attention ? "bg-destructive/5" : undefined}>
                     <TableCell>
-                      <div className="font-medium">{cred.label ?? credentialLabel(cred.kind)}</div>
-                      <div className="font-mono text-muted-foreground text-xs">{cred.kind}</div>
+                      <div className="flex items-center gap-2.5">
+                        <ConnectionLogo slug={cred.kind} className="size-6 shrink-0" />
+                        <div>
+                          <div className="font-medium">{cred.label ?? credentialLabel(cred.kind)}</div>
+                          <div className="font-mono text-muted-foreground text-xs">{cred.kind}</div>
+                        </div>
+                      </div>
                     </TableCell>
                     <TableCell>
                       <Badge variant={meta.variant} className="h-auto min-h-5 gap-1 py-0.5">
