@@ -74,6 +74,17 @@ describe("resolveConnectedAccounts", () => {
       listConnectedAccounts: vi.fn(async () => []),
     };
     await resolveConnectedAccounts("acct_xyz", { client });
-    expect(client.listConnectedAccounts).toHaveBeenCalledWith("acct_xyz");
+    expect(client.listConnectedAccounts).toHaveBeenCalledWith(["acct_xyz"]);
+  });
+
+  it("queries account_id AND extra workspace ids, deduped", async () => {
+    const client = {
+      listConnectedAccounts: vi.fn(async () => []),
+    };
+    await resolveConnectedAccounts("acct_1", {
+      client,
+      extraUserIds: ["ws_1", "acct_1"],
+    });
+    expect(client.listConnectedAccounts).toHaveBeenCalledWith(["acct_1", "ws_1"]);
   });
 });

@@ -334,21 +334,31 @@ export default $config({
     // account + region); if not, the operator must add the new CNAME
     // values at Vercel before this deploy completes.
     // ---------------------------------------------------------------------
-    const apiCert = new aws.acm.Certificate("RuntimeApiCertificate", {
-      domainName: "api.trybasics.ai",
-      validationMethod: "DNS",
-      tags: {
-        project: "basics-runtime",
-        environment: $app.stage,
-      },
-    });
+    // Custom domain (api.trybasics.ai) is opt-in via DEPLOY_API_DOMAIN=1.
+    // DNS for trybasics.ai is managed externally (Vercel) and there is no
+    // Route53 zone in this account, so DNS-validated ACM cannot auto-validate
+    // here — a fresh deploy with the domain would hang on cert validation.
+    // Default deploy therefore skips the cert and serves the API over the
+    // ALB's AWS-assigned DNS name on port 80, so a clean account can come up
+    // without a manual DNS step. Set DEPLOY_API_DOMAIN=1 (and add the ACM
+    // CNAME at Vercel) to switch the ALB to the HTTPS custom domain.
+    const useApiCustomDomain = process.env.DEPLOY_API_DOMAIN === "1";
 
-    const apiCertValidation = new aws.acm.CertificateValidation(
-      "RuntimeApiCertValidation",
-      {
-        certificateArn: apiCert.arn,
-      },
-    );
+    // When a pre-validated cert ARN is supplied (cert validated out-of-band
+    // via the Vercel DNS CNAME), use it directly so the deploy never blocks
+    // on ACM DNS validation. Otherwise fall back to creating + validating a
+    // cert inline, which only completes once the validation CNAME exists at
+    // Vercel.
+    const apiCertArn = useApiCustomDomain
+      ? process.env.API_CERT_ARN ??
+        new aws.acm.CertificateValidation("RuntimeApiCertValidation", {
+          certificateArn: new aws.acm.Certificate("RuntimeApiCertificate", {
+            domainName: "api.trybasics.ai",
+            validationMethod: "DNS",
+            tags: { project: "basics-runtime", environment: $app.stage },
+          }).arn,
+        }).certificateArn
+      : undefined;
 
     // ---------------------------------------------------------------------
     // Hono Fargate service (api/).
@@ -455,17 +465,18 @@ export default $config({
           `arn:aws:iam::635649352555:role/basics-scheduler-invoke-production`,
       },
       loadBalancer: {
-        ports: [
-          {
-            listen: "443/https",
-            forward: "3001/http",
-          },
-        ],
-        domain: {
-          name: "api.trybasics.ai",
-          dns: false,
-          cert: apiCertValidation.certificateArn,
-        },
+        ports: useApiCustomDomain
+          ? [{ listen: "443/https", forward: "3001/http" }]
+          : [{ listen: "80/http", forward: "3001/http" }],
+        ...(useApiCustomDomain && apiCertArn
+          ? {
+              domain: {
+                name: "api.trybasics.ai",
+                dns: false,
+                cert: apiCertArn,
+              },
+            }
+          : {}),
         health: {
           "3001/http": {
             path: "/health",
@@ -483,6 +494,90 @@ export default $config({
         },
       },
     });
+
+    // ---------------------------------------------------------------------
+    // Model B — local-browser relay. A tiny stateless WebSocket byte-pump that
+    // pairs a cloud worker with a user's desktop so the worker can drive the
+    // user's LOCAL Chrome (no install). Guarded by DEPLOY_RELAY so normal
+    // deploys are unaffected. Public ALB on the AWS *.elb.amazonaws.com domain.
+    // NOTE: serves ws:// (no TLS) for now per product decision — harden to wss
+    // (CloudFront / custom domain) before non-test traffic carrying screens.
+    // ---------------------------------------------------------------------
+    const useRelay = process.env.DEPLOY_RELAY === "1";
+    const relayService = useRelay
+      ? new sst.aws.Service("BasicsRelay", {
+          cluster,
+          cpu: "0.25 vCPU",
+          memory: "0.5 GB",
+          architecture: "x86_64",
+          image: { context: "relay", dockerfile: "Dockerfile" },
+          environment: {
+            PORT: "8090",
+            WORKSPACE_JWT_SECRET: secrets.workspaceJwtSecret.value,
+            RELAY_REQUIRE_JWT: "1",
+          },
+          loadBalancer: {
+            ports: [{ listen: "80/http", forward: "8090/http" }],
+            health: {
+              "8090/http": {
+                path: "/health",
+                interval: "30 seconds",
+                timeout: "5 seconds",
+                healthyThreshold: 2,
+                unhealthyThreshold: 3,
+                successCodes: "200",
+              },
+            },
+          },
+          transform: { service: { name: `basics-relay-${$app.stage}` } },
+        })
+      : undefined;
+    // CloudFront in front of the relay ALB → wss on the AWS *.cloudfront.net
+    // domain (auto-TLS, no custom domain). Uses the AWS managed CachingDisabled
+    // + AllViewer policies so the WebSocket Upgrade/Connection headers are
+    // forwarded and nothing is cached. This is the secure transport for
+    // local-relay screen frames.
+    const relayCdn =
+      useRelay && relayService
+        ? new aws.cloudfront.Distribution("BasicsRelayCdn", {
+            enabled: true,
+            isIpv6Enabled: true,
+            comment: "Basics local-browser relay (wss)",
+            origins: [
+              {
+                originId: "relay-alb",
+                domainName: relayService.url.apply((u) => new URL(u).host),
+                customOriginConfig: {
+                  httpPort: 80,
+                  httpsPort: 443,
+                  originProtocolPolicy: "http-only",
+                  originSslProtocols: ["TLSv1.2"],
+                  originReadTimeout: 60,
+                  originKeepaliveTimeout: 60,
+                },
+              },
+            ],
+            defaultCacheBehavior: {
+              targetOriginId: "relay-alb",
+              viewerProtocolPolicy: "https-only",
+              allowedMethods: ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"],
+              cachedMethods: ["GET", "HEAD"],
+              // AWS managed policies: CachingDisabled + AllViewer (forwards all
+              // headers incl. Upgrade/Connection — required for WebSocket).
+              cachePolicyId: "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
+              originRequestPolicyId: "216adef6-5c7f-47e4-b989-5492eafa07d3",
+            },
+            restrictions: { geoRestriction: { restrictionType: "none" } },
+            viewerCertificate: { cloudfrontDefaultCertificate: true },
+          })
+        : undefined;
+    // wss URL for the worker task def — CloudFront (secure) when present, else
+    // the ALB ws:// as a fallback.
+    const relayWsUrl = relayCdn
+      ? relayCdn.domainName.apply((d) => `wss://${d}`)
+      : relayService
+        ? relayService.url.apply((u) => u.replace(/^http/, "ws").replace(/\/$/, ""))
+        : undefined;
 
     // ---------------------------------------------------------------------
     // BUILD-LOOP Phase A.2 — cloud-agent foundations (slice 1: ECR + cluster).
@@ -720,6 +815,8 @@ export default $config({
               // Tunable; per-run heartbeat keeps workspace_active_tasks fresh.
               { name: "IDLE_STOP_MS", value: "900000" },
               { name: "AGENT_CLUSTER_NAME", value: "basics-agent" },
+              // Model B — relay endpoint for local_relay runs (empty unless DEPLOY_RELAY).
+              ...(relayWsUrl ? [{ name: "RELAY_WS_URL", value: relayWsUrl }] : []),
             ],
             logConfiguration: {
               logDriver: "awslogs",

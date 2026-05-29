@@ -13,19 +13,31 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useWorkflows } from "@/hooks/queries/use-workflows";
+import { useCloudAutomations } from "@/hooks/queries/use-cloud-automations";
 import { formatCron } from "@/lib/format";
+import type { CloudAutomationTrigger } from "@/types/cloud-automation";
+
+type ScheduleRow = { id: string; name: string; cron: string; timezone: string; enabled: boolean };
 
 export function SchedulesSettingsView() {
-  const { data, isLoading } = useWorkflows();
-  const rows = (data ?? []).slice().sort((a, b) => a.name.localeCompare(b.name));
+  const { data, isLoading } = useCloudAutomations();
+  const rows: ScheduleRow[] = (data ?? [])
+    .map((a) => {
+      const sched = a.triggers.find(
+        (t): t is Extract<CloudAutomationTrigger, { type: "schedule" }> => t.type === "schedule",
+      );
+      if (!sched) return null;
+      return { id: a.id, name: a.name, cron: sched.cron, timezone: sched.timezone, enabled: a.status === "active" };
+    })
+    .filter((r): r is ScheduleRow => r !== null)
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   return (
     <div className="space-y-6">
       <div className="space-y-1">
         <h2 className="text-lg font-semibold tracking-tight">Schedules</h2>
         <p className="text-sm text-muted-foreground">
-          Cron expressions drive EventBridge triggers in production. Editing stays on the workflow detail page for now.
+          Automations with a cron trigger. Each fires a cloud run on its schedule. Edit on the automation page.
         </p>
       </div>
 
@@ -33,7 +45,7 @@ export function SchedulesSettingsView() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Workflow</TableHead>
+              <TableHead>Automation</TableHead>
               <TableHead>Schedule</TableHead>
               <TableHead>Cron</TableHead>
               <TableHead className="text-right"></TableHead>
@@ -53,20 +65,22 @@ export function SchedulesSettingsView() {
             ) : rows.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={4} className="h-24 text-center text-muted-foreground text-sm">
-                  No workflows yet.
+                  No scheduled automations yet.
                 </TableCell>
               </TableRow>
             ) : (
-              rows.map((wf) => (
-                <TableRow key={wf.id}>
-                  <TableCell className="font-medium">{wf.name}</TableCell>
-                  <TableCell className="text-muted-foreground text-sm">{formatCron(wf.schedule)}</TableCell>
-                  <TableCell className="font-mono text-muted-foreground text-xs">{wf.schedule ?? "—"}</TableCell>
+              rows.map((row) => (
+                <TableRow key={row.id}>
+                  <TableCell className="font-medium">{row.name}</TableCell>
+                  <TableCell className="text-muted-foreground text-sm">
+                    {formatCron(row.cron)} · {row.timezone}
+                  </TableCell>
+                  <TableCell className="font-mono text-muted-foreground text-xs">{row.cron || "—"}</TableCell>
                   <TableCell className="text-right">
                     <div className="inline-flex items-center gap-2">
-                      <Badge variant={wf.enabled ? "default" : "secondary"}>{wf.enabled ? "On" : "Off"}</Badge>
+                      <Badge variant={row.enabled ? "default" : "secondary"}>{row.enabled ? "On" : "Off"}</Badge>
                       <Button type="button" variant="outline" size="sm" asChild>
-                        <Link href={`/workflows/${wf.id}`}>Open</Link>
+                        <Link href={`/automations/${row.id}`} prefetch={false}>Open</Link>
                       </Button>
                     </div>
                   </TableCell>

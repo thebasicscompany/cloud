@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/sidebar";
 import { sidebarItems } from "@/navigation/sidebar/sidebar-items";
 
+import { RecordRoutine } from "../record-routine";
 import { NavMain } from "./nav-main";
 import { NavUser } from "./nav-user";
 
@@ -50,6 +51,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
         <NavMain items={sidebarItems} />
       </SidebarContent>
       <SidebarFooter>
+        <RecordRoutine />
         <NavUser user={user} />
       </SidebarFooter>
     </Sidebar>

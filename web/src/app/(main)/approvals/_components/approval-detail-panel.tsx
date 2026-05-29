@@ -222,7 +222,7 @@ function CheckRow({ check }: { check: WorkspaceApprovalCheck }) {
 function InfoCard({ title, detail, icon: Icon }: { title: string; detail: string; icon: typeof ShieldCheck }) {
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b">
+      <CardHeader className="flex flex-row items-center justify-between gap-y-0 border-b">
         <CardTitle className="text-sm">{title}</CardTitle>
         <Icon className="size-4 text-muted-foreground" />
       </CardHeader>

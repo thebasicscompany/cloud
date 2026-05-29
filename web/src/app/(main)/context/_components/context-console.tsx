@@ -27,6 +27,8 @@ import type { AgentContextResult, LocalContextStore } from "@/types/local-contex
 
 const AGENT_QUERY = "What approved local context can help with invoice and revenue automations?";
 
+const DATE_FORMATTER = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+
 export function ContextConsole() {
   const { data: store, isLoading, isError, refetch } = useLocalContextStore();
   const actions = useLocalContextActions();
@@ -450,7 +452,7 @@ function labelForStatus(status: LocalContextStore["status"]["status"]): string {
 }
 
 function formatDate(value: string): string {
-  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value));
+  return DATE_FORMATTER.format(new Date(value));
 }
 
 function formatRelative(value: string): string {

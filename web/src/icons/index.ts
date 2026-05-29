@@ -58,6 +58,11 @@ import {
   PaperClipIcon,
   PauseIcon,
   PencilIcon,
+  PlusIcon,
+  QueueListIcon,
+  RectangleStackIcon,
+  Squares2X2Icon,
+  TableCellsIcon,
   PlayIcon,
   ShieldCheckIcon,
   StopIcon,
@@ -170,6 +175,12 @@ export const Ellipsis = EllipsisHorizontalIcon;
 export const Folder = FolderIcon;
 export const Forward = ForwardIcon;
 export const Trash2 = TrashIcon;
+
+export const Plus = PlusIcon;
+export const LayoutGrid = Squares2X2Icon;
+export const TableIcon = TableCellsIcon;
+export const ListIcon = QueueListIcon;
+export const Board = RectangleStackIcon;
 
 export const BadgeCheck = CheckBadgeIcon;
 export const Bell = BellIcon;

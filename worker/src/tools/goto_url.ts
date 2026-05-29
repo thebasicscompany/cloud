@@ -1,5 +1,5 @@
 import { defineTool } from "@basics/shared";
-import { goto_url as harnessGotoUrl, js as harnessJs } from "@basics/harness";
+import { cdp, goto_url as harnessGotoUrl, js as harnessJs } from "@basics/harness";
 import { z } from "zod";
 import type { WorkerToolContext } from "./context.js";
 import {
@@ -58,15 +58,40 @@ export const goto_url = defineTool({
         url,
       );
       if (savedState) {
-        await ctx.publish({
-          type: "browser_session_storage_state_not_supported",
-          payload: {
-            host: savedState.host,
-            url,
-            reason:
-              "harness daemon session-create does not yet accept a storageState blob; cookies + localStorage will not be preloaded for this run",
-          },
-        });
+        // A `storageState` blob (cookies exported from the user's local Chrome
+        // or another session) is applied via CDP Network.setCookies on the
+        // live session — no daemon session-create support needed. Browserbase
+        // Context blobs ({kind:'browserbase_context'}) are already applied at
+        // session create, so we skip them here.
+        const ss = savedState.storageState as
+          | { kind?: string; cookies?: Array<Record<string, unknown>> }
+          | null;
+        const cookies = Array.isArray(ss?.cookies) ? ss!.cookies : null;
+        if (cookies && cookies.length > 0) {
+          try {
+            await cdp(ctx.session, "Network.setCookies", {
+              cookies: cookies.map((c) => ({
+                name: String(c.name),
+                value: String(c.value),
+                ...(c.domain ? { domain: String(c.domain) } : {}),
+                path: c.path ? String(c.path) : "/",
+                ...(typeof c.expires === "number" && c.expires > 0 ? { expires: c.expires } : {}),
+                httpOnly: Boolean(c.httpOnly),
+                secure: Boolean(c.secure),
+                ...(c.sameSite ? { sameSite: String(c.sameSite) } : {}),
+              })),
+            });
+            await ctx.publish({
+              type: "browser_session_storage_state_applied",
+              payload: { host: savedState.host, url, cookieCount: cookies.length },
+            });
+          } catch (e) {
+            await ctx.publish({
+              type: "browser_session_storage_state_error",
+              payload: { host: savedState.host, url, error: (e as Error).message },
+            });
+          }
+        }
       }
     }
 

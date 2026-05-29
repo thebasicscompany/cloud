@@ -2,19 +2,16 @@
 
 import { useQuery } from "@tanstack/react-query";
 
-import { mockIntegrations } from "@/mocks/settings";
 import type { Integration } from "@/types/settings";
 
+/** Real integrations — backed by /api/settings/integrations (Composio toolkits + credentials). */
 export function useSettingsIntegrations() {
   return useQuery({
     queryKey: ["settings", "integrations"],
     queryFn: async (): Promise<Integration[]> => {
-      await delay();
-      return mockIntegrations;
+      const res = await fetch("/api/settings/integrations", { cache: "no-store" });
+      if (!res.ok) return [];
+      return ((await res.json()).integrations ?? []) as Integration[];
     },
   });
-}
-
-function delay(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 60));
 }

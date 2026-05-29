@@ -1,611 +1,625 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
-import {
-  CheckCircle2,
-  Clock,
-  Code2,
-  ExternalLink,
-  Folder,
-  Play,
-  RefreshCcw,
-  ShieldCheck,
-  TriangleAlertIcon,
-} from "@/icons";
+import { Board, ChevronRight, Clock, LayoutGrid, ListIcon, Loader2, Pencil, Plus, TableIcon, Trash2, X } from "@/icons";
+import { APP_ICON_CHOICES, resolveAppIcon } from "@/lib/app-icons";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  appNeedsReview,
-  useApps,
-  useWorkspaceAppActions,
-  useWorkspaceAppsStore,
-} from "@/hooks/queries/use-apps";
-import { formatRelative } from "@/lib/format";
-import {
-  selectActiveRelease,
-  selectDeploymentsForApp,
-  selectLatestRelease,
-  selectPendingRelease,
-} from "@/lib/workspace-apps-runtime";
-import type {
-  AppApprovalState,
-  AppDeploymentCheck,
-  AppReleaseStatus,
-  BasicsAppManifestUnit,
-  WorkspaceApp,
-  WorkspaceAppStatus,
-  WorkspaceAppTarget,
-  WorkspaceAppsStore,
-} from "@/types/apps";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Textarea } from "@/components/ui/textarea";
+import type { AppDetail, AppField, AppKind, AppRecord, AppSummary } from "@/lib/apps-data";
 
-const statusCopy: Record<WorkspaceAppStatus, string> = {
-  installed: "Installed",
-  update_available: "Update ready",
-  pending_review: "Pending review",
-  blocked: "Blocked",
-};
+const KIND_ICON: Record<AppKind, typeof Board> = { board: Board, table: TableIcon, list: ListIcon };
 
-const targetCopy: Record<WorkspaceAppTarget, string> = {
-  local: "Local",
-  cloud: "Cloud",
-  local_and_cloud: "Local + cloud",
-};
+export function AppsOverview({ apps }: { apps: AppSummary[] }) {
+  const { refresh } = useRouter();
+  const [openSlug, setOpenSlug] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
 
-const releaseCopy: Record<AppReleaseStatus, string> = {
-  draft: "Draft",
-  local_installed: "Local install",
-  pending_review: "Pending review",
-  approved: "Approved",
-  deploying: "Deploying",
-  deployed: "Deployed",
-  rolled_back: "Rolled back",
-  blocked: "Blocked",
-};
+  return (
+    <>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {apps.map((app) => (
+          <AppCard key={app.id} app={app} onOpen={() => setOpenSlug(app.slug)} />
+        ))}
+        <button
+          type="button"
+          onClick={() => setCreating(true)}
+          className="flex min-h-[140px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+        >
+          <Plus className="size-5" />
+          <span className="font-medium text-sm">New app</span>
+        </button>
+      </div>
 
-const approvalCopy: Record<AppApprovalState, string> = {
-  not_required: "Not required",
-  pending: "Pending",
-  approved: "Approved",
-  rejected: "Rejected",
-};
+      {apps.length === 0 ? (
+        <p className="text-muted-foreground text-sm">
+          No apps yet. Create one, or let an agent build a CRM, digest, or list and drop its outputs here.
+        </p>
+      ) : null}
 
-export function AppsOverview() {
-  const { data: apps, isLoading: appsLoading } = useApps();
-  const { data: store, isLoading: storeLoading } = useWorkspaceAppsStore();
-  const actions = useWorkspaceAppActions();
-  const [selectedAppId, setSelectedAppId] = useState<string | undefined>(undefined);
-  const isLoading = appsLoading || storeLoading;
+      {openSlug ? (
+        <AppPanel
+          slug={openSlug}
+          onClose={() => {
+            setOpenSlug(null);
+            refresh();
+          }}
+        />
+      ) : null}
 
-  const selectedApp = useMemo(() => {
-    if (!apps?.length) return undefined;
-    return apps.find((app) => app.id === selectedAppId) ?? apps[0];
-  }, [apps, selectedAppId]);
+      {creating ? (
+        <CreateAppDialog
+          onClose={() => setCreating(false)}
+          onCreated={(slug) => {
+            setCreating(false);
+            refresh();
+            setOpenSlug(slug);
+          }}
+        />
+      ) : null}
+    </>
+  );
+}
 
-  const selectedBundle = selectedApp && store
-    ? {
-        pendingRelease: selectPendingRelease(store, selectedApp.id),
-        activeRelease: selectActiveRelease(store, selectedApp.id),
-        latestRelease: selectLatestRelease(store, selectedApp.id),
-        deployments: selectDeploymentsForApp(store, selectedApp.id),
-        logs: store.logs.filter((log) => log.appId === selectedApp.id).slice(0, 5),
-      }
-    : undefined;
+function AppCard({ app, onOpen }: { app: AppSummary; onOpen: () => void }) {
+  const KindIcon = KIND_ICON[app.kind] ?? TableIcon;
+  const AppIcon = resolveAppIcon(app);
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="group flex min-h-[140px] flex-col gap-2 rounded-xl border bg-card p-4 text-left transition-colors hover:border-primary/40"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+          <AppIcon className="size-5" weight="duotone" />
+        </span>
+        <Badge variant="outline" className="gap-1">
+          <KindIcon className="size-3" />
+          {app.kind}
+        </Badge>
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="truncate font-semibold">{app.name}</div>
+        <p className="mt-0.5 line-clamp-2 text-muted-foreground text-sm">{app.description}</p>
+      </div>
+      <div className="flex items-center justify-between border-t pt-2 text-muted-foreground text-xs">
+        <span>
+          {app.recordCount} record{app.recordCount === 1 ? "" : "s"}
+        </span>
+        <span className="flex items-center gap-1 font-medium text-foreground transition-transform group-hover:translate-x-0.5">
+          Open
+          <ChevronRight className="size-3.5" />
+        </span>
+      </div>
+    </button>
+  );
+}
 
-  if (isLoading || !apps || !store) {
-    return (
-      <div className="space-y-4">
-        <div className="grid gap-3 md:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-28 rounded-lg" />
-          ))}
+function AppPanel({ slug, onClose }: { slug: string; onClose: () => void }) {
+  const [app, setApp] = useState<AppDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<AppRecord | null>(null);
+  const [adding, setAdding] = useState(false);
+
+  async function load() {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/apps/${slug}`);
+      const json = await res.json();
+      if (res.ok && json.app) setApp(json.app as AppDetail);
+      else setError(json.error ?? "Could not load this app.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug]);
+
+  async function deleteRecord(id: string) {
+    await fetch(`/api/apps/${slug}/records/${id}`, { method: "DELETE" });
+    setApp((prev) => (prev ? { ...prev, records: prev.records.filter((r) => r.id !== id) } : prev));
+  }
+
+  const AppIcon = app ? resolveAppIcon(app) : null;
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="flex h-[85vh] max-h-[85vh] w-[calc(100%-2rem)] max-w-5xl flex-col gap-0 p-0 sm:max-w-5xl">
+        <DialogHeader className="flex-row items-start gap-3 border-b p-4">
+          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+            {AppIcon ? <AppIcon className="size-5" weight="duotone" /> : <Loader2 className="size-5 animate-spin" />}
+          </span>
+          <div className="min-w-0 flex-1">
+            <DialogTitle className="truncate">{app?.name ?? "Loading…"}</DialogTitle>
+            <DialogDescription className="truncate">{app?.description}</DialogDescription>
+          </div>
+          {app ? (
+            <Button type="button" size="sm" onClick={() => setAdding(true)}>
+              <Plus className="size-4" />
+              Add record
+            </Button>
+          ) : null}
+        </DialogHeader>
+
+        <div className="min-h-0 flex-1 overflow-auto p-4">
+          {loading ? (
+            <div className="flex items-center gap-2 text-muted-foreground text-sm">
+              <Loader2 className="size-4 animate-spin" />
+              Loading…
+            </div>
+          ) : error ? (
+            <p className="text-destructive text-sm">{error}</p>
+          ) : app && app.records.length === 0 ? (
+            <div className="grid place-items-center rounded-lg border border-dashed p-10 text-center text-muted-foreground text-sm">
+              <div>
+                <p>No records yet.</p>
+                <p className="mt-1">Add one yourself, or an agent will drop outputs here.</p>
+              </div>
+            </div>
+          ) : app ? (
+            <AppRecordsView app={app} onEdit={setEditing} onDelete={(id) => void deleteRecord(id)} />
+          ) : null}
         </div>
-        <Skeleton className="h-96 rounded-lg" />
+      </DialogContent>
+
+      {app && (adding || editing) ? (
+        <RecordDialog
+          app={app}
+          record={editing}
+          onClose={() => {
+            setAdding(false);
+            setEditing(null);
+          }}
+          onSaved={() => {
+            setAdding(false);
+            setEditing(null);
+            void load();
+          }}
+        />
+      ) : null}
+    </Dialog>
+  );
+}
+
+function AppRecordsView({
+  app,
+  onEdit,
+  onDelete,
+}: {
+  app: AppDetail;
+  onEdit: (r: AppRecord) => void;
+  onDelete: (id: string) => void;
+}) {
+  if (app.kind === "board") {
+    const stages = app.view.stages ?? Array.from(new Set(app.records.map((r) => r.status ?? "Other")));
+    const titleField = app.view.titleField ?? app.fields[0]?.key;
+    return (
+      <div className="flex gap-3 overflow-x-auto pb-2">
+        {stages.map((stage) => {
+          const inStage = app.records.filter((r) => (r.status ?? "Other") === stage);
+          return (
+            <div key={stage} className="flex w-72 shrink-0 flex-col gap-2">
+              <div className="flex items-center justify-between px-1">
+                <span className="font-medium text-sm">{stage}</span>
+                <Badge variant="outline">{inStage.length}</Badge>
+              </div>
+              {inStage.map((r) => (
+                <RecordCard key={r.id} app={app} record={r} titleField={titleField} onEdit={onEdit} onDelete={onDelete} />
+              ))}
+            </div>
+          );
+        })}
       </div>
     );
   }
 
-  const blocked = apps.filter((app) => app.health === "blocked");
-  const pending = apps.filter(appNeedsReview);
-  const deployed = apps.filter((app) => app.status === "installed");
-  const cloudDeployments = store.deployments.filter((deployment) => deployment.target === "cloud" && deployment.status === "active");
+  if (app.kind === "list") {
+    const titleField = app.view.titleField ?? app.fields[0]?.key;
+    const bodyField = app.view.bodyField;
+    return (
+      <div className="space-y-2">
+        {app.records.map((r) => (
+          <div key={r.id} className="rounded-lg border bg-card p-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="font-medium">{String(r.data[titleField ?? ""] ?? "Untitled")}</div>
+                {bodyField ? (
+                  <p className="mt-0.5 text-muted-foreground text-sm">{String(r.data[bodyField] ?? "")}</p>
+                ) : null}
+              </div>
+              <RecordActions record={r} onEdit={onEdit} onDelete={onDelete} />
+            </div>
+            <RecordMeta record={r} />
+          </div>
+        ))}
+      </div>
+    );
+  }
 
+  // table
   return (
-    <div className="space-y-4">
-      <section className="grid gap-3 md:grid-cols-4">
-        <SummaryCard icon={Folder} label="Workspace apps" value={apps.length.toString()} detail="Private tools in this basichome workspace." />
-        <SummaryCard icon={ShieldCheck} label="Review queue" value={pending.length.toString()} detail="CLI releases waiting on scan, approval, deploy, or repair." />
-        <SummaryCard icon={Play} label="Active deploys" value={deployed.length.toString()} detail={`${cloudDeployments.length} cloud target${cloudDeployments.length === 1 ? "" : "s"} active.`} />
-        <SummaryCard icon={TriangleAlertIcon} label="Blocked" value={blocked.length.toString()} detail="Fail-closed checks or missing credentials." />
-      </section>
-
-      <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-4">
-        <div>
-          <h2 className="font-semibold text-base">CLI release lane</h2>
-          <p className="mt-1 text-muted-foreground text-sm">
-            `basics app check` is the shared gate for local install, publish, cloud deploy, updates, and rollback.
-          </p>
-        </div>
-        <Button
-          type="button"
-          onClick={() => actions.publishCliSample.mutate()}
-          disabled={actions.publishCliSample.isPending}
-          data-testid="apps-sync-cli-sample"
-          className="gap-2"
-        >
-          <Code2 data-icon="inline-start" />
-          Sync CLI sample
-        </Button>
-      </section>
-
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
-        <div className="overflow-hidden rounded-lg border bg-card">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>App</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="hidden md:table-cell">Target</TableHead>
-                <TableHead className="hidden lg:table-cell">Release</TableHead>
-                <TableHead className="hidden xl:table-cell">Permissions</TableHead>
-                <TableHead className="w-[184px] text-right">Action</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {apps.map((app) => (
-                <AppRow
-                  key={app.id}
-                  app={app}
-                  store={store}
-                  selected={selectedApp?.id === app.id}
-                  onSelect={() => setSelectedAppId(app.id)}
-                  onApprove={(releaseId) => actions.approveRelease.mutate(releaseId)}
-                  onDeploy={(releaseId) => actions.deployRelease.mutate(releaseId)}
-                  onRollback={(appId) => actions.rollbackApp.mutate(appId)}
-                />
+    <div className="overflow-x-auto rounded-lg border">
+      <table className="w-full text-sm">
+        <thead className="bg-muted/40">
+          <tr>
+            {app.fields.map((f) => (
+              <th key={f.key} className="px-3 py-2 text-left font-medium">
+                {f.label}
+              </th>
+            ))}
+            <th className="px-3 py-2 text-left font-medium">Source</th>
+            <th className="w-20 px-3 py-2" />
+          </tr>
+        </thead>
+        <tbody>
+          {app.records.map((r) => (
+            <tr key={r.id} className="border-t">
+              {app.fields.map((f) => (
+                <td key={f.key} className="max-w-[220px] truncate px-3 py-2">
+                  {String(r.data[f.key] ?? "")}
+                </td>
               ))}
-            </TableBody>
-          </Table>
-        </div>
-
-        {selectedApp && selectedBundle ? (
-          <AppDetailPanel
-            app={selectedApp}
-            store={store}
-            pendingRelease={selectedBundle.pendingRelease}
-            activeRelease={selectedBundle.activeRelease}
-            latestRelease={selectedBundle.latestRelease}
-            deployments={selectedBundle.deployments}
-            logs={selectedBundle.logs}
-            onApprove={(releaseId) => actions.approveRelease.mutate(releaseId)}
-            onDeploy={(releaseId) => actions.deployRelease.mutate(releaseId)}
-            onRollback={(appId) => actions.rollbackApp.mutate(appId)}
-          />
-        ) : null}
-      </section>
+              <td className="px-3 py-2">
+                <Badge variant="outline" className="text-xs">
+                  {r.source.label}
+                </Badge>
+              </td>
+              <td className="px-3 py-2 text-right">
+                <RecordActions record={r} onEdit={onEdit} onDelete={onDelete} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
 
-function AppRow({
+function RecordCard({
   app,
-  store,
-  selected,
-  onSelect,
-  onApprove,
-  onDeploy,
-  onRollback,
+  record,
+  titleField,
+  onEdit,
+  onDelete,
 }: {
-  app: WorkspaceApp;
-  store: WorkspaceAppsStore;
-  selected: boolean;
-  onSelect: () => void;
-  onApprove: (releaseId: string) => void;
-  onDeploy: (releaseId: string) => void;
-  onRollback: (appId: string) => void;
+  app: AppDetail;
+  record: AppRecord;
+  titleField?: string;
+  onEdit: (r: AppRecord) => void;
+  onDelete: (id: string) => void;
 }) {
-  const pendingRelease = selectPendingRelease(store, app.id);
-  const activeRelease = selectActiveRelease(store, app.id);
-  const latestRelease = pendingRelease ?? activeRelease;
-  const badgeVariant = app.status === "blocked" ? "destructive" : app.status === "installed" ? "secondary" : "outline";
-
+  const secondary = app.fields.filter((f) => f.key !== titleField).slice(0, 2);
   return (
-    <TableRow
-      className={selected ? "bg-muted/50" : undefined}
-      onClick={onSelect}
-      data-testid={`app-row-${app.id}`}
-    >
-      <TableCell>
-        <div className="font-medium">{app.name}</div>
-        <div className="max-w-[360px] truncate text-muted-foreground text-xs">{app.description}</div>
-        <div className="mt-1 font-mono text-muted-foreground text-xs">{app.cliProjectPath}</div>
-      </TableCell>
-      <TableCell>
-        <Badge variant={badgeVariant} className="h-auto min-h-5 py-0.5">
-          {statusCopy[app.status]}
-        </Badge>
-        <div className="mt-1 text-muted-foreground text-xs">{formatRelative(app.updatedAt)}</div>
-      </TableCell>
-      <TableCell className="hidden text-muted-foreground text-sm md:table-cell">{targetCopy[app.target]}</TableCell>
-      <TableCell className="hidden lg:table-cell">
-        {latestRelease ? (
-          <div>
-            <div className="font-mono text-xs">{latestRelease.version}</div>
-            <div className="text-muted-foreground text-xs">{releaseCopy[latestRelease.status]}</div>
-          </div>
-        ) : (
-          <span className="text-muted-foreground text-sm">No release</span>
-        )}
-      </TableCell>
-      <TableCell className="hidden max-w-[260px] xl:table-cell">
-        <div className="flex flex-wrap gap-1">
-          {app.permissions.slice(0, 3).map((permission) => (
-            <Badge key={permission} variant="outline" className="h-auto min-h-5 py-0.5 font-mono text-[11px] font-normal">
-              {permission}
-            </Badge>
-          ))}
+    <div className="rounded-lg border bg-card p-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 font-medium text-sm">{String(record.data[titleField ?? ""] ?? "Untitled")}</div>
+        <RecordActions record={record} onEdit={onEdit} onDelete={onDelete} />
+      </div>
+      {secondary.map((f) => (
+        <div key={f.key} className="mt-1 truncate text-muted-foreground text-xs">
+          {String(record.data[f.key] ?? "")}
         </div>
-      </TableCell>
-      <TableCell className="text-right">
-        <ActionButton
-          app={app}
-          pendingReleaseId={pendingRelease?.id}
-          pendingApproval={pendingRelease?.approvalState}
-          activeReleaseId={activeRelease?.id}
-          onApprove={onApprove}
-          onDeploy={onDeploy}
-          onRollback={onRollback}
-        />
-      </TableCell>
-    </TableRow>
+      ))}
+      <RecordMeta record={record} />
+    </div>
   );
 }
 
-function ActionButton({
-  app,
-  pendingReleaseId,
-  pendingApproval,
-  activeReleaseId,
-  onApprove,
-  onDeploy,
-  onRollback,
+function RecordActions({
+  record,
+  onEdit,
+  onDelete,
 }: {
-  app: WorkspaceApp;
-  pendingReleaseId?: string;
-  pendingApproval?: AppApprovalState;
-  activeReleaseId?: string;
-  onApprove: (releaseId: string) => void;
-  onDeploy: (releaseId: string) => void;
-  onRollback: (appId: string) => void;
+  record: AppRecord;
+  onEdit: (r: AppRecord) => void;
+  onDelete: (id: string) => void;
 }) {
-  if (app.status === "blocked") {
-    return (
-      <Button type="button" variant="outline" size="sm" className="gap-1.5" disabled>
-        <TriangleAlertIcon data-icon="inline-start" />
-        Blocked
-      </Button>
-    );
-  }
-  if (pendingReleaseId && pendingApproval === "pending") {
-    return (
-      <Button
-        type="button"
-        size="sm"
-        className="gap-1.5"
-        onClick={(event) => {
-          event.stopPropagation();
-          onApprove(pendingReleaseId);
-        }}
-        data-testid={`approve-release-${pendingReleaseId}`}
-      >
-        <ShieldCheck data-icon="inline-start" />
-        Approve
-      </Button>
-    );
-  }
-  if (pendingReleaseId && pendingApproval === "approved") {
-    return (
-      <Button
-        type="button"
-        size="sm"
-        className="gap-1.5"
-        onClick={(event) => {
-          event.stopPropagation();
-          onDeploy(pendingReleaseId);
-        }}
-        data-testid={`deploy-release-${pendingReleaseId}`}
-      >
-        <Play data-icon="inline-start" />
-        Deploy
-      </Button>
-    );
-  }
-  if (activeReleaseId) {
-    return (
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="gap-1.5"
-        onClick={(event) => {
-          event.stopPropagation();
-          onRollback(app.id);
-        }}
-        data-testid={`rollback-app-${app.id}`}
-      >
-        <RefreshCcw data-icon="inline-start" />
-        Rollback
-      </Button>
-    );
-  }
   return (
-    <Button type="button" variant="outline" size="sm" className="gap-1.5">
-      <ExternalLink data-icon="inline-start" />
-      Open
-    </Button>
+    <div className="flex shrink-0 gap-0.5">
+      <button type="button" onClick={() => onEdit(record)} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground" aria-label="Edit">
+        <Pencil className="size-3.5" />
+      </button>
+      <button type="button" onClick={() => onDelete(record.id)} className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" aria-label="Delete">
+        <Trash2 className="size-3.5" />
+      </button>
+    </div>
   );
 }
 
-function AppDetailPanel({
+function RecordMeta({ record }: { record: AppRecord }) {
+  return (
+    <div className="mt-2 flex items-center gap-1.5 text-muted-foreground text-[11px]">
+      <Clock className="size-3" />
+      {record.source.label}
+    </div>
+  );
+}
+
+function RecordDialog({
   app,
-  pendingRelease,
-  activeRelease,
-  latestRelease,
-  deployments,
-  logs,
-  onApprove,
-  onDeploy,
-  onRollback,
+  record,
+  onClose,
+  onSaved,
 }: {
-  app: WorkspaceApp;
-  store: WorkspaceAppsStore;
-  pendingRelease?: ReturnType<typeof selectPendingRelease>;
-  activeRelease?: ReturnType<typeof selectActiveRelease>;
-  latestRelease?: ReturnType<typeof selectLatestRelease>;
-  deployments: ReturnType<typeof selectDeploymentsForApp>;
-  logs: WorkspaceAppsStore["logs"];
-  onApprove: (releaseId: string) => void;
-  onDeploy: (releaseId: string) => void;
-  onRollback: (appId: string) => void;
+  app: AppDetail;
+  record: AppRecord | null;
+  onClose: () => void;
+  onSaved: () => void;
 }) {
-  const check = latestRelease?.scanResult;
+  const [values, setValues] = useState<Record<string, string>>(() => {
+    const init: Record<string, string> = {};
+    for (const f of app.fields) init[f.key] = record ? String(record.data[f.key] ?? "") : "";
+    return init;
+  });
+  const [status, setStatus] = useState<string>(
+    record?.status ?? (app.kind === "board" ? app.view.stages?.[0] ?? "" : ""),
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      const data: Record<string, string> = {};
+      for (const f of app.fields) if (values[f.key]?.trim()) data[f.key] = values[f.key].trim();
+      const url = record ? `/api/apps/${app.slug}/records/${record.id}` : `/api/apps/${app.slug}/records`;
+      const res = await fetch(url, {
+        method: record ? "PATCH" : "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ data, status: app.kind === "board" ? status : undefined }),
+      });
+      const json = await res.json();
+      if (res.ok && json.ok) onSaved();
+      else setError(json.error ?? "Could not save the record.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
-    <aside className="space-y-4">
-      <Card>
-        <CardHeader className="border-b">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <CardTitle>{app.name}</CardTitle>
-              <CardDescription>{app.owner} · {targetCopy[app.target]}</CardDescription>
-            </div>
-            <Badge variant={app.health === "blocked" ? "destructive" : app.health === "healthy" ? "secondary" : "outline"} className="h-auto min-h-5 py-0.5">
-              {app.health}
-            </Badge>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <div className="text-muted-foreground text-xs uppercase tracking-wide">Last event</div>
-            <div className="mt-1 text-sm">{app.lastEvent}</div>
-          </div>
-
-          {latestRelease ? (
-            <div className="grid gap-2 sm:grid-cols-2">
-              <SmallFact label="Release" value={latestRelease.version} />
-              <SmallFact label="Status" value={releaseCopy[latestRelease.status]} />
-              <SmallFact label="Approval" value={approvalCopy[latestRelease.approvalState]} />
-              <SmallFact label="Hash" value={latestRelease.artifactHash.replace(/^sha256:/, "").slice(0, 12)} mono />
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{record ? "Edit record" : "Add record"}</DialogTitle>
+          <DialogDescription>
+            {record ? "Update this record." : `Add a record to ${app.name}.`}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          {app.kind === "board" && app.view.stages?.length ? (
+            <div className="space-y-1.5">
+              <label htmlFor="record-status" className="font-medium text-sm">
+                Stage
+              </label>
+              <NativeSelect id="record-status" value={status} onChange={(e) => setStatus(e.target.value)} className="w-full">
+                {app.view.stages.map((s) => (
+                  <NativeSelectOption key={s} value={s}>
+                    {s}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
             </div>
           ) : null}
+          {app.fields.map((f) => (
+            <FieldInput key={f.key} field={f} value={values[f.key] ?? ""} onChange={(v) => setValues((p) => ({ ...p, [f.key]: v }))} />
+          ))}
+          {error ? <p className="text-destructive text-sm">{error}</p> : null}
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={() => void save()} disabled={saving}>
+            {saving ? <Loader2 className="size-4 animate-spin" /> : null}
+            {record ? "Save" : "Add"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
-          <div className="flex flex-wrap gap-2">
-            {pendingRelease?.approvalState === "pending" ? (
-              <Button type="button" size="sm" className="gap-1.5" onClick={() => onApprove(pendingRelease.id)} data-testid="detail-approve-release">
-                <ShieldCheck data-icon="inline-start" />
-                Approve release
-              </Button>
-            ) : null}
-            {pendingRelease?.approvalState === "approved" ? (
-              <Button type="button" size="sm" className="gap-1.5" onClick={() => onDeploy(pendingRelease.id)} data-testid="detail-deploy-release">
-                <Play data-icon="inline-start" />
-                Deploy update
-              </Button>
-            ) : null}
-            {activeRelease ? (
-              <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => onRollback(app.id)} data-testid="detail-rollback-app">
-                <RefreshCcw data-icon="inline-start" />
-                Rollback
-              </Button>
-            ) : null}
-          </div>
-        </CardContent>
-      </Card>
+function FieldInput({ field, value, onChange }: { field: AppField; value: string; onChange: (v: string) => void }) {
+  const long = field.type === "text" && (field.key === "notes" || field.key === "summary" || field.key === "body");
+  return (
+    <div className="space-y-1.5">
+      <label htmlFor={`field-${field.key}`} className="font-medium text-sm">
+        {field.label}
+      </label>
+      {long ? (
+        <Textarea id={`field-${field.key}`} value={value} onChange={(e) => onChange(e.target.value)} className="min-h-20 resize-none" />
+      ) : (
+        <Input
+          id={`field-${field.key}`}
+          type={field.type === "email" ? "email" : field.type === "number" ? "number" : field.type === "url" ? "url" : "text"}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      )}
+    </div>
+  );
+}
 
-      <Card>
-        <CardHeader className="border-b">
-          <CardTitle>Deployment gate</CardTitle>
-          <CardDescription>Shared `runAppDeploymentCheck` result for build, publish, install, deploy, and rollback.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {check ? <CheckPanel check={check} /> : null}
-          <div className="grid gap-2 sm:grid-cols-3">
-            <GateStep icon={Code2} label="Bundle" complete={Boolean(check?.ok)} />
-            <GateStep icon={ShieldCheck} label="Admin" complete={latestRelease?.approvalState === "approved"} />
-            <GateStep icon={Play} label="Deploy" complete={latestRelease?.status === "deployed"} />
-          </div>
-        </CardContent>
-      </Card>
+interface DraftField {
+  key: string;
+  label: string;
+  type: string;
+}
 
-      <Card>
-        <CardHeader className="border-b">
-          <CardTitle>Manifest</CardTitle>
-          <CardDescription>UI, service, worker, migration, routes, schedules, queues, permissions, and secrets.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid gap-2">
-            {app.manifest.units.map((unit) => (
-              <UnitRow key={`${unit.kind}-${unit.name}`} unit={unit} />
-            ))}
-          </div>
-          <div className="flex flex-wrap gap-1">
-            {app.manifest.secrets.map((secret) => (
-              <Badge key={secret.name} variant="outline" className="h-auto min-h-5 py-0.5 font-mono text-[11px] font-normal">
-                {secret.name}
-              </Badge>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+function CreateAppDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (slug: string) => void }) {
+  const [name, setName] = useState("");
+  const [icon, setIcon] = useState("package");
+  const [description, setDescription] = useState("");
+  const [kind, setKind] = useState<AppKind>("table");
+  const [fields, setFields] = useState<DraftField[]>([
+    { key: "title", label: "Title", type: "text" },
+    { key: "notes", label: "Notes", type: "text" },
+  ]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-      <Card>
-        <CardHeader className="border-b">
-          <CardTitle>Deployments and logs</CardTitle>
-          <CardDescription>{deployments.length} target{deployments.length === 1 ? "" : "s"} recorded for this app.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+  function updateField(i: number, patch: Partial<DraftField>) {
+    setFields((prev) => prev.map((f, idx) => (idx === i ? { ...f, ...patch } : f)));
+  }
+  function addField() {
+    setFields((prev) => [...prev, { key: `field${prev.length + 1}`, label: "", type: "text" }]);
+  }
+
+  async function create() {
+    setSaving(true);
+    setError(null);
+    try {
+      const cleanFields = fields
+        .map((f) => ({ key: f.key.trim(), label: f.label.trim() || f.key.trim(), type: f.type }))
+        .filter((f) => f.key);
+      const view =
+        kind === "board"
+          ? { groupBy: "status", titleField: cleanFields[0]?.key, stages: ["New", "In progress", "Done"] }
+          : kind === "list"
+            ? { titleField: cleanFields[0]?.key, bodyField: cleanFields[1]?.key }
+            : {};
+      const res = await fetch("/api/apps", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name, icon, description, kind, fields: cleanFields, view }),
+      });
+      const json = await res.json();
+      if (res.ok && json.ok) onCreated(json.slug as string);
+      else setError(json.error ?? "Could not create the app.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const KIND_OPTS: { value: AppKind; label: string; icon: typeof Board }[] = [
+    { value: "table", label: "Table", icon: TableIcon },
+    { value: "board", label: "Board", icon: Board },
+    { value: "list", label: "List / feed", icon: ListIcon },
+  ];
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-h-[85vh] max-w-lg overflow-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <LayoutGrid className="size-4" />
+            New app
+          </DialogTitle>
+          <DialogDescription>A typed surface your runs, automations, and you can write to and read from.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <label htmlFor="app-name" className="font-medium text-sm">
+              Name
+            </label>
+            <Input id="app-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. GTM CRM" />
+          </div>
+          <div className="space-y-1.5">
+            <span className="font-medium text-sm">Icon</span>
+            <div className="flex flex-wrap gap-1.5">
+              {APP_ICON_CHOICES.map(({ name: iconName, Icon }) => {
+                const active = icon === iconName;
+                return (
+                  <button
+                    key={iconName}
+                    type="button"
+                    onClick={() => setIcon(iconName)}
+                    aria-label={iconName}
+                    className={`grid size-9 place-items-center rounded-lg border transition-colors ${active ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground hover:border-primary/40 hover:text-foreground"}`}
+                  >
+                    <Icon className="size-5" weight={active ? "duotone" : "regular"} />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor="app-desc" className="font-medium text-sm">
+              Description
+            </label>
+            <Input id="app-desc" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What goes in here?" />
+          </div>
+          <div className="space-y-1.5">
+            <span className="font-medium text-sm">View</span>
+            <div className="grid grid-cols-3 gap-2">
+              {KIND_OPTS.map((opt) => {
+                const Icon = opt.icon;
+                const active = kind === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setKind(opt.value)}
+                    className={`flex flex-col items-center gap-1 rounded-lg border p-3 text-xs ${active ? "border-primary bg-primary/5 text-foreground" : "text-muted-foreground hover:border-primary/40"}`}
+                  >
+                    <Icon className="size-4" />
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <div className="space-y-2">
-            {deployments.length === 0 ? (
-              <div className="rounded-lg border border-dashed p-4 text-center text-muted-foreground text-sm">No active deployment yet.</div>
-            ) : (
-              deployments.slice(0, 3).map((deployment) => (
-                <div key={deployment.id} className="rounded-lg border p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <Badge variant="secondary">{deployment.target}</Badge>
-                    <span className="text-muted-foreground text-xs">{formatRelative(deployment.deployedAt)}</span>
-                  </div>
-                  <div className="mt-2 truncate font-mono text-xs">{deployment.endpoint}</div>
-                </div>
-              ))
-            )}
-          </div>
-          <div className="space-y-2">
-            {logs.map((log) => (
-              <div key={log.id} className="rounded-lg border p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="font-medium text-sm">{log.type}</div>
-                  <span className="text-muted-foreground text-xs">{formatRelative(log.createdAt)}</span>
-                </div>
-                <div className="mt-1 text-muted-foreground text-xs">{log.message}</div>
+            <div className="flex items-center justify-between">
+              <span className="font-medium text-sm">Fields</span>
+              <Button type="button" size="sm" variant="ghost" onClick={addField}>
+                <Plus className="size-3.5" />
+                Add field
+              </Button>
+            </div>
+            {fields.map((f, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <Input value={f.label} onChange={(e) => updateField(i, { label: e.target.value, key: e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || f.key })} placeholder="Field label" className="flex-1" />
+                <NativeSelect value={f.type} onChange={(e) => updateField(i, { type: e.target.value })} className="w-28">
+                  <NativeSelectOption value="text">Text</NativeSelectOption>
+                  <NativeSelectOption value="email">Email</NativeSelectOption>
+                  <NativeSelectOption value="url">URL</NativeSelectOption>
+                  <NativeSelectOption value="number">Number</NativeSelectOption>
+                  <NativeSelectOption value="date">Date</NativeSelectOption>
+                </NativeSelect>
+                <button type="button" onClick={() => setFields((prev) => prev.filter((_, idx) => idx !== i))} className="rounded p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" aria-label="Remove field">
+                  <X className="size-4" />
+                </button>
               </div>
             ))}
           </div>
-        </CardContent>
-      </Card>
-    </aside>
-  );
-}
-
-function CheckPanel({ check }: { check: AppDeploymentCheck }) {
-  const blockers = check.errors.length;
-  const warnings = check.warnings.length;
-  return (
-    <div className="rounded-lg border p-3">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          {check.ok ? <CheckCircle2 className="size-4 text-emerald-600" /> : <TriangleAlertIcon className="size-4 text-destructive" />}
-          <span className="font-medium text-sm">{check.ok ? "Passed" : "Blocked"}</span>
+          {error ? <p className="text-destructive text-sm">{error}</p> : null}
         </div>
-        <Badge variant={check.ok ? "secondary" : "destructive"} className="h-auto min-h-5 py-0.5">
-          {check.manifestUnits} units
-        </Badge>
-      </div>
-      <p className="mt-2 text-muted-foreground text-xs">{check.summary}</p>
-      <div className="mt-3 grid gap-2 sm:grid-cols-3">
-        <SmallFact label="Discovered" value={check.discoveredUnits.toString()} />
-        <SmallFact label="Blockers" value={blockers.toString()} />
-        <SmallFact label="Warnings" value={warnings.toString()} />
-      </div>
-      {check.errors.slice(0, 2).map((error) => (
-        <div key={error} className="mt-2 rounded-md bg-destructive/10 px-2 py-1.5 text-destructive text-xs">
-          {error}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function UnitRow({ unit }: { unit: BasicsAppManifestUnit }) {
-  return (
-    <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-3 rounded-lg border p-3">
-      <Badge variant="outline" className="h-auto min-h-5 justify-center py-0.5">
-        {unit.kind}
-      </Badge>
-      <div className="min-w-0">
-        <div className="font-medium text-sm">{unit.name}</div>
-        <div className="truncate font-mono text-muted-foreground text-xs">{unit.path}</div>
-        <div className="mt-1 flex flex-wrap gap-1">
-          <Badge variant="secondary" className="h-auto min-h-5 py-0.5 font-mono text-[11px] font-normal">{unit.runtime}</Badge>
-          {unit.route ? <Badge variant="outline" className="h-auto min-h-5 py-0.5 font-mono text-[11px] font-normal">{unit.route}</Badge> : null}
-          {unit.queue ? <Badge variant="outline" className="h-auto min-h-5 py-0.5 font-mono text-[11px] font-normal">{unit.queue}</Badge> : null}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function GateStep({
-  icon: Icon,
-  label,
-  complete,
-}: {
-  icon: typeof Code2;
-  label: string;
-  complete: boolean;
-}) {
-  return (
-    <div className="rounded-lg border p-3">
-      <div className="flex items-center justify-between gap-2">
-        <Icon className="size-4 text-muted-foreground" />
-        {complete ? <CheckCircle2 className="size-4 text-emerald-600" /> : <Clock className="size-4 text-muted-foreground" />}
-      </div>
-      <div className="mt-2 font-medium text-sm">{label}</div>
-      <div className="text-muted-foreground text-xs">{complete ? "Complete" : "Waiting"}</div>
-    </div>
-  );
-}
-
-function SmallFact({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div className="rounded-lg border p-3">
-      <div className="text-muted-foreground text-[11px] uppercase tracking-wide">{label}</div>
-      <div className={mono ? "mt-1 truncate font-mono text-sm" : "mt-1 truncate font-medium text-sm"}>{value}</div>
-    </div>
-  );
-}
-
-function SummaryCard({
-  icon: Icon,
-  label,
-  value,
-  detail,
-}: {
-  icon: typeof Folder;
-  label: string;
-  value: string;
-  detail: string;
-}) {
-  return (
-    <Card size="sm">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0">
-        <CardTitle className="text-muted-foreground text-sm">{label}</CardTitle>
-        <Icon className="size-4 text-muted-foreground" />
-      </CardHeader>
-      <CardContent>
-        <div className="font-semibold text-2xl tabular-nums">{value}</div>
-        <p className="mt-1 text-muted-foreground text-xs">{detail}</p>
-      </CardContent>
-    </Card>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={() => void create()} disabled={saving || !name.trim()}>
+            {saving ? <Loader2 className="size-4 animate-spin" /> : null}
+            Create app
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -4,9 +4,8 @@ import { useEffect, useState } from "react";
 
 import Link from "next/link";
 
-import { Maximize2, Pause } from "@/icons";
+import { ChevronRight } from "@/icons";
 
-import { Button } from "@/components/ui/button";
 import { useRunSteps } from "@/hooks/queries/use-runs";
 import { cn } from "@/lib/utils";
 import type { Run, RunStep } from "@/types/runs";
@@ -46,38 +45,10 @@ export function LiveRunCard({ run }: { run: Run }) {
 
       <div className="mt-auto flex items-center justify-between border-t pt-3 text-muted-foreground text-xs">
         <span>{run.stepCount} step{run.stepCount === 1 ? "" : "s"}</span>
-        <div
-          className="flex items-center gap-1"
-          onClick={(e) => e.preventDefault()}
-          role="presentation"
-        >
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-7 gap-1 px-2"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-          >
-            <Pause className="size-3" />
-            Pause
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-7 gap-1 px-2"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-          >
-            <Maximize2 className="size-3" />
-            Take over
-          </Button>
-        </div>
+        <span className="flex items-center gap-1 font-medium text-foreground transition-transform group-hover:translate-x-0.5">
+          Open
+          <ChevronRight className="size-3.5" />
+        </span>
       </div>
     </Link>
   );

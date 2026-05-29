@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { useRouter } from "next/navigation";
 
@@ -11,14 +11,20 @@ import {
   CheckCircle2,
   ClipboardCheck,
   Eye,
+  FileCheck2,
+  Folder,
   Globe,
+  Home,
   KeyRound,
   Lock,
   Mic,
   Monitor,
   MousePointerClick,
+  Play,
+  Plug,
   ShieldCheck,
   UserCog,
+  Workflow,
   type Icon,
 } from "@/icons";
 import { Badge } from "@/components/ui/badge";
@@ -35,11 +41,18 @@ import {
   BASICHOME_ONBOARDING_EVENT_KEY,
   BASICHOME_ONBOARDING_STORAGE_KEY,
   type BasichomeOnboardingRecord,
+  type ClientOS,
+  detectClientOS,
   type OnboardingPermissionStatus,
 } from "@/lib/onboarding";
 import { cn } from "@/lib/utils";
 
 const STEP_DEFS = [
+  {
+    id: "welcome",
+    title: "Welcome",
+    description: "How basichome works — the pill, the layout, the loop.",
+  },
   {
     id: "workspace",
     title: "Workspace",
@@ -72,7 +85,26 @@ const STEP_DEFS = [
   },
 ] as const;
 
-const PERMISSIONS = [
+type PermissionDef = {
+  id: PermissionId;
+  title: string;
+  icon: Icon;
+  detail: string;
+  why: string;
+};
+
+// Stable set of permission ids persisted in local setup state. Every OS-specific
+// flow renders a subset/relabeling of these ids so the saved record shape never
+// changes across platforms.
+const PERMISSION_IDS = [
+  "screen_recording",
+  "accessibility",
+  "input_control",
+  "audio",
+  "browser_profile",
+] as const;
+
+const MAC_PERMISSIONS: readonly PermissionDef[] = [
   {
     id: "screen_recording",
     title: "Screen Recording",
@@ -89,7 +121,7 @@ const PERMISSIONS = [
   },
   {
     id: "input_control",
-    title: "Input Control",
+    title: "Input Monitoring",
     icon: KeyRound,
     detail: "Lets basichome send keyboard and pointer actions only after user approval.",
     why: "Needed for trusted automations that can complete work across desktop apps.",
@@ -108,7 +140,42 @@ const PERMISSIONS = [
     detail: "Optional managed local browser login store for browser tasks.",
     why: "Needed when a task should use a saved local browser session.",
   },
-] as const;
+];
+
+const WINDOWS_PERMISSIONS: readonly PermissionDef[] = [
+  {
+    id: "screen_recording",
+    title: "Screen capture",
+    icon: Monitor,
+    detail: "Lets Lens understand visible work. Windows asks the first time it is needed — raw frames stay local.",
+    why: "Used for screen context, OCR fallback, and routine demonstrations.",
+  },
+  {
+    id: "input_control",
+    title: "Input monitoring",
+    icon: KeyRound,
+    detail: "Lets basichome read and send keyboard and pointer actions only after your approval. Windows grants this at use-time, not as a separate setting.",
+    why: "Used for trusted automations that can complete work across desktop apps.",
+  },
+  {
+    id: "audio",
+    title: "Microphone",
+    icon: Mic,
+    detail: "Optional for meetings and spoken context. Windows prompts when first used and local transcription comes first.",
+    why: "Useful for meeting notes and voice instructions.",
+  },
+  {
+    id: "browser_profile",
+    title: "Browser Profile",
+    icon: Globe,
+    detail: "Optional managed local browser login store for browser tasks.",
+    why: "Needed when a task should use a saved local browser session.",
+  },
+];
+
+function permissionsForOS(os: ClientOS): readonly PermissionDef[] {
+  return os === "windows" ? WINDOWS_PERMISSIONS : MAC_PERMISSIONS;
+}
 
 const ENGINE_OPTIONS = [
   {
@@ -150,7 +217,7 @@ const SAFETY_DEFAULTS = [
 ] as const;
 
 type StepId = (typeof STEP_DEFS)[number]["id"];
-type PermissionId = (typeof PERMISSIONS)[number]["id"];
+type PermissionId = (typeof PERMISSION_IDS)[number];
 type EngineMode = (typeof ENGINE_OPTIONS)[number]["id"];
 type SafetyKey = (typeof SAFETY_DEFAULTS)[number]["id"];
 
@@ -180,7 +247,7 @@ const DEFAULT_STORAGE_LOCATION = "~/Library/Application Support/basichome/Lens";
 
 function createInitialState(): OnboardingState {
   const permissions = Object.fromEntries(
-    PERMISSIONS.map((permission) => [permission.id, "not_started"]),
+    PERMISSION_IDS.map((id) => [id, "not_started"]),
   ) as Record<PermissionId, OnboardingPermissionStatus>;
 
   return {
@@ -206,10 +273,18 @@ function createInitialState(): OnboardingState {
 }
 
 export function OnboardingFlow() {
-  const router = useRouter();
+  const { push } = useRouter();
   const [state, setState] = useState(createInitialState);
   const [stepIndex, setStepIndex] = useState(0);
+  // Detect after mount to keep the server-rendered markup deterministic and
+  // avoid a hydration mismatch. Defaults to the mac flow until resolved.
+  const [os, setOs] = useState<ClientOS>("mac");
   const step = STEP_DEFS[stepIndex];
+
+  useEffect(() => {
+    setOs(detectClientOS());
+  }, []);
+  const nextStep = STEP_DEFS[stepIndex + 1];
   const progress = ((stepIndex + 1) / STEP_DEFS.length) * 100;
 
   const setField = <K extends keyof OnboardingState>(key: K, value: OnboardingState[K]) => {
@@ -291,7 +366,7 @@ export function OnboardingFlow() {
     window.localStorage.setItem(BASICHOME_ONBOARDING_STORAGE_KEY, JSON.stringify(record));
     window.localStorage.setItem(BASICHOME_ONBOARDING_EVENT_KEY, JSON.stringify(event));
     const next = new URLSearchParams(window.location.search).get("next");
-    router.push(next?.startsWith("/") ? next : "/");
+    push(next?.startsWith("/") ? next : "/");
   };
 
   return (
@@ -358,14 +433,15 @@ export function OnboardingFlow() {
                 <CardDescription>{step.description}</CardDescription>
               </CardHeader>
               <CardContent className="py-5">
+                {step.id === "welcome" ? <WelcomeStep os={os} /> : null}
                 {step.id === "workspace" ? <WorkspaceStep state={state} setField={setField} /> : null}
                 {step.id === "permissions" ? (
-                  <PermissionsStep permissions={state.permissions} setPermissionStatus={setPermissionStatus} />
+                  <PermissionsStep os={os} permissions={state.permissions} setPermissionStatus={setPermissionStatus} />
                 ) : null}
                 {step.id === "capture" ? <CaptureStep state={state} setField={setField} /> : null}
                 {step.id === "engine" ? <EngineStep state={state} setField={setField} /> : null}
                 {step.id === "safety" ? <SafetyStep state={state} setPolicy={setPolicy} setField={setField} /> : null}
-                {step.id === "review" ? <ReviewStep state={state} /> : null}
+                {step.id === "review" ? <ReviewStep state={state} os={os} /> : null}
               </CardContent>
             </Card>
 
@@ -383,7 +459,7 @@ export function OnboardingFlow() {
                   </Button>
                 ) : (
                   <Button type="button" onClick={goNext}>
-                    Continue
+                    Continue to {nextStep.title}
                   </Button>
                 )}
               </div>
@@ -392,6 +468,75 @@ export function OnboardingFlow() {
         </div>
       </div>
     </main>
+  );
+}
+
+function WelcomeStep({ os }: { os: ClientOS }) {
+  const chord = os === "windows" ? "Ctrl + Shift + Space" : "⌘ + Shift + Space";
+  const areas: Array<{ icon: Icon; title: string; detail: string }> = [
+    { icon: Home, title: "Home", detail: "Talk to your agent, see your agents, and your recent documents." },
+    { icon: Folder, title: "Apps", detail: "Typed surfaces where run outputs land — a CRM, a digest. You and agents read & write them." },
+    { icon: FileCheck2, title: "Documents", detail: "Long-form things agents write — reports, plans, drafts — for you to review." },
+    { icon: Globe, title: "Browser", detail: "Run browser tasks in the cloud or on your own Chrome, and sign in to sites once." },
+    { icon: Play, title: "Runs", detail: "Watch the agent work live and take over any time." },
+    { icon: ClipboardCheck, title: "Approvals", detail: "Risky actions pause here with a preview before they happen." },
+    { icon: Plug, title: "Connections", detail: "Connect Gmail, Calendar, and more so agents can act for you." },
+    { icon: Workflow, title: "Automations", detail: "Save a task as a reusable agent that runs on a schedule." },
+  ];
+  return (
+    <div className="space-y-6">
+      {/* The pill */}
+      <div className="rounded-lg border bg-gradient-to-br from-primary/10 to-transparent p-5">
+        <div className="flex items-start gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+            <Mic className="size-5" />
+          </div>
+          <div className="min-w-0 space-y-1.5">
+            <h3 className="font-semibold">Talk to your agent from anywhere</h3>
+            <p className="text-muted-foreground text-sm">
+              Press{" "}
+              <kbd className="rounded border bg-background px-1.5 py-0.5 font-mono text-xs">{chord}</kbd>{" "}
+              to summon the pill and tell the agent what to do — by voice or text — no matter what app you&apos;re in.
+              While it works, the pill rides along showing progress; the main window is where you review.
+              basichome is review-first, so chat stays minimal.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Where things live */}
+      <div>
+        <h3 className="mb-3 font-medium text-sm">Where things live</h3>
+        <div className="grid gap-2.5 sm:grid-cols-2">
+          {areas.map((a) => (
+            <div key={a.title} className="flex items-start gap-3 rounded-lg border bg-card p-3">
+              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <a.icon className="size-4" />
+              </div>
+              <div className="min-w-0">
+                <div className="font-medium text-sm">{a.title}</div>
+                <p className="text-muted-foreground text-xs">{a.detail}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* The loop */}
+      <div className="rounded-lg border bg-muted/30 p-4">
+        <h3 className="font-medium text-sm">The loop</h3>
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+          {["Ask (pill or Home)", "Agent works", "Outputs land in Apps & Documents", "You review & approve"].map(
+            (s, i, arr) => (
+              <span key={s} className="flex items-center gap-2">
+                <span className="rounded-full border bg-card px-3 py-1 font-medium text-xs">{s}</span>
+                {i < arr.length - 1 ? <span className="text-muted-foreground">→</span> : null}
+              </span>
+            ),
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -433,22 +578,29 @@ function WorkspaceStep({
 }
 
 function PermissionsStep({
+  os,
   permissions,
   setPermissionStatus,
 }: {
+  os: ClientOS;
   permissions: Record<PermissionId, OnboardingPermissionStatus>;
   setPermissionStatus: (id: PermissionId, status: OnboardingPermissionStatus) => void;
 }) {
+  const items = permissionsForOS(os);
+  const isWindows = os === "windows";
+
   return (
     <div className="space-y-4">
       <div className="rounded-lg border bg-muted/30 p-4">
         <h3 className="font-medium text-sm">No hidden capture behavior</h3>
         <p className="mt-1 text-muted-foreground text-sm">
-          These controls model the native macOS permission sequence. In the desktop app, each item opens the matching OS prompt; in this web shell, status is recorded locally for the setup flow.
+          {isWindows
+            ? "Windows grants screen and input capture the first time each is needed, so there is no separate pre-grant step. We will ask only when a feature first requires it, and your raw screen, input, and audio data stays on this device."
+            : "These controls model the native macOS permission sequence. In the desktop app, each item opens the matching OS prompt; in this web shell, status is recorded locally for the setup flow."}
         </p>
       </div>
       <div className="grid gap-3">
-        {PERMISSIONS.map((permission) => {
+        {items.map((permission) => {
           const status = permissions[permission.id];
           return (
             <div key={permission.id} className="rounded-lg border bg-card p-4">
@@ -466,7 +618,9 @@ function PermissionsStep({
                     <p className="text-muted-foreground text-xs">{permission.why}</p>
                     {status === "skipped" ? (
                       <p className="rounded-md bg-amber-50 px-2 py-1 text-amber-900 text-xs dark:bg-amber-950/40 dark:text-amber-200">
-                        Skipped for now. basichome will keep setup recoverable and show where to grant this later.
+                        {isWindows
+                          ? "Skipped for now. Windows will still prompt for this when a feature first needs it, and you can review it in settings."
+                          : "Skipped for now. basichome will keep setup recoverable and show where to grant this later."}
                       </p>
                     ) : null}
                   </div>
@@ -474,7 +628,7 @@ function PermissionsStep({
                 <div className="flex shrink-0 flex-wrap gap-2">
                   {status === "skipped" ? (
                     <Button type="button" variant="outline" size="sm" onClick={() => setPermissionStatus(permission.id, "not_started")}>
-                      Try {permission.title} again
+                      Reset {permission.title}
                     </Button>
                   ) : (
                     <Button type="button" variant="outline" size="sm" onClick={() => setPermissionStatus(permission.id, "skipped")}>
@@ -482,7 +636,7 @@ function PermissionsStep({
                     </Button>
                   )}
                   <Button type="button" size="sm" onClick={() => setPermissionStatus(permission.id, "granted")}>
-                    Mark {permission.title} granted
+                    {isWindows ? `Allow ${permission.title} when asked` : `Mark ${permission.title} granted`}
                   </Button>
                 </div>
               </div>
@@ -532,9 +686,10 @@ function CaptureStep({
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
-          <label className="space-y-2">
+          <label htmlFor="onboarding-retention" className="space-y-2">
             <span className="text-sm font-medium">Retention</span>
             <NativeSelect
+              id="onboarding-retention"
               className="w-full"
               value={state.retentionDays.toString()}
               onChange={(event) => setField("retentionDays", Number(event.target.value))}
@@ -680,9 +835,10 @@ function SafetyStep({
   );
 }
 
-function ReviewStep({ state }: { state: OnboardingState }) {
-  const grantedCount = PERMISSIONS.filter((permission) => state.permissions[permission.id] === "granted").length;
-  const skippedCount = PERMISSIONS.filter((permission) => state.permissions[permission.id] === "skipped").length;
+function ReviewStep({ state, os }: { state: OnboardingState; os: ClientOS }) {
+  const items = permissionsForOS(os);
+  const grantedCount = items.filter((permission) => state.permissions[permission.id] === "granted").length;
+  const skippedCount = items.filter((permission) => state.permissions[permission.id] === "skipped").length;
   const selectedEngine = ENGINE_OPTIONS.find((option) => option.id === state.engineMode);
 
   return (

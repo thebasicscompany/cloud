@@ -2,134 +2,82 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import {
-  findCloudAutomation,
-  grantCloudAutomationTrust,
-  listCloudAutomationLogs,
-  listCloudAutomationRunsFor,
-  listCloudAutomationSummaries,
-  pauseCloudAutomation,
-  promoteLocalRunToCloudAutomation,
-  readCloudAutomationStore,
-  replayCloudAutomationRun,
-  resumeCloudAutomation,
-  revokeCloudAutomationTrust,
-  runCloudAutomationNow,
-  updateCloudAutomationSchedule,
-  writeCloudAutomationStore,
-} from "@/lib/cloud-automation-runtime";
-import { readLocalAgentStore } from "@/lib/local-agent-runtime";
-import type { CloudAutomationStore } from "@/types/cloud-automation";
+import type {
+  CloudAutomation,
+  CloudAutomationRun,
+  CloudAutomationSummary,
+} from "@/types/cloud-automation";
 
-export const CLOUD_AUTOMATION_QUERY_KEY = ["cloud-automation-runtime"];
+export const CLOUD_AUTOMATION_QUERY_KEY = ["cloud-automations"];
 
-export function useCloudAutomationStore() {
+async function fetchAutomations(): Promise<CloudAutomationSummary[]> {
+  const res = await fetch("/api/automations", { cache: "no-store" });
+  if (!res.ok) return [];
+  return ((await res.json()).automations ?? []) as CloudAutomationSummary[];
+}
+
+/** Real automations list — backed by /api/automations → automations table. */
+export function useCloudAutomations() {
   return useQuery({
     queryKey: CLOUD_AUTOMATION_QUERY_KEY,
-    queryFn: async (): Promise<CloudAutomationStore> => {
-      await delay();
-      return readCloudAutomationStore();
-    },
+    queryFn: fetchAutomations,
   });
 }
 
-export function useCloudAutomations() {
-  const query = useCloudAutomationStore();
-  return {
-    ...query,
-    data: query.data ? listCloudAutomationSummaries(query.data) : [],
-  };
-}
-
 export function useCloudAutomation(id: string | undefined) {
-  const query = useCloudAutomationStore();
-  return {
-    ...query,
-    data: query.data && id
-      ? {
-          automation: findCloudAutomation(query.data, id),
-          runs: listCloudAutomationRunsFor(query.data, id),
-        }
-      : undefined,
-  };
-}
-
-export function useCloudAutomationLogs() {
-  const query = useCloudAutomationStore();
-  return {
-    ...query,
-    data: query.data ? listCloudAutomationLogs(query.data) : [],
-  };
+  return useQuery({
+    queryKey: [...CLOUD_AUTOMATION_QUERY_KEY, id],
+    enabled: Boolean(id),
+    queryFn: async (): Promise<{ automation: CloudAutomation; runs: CloudAutomationRun[] } | undefined> => {
+      if (!id) return undefined;
+      const res = await fetch(`/api/automations/${id}`, { cache: "no-store" });
+      if (!res.ok) return undefined;
+      return (await res.json()) as { automation: CloudAutomation; runs: CloudAutomationRun[] };
+    },
+  });
 }
 
 export function useCloudAutomationActions() {
   const queryClient = useQueryClient();
 
-  const updateStore = (updater: (store: CloudAutomationStore) => CloudAutomationStore) => {
-    const current = readCloudAutomationStore();
-    const next = writeCloudAutomationStore(updater(current));
-    queryClient.setQueryData(CLOUD_AUTOMATION_QUERY_KEY, next);
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: CLOUD_AUTOMATION_QUERY_KEY });
+    void queryClient.invalidateQueries({ queryKey: ["agents-list"] });
     void queryClient.invalidateQueries({ queryKey: ["runs"] });
-    void queryClient.invalidateQueries({ queryKey: ["run"] });
-    void queryClient.invalidateQueries({ queryKey: ["run-steps"] });
-    void queryClient.invalidateQueries({ queryKey: ["run-checks"] });
-    return next;
   };
 
-  const promoteLatestLocal = useMutation({
-    mutationFn: async () => {
-      const localStore = readLocalAgentStore();
-      const localRun = localStore.runs[0];
-      return updateStore((store) => promoteLocalRunToCloudAutomation(store, localRun));
-    },
-  });
+  const patch = (automationId: string, body: Record<string, unknown>) =>
+    fetch(`/api/automations/${automationId}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.error ?? "request failed");
+      return r.json();
+    });
 
-  const runNow = useMutation({
-    mutationFn: async (automationId: string) => updateStore((store) => runCloudAutomationNow(store, automationId, "manual")),
-  });
+  const triggerRun = (automationId: string) =>
+    fetch(`/api/automations/${automationId}/run`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }).then(
+      async (r) => {
+        if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.error ?? "run failed");
+        return r.json();
+      },
+    );
 
-  const triggerSchedule = useMutation({
-    mutationFn: async (automationId: string) => updateStore((store) => runCloudAutomationNow(store, automationId, "scheduled")),
-  });
+  const runNow = useMutation({ mutationFn: (automationId: string) => triggerRun(automationId), onSuccess: invalidate });
+  const triggerSchedule = useMutation({ mutationFn: (automationId: string) => triggerRun(automationId), onSuccess: invalidate });
+  // Replay re-runs the same automation goal as a fresh cloud run.
+  const replayRun = useMutation({ mutationFn: (automationId: string) => triggerRun(automationId), onSuccess: invalidate });
 
-  const pause = useMutation({
-    mutationFn: async (automationId: string) => updateStore((store) => pauseCloudAutomation(store, automationId)),
-  });
-
-  const resume = useMutation({
-    mutationFn: async (automationId: string) => updateStore((store) => resumeCloudAutomation(store, automationId)),
-  });
-
-  const grantTrust = useMutation({
-    mutationFn: async (automationId: string) => updateStore((store) => grantCloudAutomationTrust(store, automationId)),
-  });
-
-  const revokeTrust = useMutation({
-    mutationFn: async (automationId: string) => updateStore((store) => revokeCloudAutomationTrust(store, automationId)),
-  });
-
-  const replayRun = useMutation({
-    mutationFn: async (runId: string) => updateStore((store) => replayCloudAutomationRun(store, runId)),
-  });
-
+  const pause = useMutation({ mutationFn: (automationId: string) => patch(automationId, { action: "pause" }), onSuccess: invalidate });
+  const resume = useMutation({ mutationFn: (automationId: string) => patch(automationId, { action: "resume" }), onSuccess: invalidate });
+  const grantTrust = useMutation({ mutationFn: (automationId: string) => patch(automationId, { action: "grantTrust" }), onSuccess: invalidate });
+  const revokeTrust = useMutation({ mutationFn: (automationId: string) => patch(automationId, { action: "revokeTrust" }), onSuccess: invalidate });
   const updateSchedule = useMutation({
-    mutationFn: async ({ automationId, cron, timezone }: { automationId: string; cron: string; timezone: string }) =>
-      updateStore((store) => updateCloudAutomationSchedule(store, automationId, cron, timezone)),
+    mutationFn: ({ automationId, cron, timezone }: { automationId: string; cron: string; timezone: string }) =>
+      patch(automationId, { action: "updateSchedule", cron, timezone }),
+    onSuccess: invalidate,
   });
 
-  return {
-    promoteLatestLocal,
-    runNow,
-    triggerSchedule,
-    pause,
-    resume,
-    grantTrust,
-    revokeTrust,
-    replayRun,
-    updateSchedule,
-  };
-}
-
-function delay(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 60));
+  return { runNow, triggerSchedule, pause, resume, grantTrust, revokeTrust, replayRun, updateSchedule };
 }

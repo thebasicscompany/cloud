@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 import Link from "next/link";
 
@@ -47,15 +47,11 @@ export function LogsConsole() {
   const summary = data.summary;
   const store = data.store;
   const [selectedEventId, setSelectedEventId] = useState<string | undefined>();
-  const selectedEvent = useMemo(
-    () => allEvents.find((event) => event.id === selectedEventId) ?? logs[0],
-    [allEvents, logs, selectedEventId],
-  );
+  const selectedEvent = allEvents.find((event) => event.id === selectedEventId) ?? logs[0];
   const replay = selectedEvent && store ? buildReplayTrace(selectedEvent, allEvents, store) : undefined;
-  const deviceOptions = useMemo(
-    () => Array.from(new Set(allEvents.map((event) => event.device_id).filter(Boolean))).sort() as string[],
-    [allEvents],
-  );
+  const deviceOptions = Array.from(
+    new Set(allEvents.flatMap((event) => (event.device_id ? [event.device_id] : []))),
+  ).sort();
 
   const updateFilter = <K extends keyof PlatformEventFilters>(key: K, value: PlatformEventFilters[K]) => {
     setFilters((current) => ({ ...current, [key]: value }));

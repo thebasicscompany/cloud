@@ -43,7 +43,10 @@ export const screenshot = defineTool({
     const filename = name ?? `${randomUUID()}.png`;
     const s3Key = `workspaces/${ctx.workspaceId}/runs/${ctx.runId}/screenshots/${filename}`;
 
-    const bucket = process.env.ARTIFACTS_S3_BUCKET;
+    // Ephemeral runs (Model B local-relay) NEVER persist frames to durable
+    // storage — the model still sees the b64 in-context, but no s3Key/signedUrl
+    // is produced, so nothing is written to S3 (auto-delete by construction).
+    const bucket = ctx.ephemeral ? undefined : process.env.ARTIFACTS_S3_BUCKET;
     let signedUrl: string | undefined;
     if (bucket) {
       // Best-effort upload — if S3 fails we still return the b64 so existing

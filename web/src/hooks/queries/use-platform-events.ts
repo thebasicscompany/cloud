@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   buildReplayTrace,
-  collectPlatformEvents,
   createInitialPlatformEventStore,
   filterPlatformEvents,
   labelPlatformEvent,
@@ -21,9 +20,22 @@ export function usePlatformEventStore() {
   return useQuery({
     queryKey: PLATFORM_EVENTS_QUERY_KEY,
     queryFn: async (): Promise<{ store: PlatformEventStore; events: PlatformEvent[] }> => {
-      await delay();
+      // The store is now ONLY the local feedback/training-consent ledger
+      // (user-applied labels). Events come exclusively from the REAL
+      // cloud_activity action log the cloud worker writes (/api/logs).
       const store = readPlatformEventStore();
-      return { store, events: collectPlatformEvents(store) };
+      let real: PlatformEvent[] = [];
+      try {
+        const res = await fetch("/api/logs");
+        if (res.ok) real = ((await res.json()).events ?? []) as PlatformEvent[];
+      } catch {
+        // network/transient — render an empty log rather than mock rows
+      }
+      const events = real.map((event) => {
+        const fb = store.feedback[event.id];
+        return fb ? { ...event, feedback: fb, labels: [...event.labels, fb.label] } : event;
+      });
+      return { store, events };
     },
   });
 }
@@ -67,9 +79,10 @@ export function usePlatformEventActions() {
   const updateStore = (updater: (store: PlatformEventStore) => PlatformEventStore) => {
     const current = readPlatformEventStore();
     const next = writePlatformEventStore(updater(current));
-    const events = collectPlatformEvents(next);
-    queryClient.setQueryData(PLATFORM_EVENTS_QUERY_KEY, { store: next, events });
-    return { store: next, events };
+    // Feedback/training labels changed locally — refetch so the real event
+    // stream re-applies them.
+    void queryClient.invalidateQueries({ queryKey: PLATFORM_EVENTS_QUERY_KEY });
+    return { store: next };
   };
 
   const label = useMutation({
@@ -86,8 +99,4 @@ export function usePlatformEventActions() {
     label,
     setTrainingMode,
   };
-}
-
-function delay(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 60));
 }

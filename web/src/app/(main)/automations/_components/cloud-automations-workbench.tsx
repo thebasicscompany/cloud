@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import type { ComponentType, ReactNode } from "react";
 
 import {
@@ -35,12 +35,8 @@ export function CloudAutomationsWorkbench() {
   const actions = useCloudAutomationActions();
 
   const active = (automations ?? []).filter((automation) => automation.status === "active");
-  const autonomous = (automations ?? []).filter((automation) => automation.approvalPolicy.mode === "trusted_autonomous");
-  const monthlySpendCents = (automations ?? []).reduce((sum, automation) => sum + automation.monthlySpendCents, 0);
-  const nextRun = (automations ?? [])
-    .map((automation) => automation.nextRunAt)
-    .filter((value): value is string => Boolean(value))
-    .sort()[0];
+  const scheduled = (automations ?? []).filter((automation) => automation.triggers.some((t) => t.type === "schedule"));
+  const runs7d = (automations ?? []).reduce((sum, automation) => sum + automation.runsLast7d, 0);
 
   return (
     <main className="space-y-6">
@@ -48,20 +44,17 @@ export function CloudAutomationsWorkbench() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Automations</h1>
           <p className="mt-1 max-w-3xl text-muted-foreground text-sm">
-            Saved basichome workflows that start local, promote to Basics Cloud when reliability matters, and stay inspectable through logs, replay, schedules, and trust grants.
+            Saved agent jobs — each runs a goal on a schedule or a Composio webhook trigger, in Basics Cloud, with every
+            run inspectable in Runs and Logs. Ask basichome to set one up.
           </p>
         </div>
-        <Button onClick={() => actions.promoteLatestLocal.mutate()} disabled={actions.promoteLatestLocal.isPending} className="gap-1.5">
-          <Globe className="size-4" />
-          Promote latest local
-        </Button>
       </header>
 
       <section className="grid gap-3 md:grid-cols-4">
-        <Metric icon={Wrench} label="Saved" value={(automations ?? []).length.toString()} detail={`${active.length} active definitions`} />
-        <Metric icon={ShieldCheck} label="Autonomous" value={autonomous.length.toString()} detail="Trust grants allow unattended runs." />
-        <Metric icon={CalendarClock} label="Next run" value={nextRun ? formatFuture(nextRun) : "Manual"} detail="Registered schedule or webhook trigger." />
-        <Metric icon={Clock} label="Cloud spend" value={`$${(monthlySpendCents / 100).toFixed(2)}`} detail="Mocked workspace credits for these runs." />
+        <Metric icon={Wrench} label="Saved" value={(automations ?? []).length.toString()} detail={`${active.length} active`} />
+        <Metric icon={CalendarClock} label="Scheduled" value={scheduled.length.toString()} detail="Have a cron or webhook trigger." />
+        <Metric icon={Clock} label="Runs (7d)" value={runs7d.toString()} detail="Cloud runs across all automations." />
+        <Metric icon={Globe} label="Runtime" value="Basics Cloud" detail="Fargate worker · Browserbase live view." />
       </section>
 
       {isLoading ? (
@@ -70,13 +63,13 @@ export function CloudAutomationsWorkbench() {
             <Skeleton key={index} className="h-56 rounded-lg" />
           ))}
         </div>
-      ) : automations.length === 0 ? (
+      ) : (automations ?? []).length === 0 ? (
         <div className="rounded-lg border border-dashed bg-card p-8 text-center text-muted-foreground text-sm">
-          No cloud automations yet. Promote a local run to create the first saved cloud workflow.
+          No automations yet. Ask basichome to do something repeatable, then save it as an automation.
         </div>
       ) : (
         <div className="grid gap-3 lg:grid-cols-2">
-          {automations.map((automation) => (
+          {(automations ?? []).map((automation) => (
             <AutomationCard key={automation.id} automation={automation} />
           ))}
         </div>
@@ -92,13 +85,10 @@ export function CloudAutomationDetail({ id }: { id: string }) {
   const runs = data?.runs ?? [];
   const latestRun = runs[0];
   const schedule = automation?.triggers.find((trigger): trigger is Extract<CloudAutomationTrigger, { type: "schedule" }> => trigger.type === "schedule");
-  const [cron, setCron] = useState("");
-  const [timezone, setTimezone] = useState("America/New_York");
-
-  useEffect(() => {
-    setCron(schedule?.cron ?? "0 18 * * 1-5");
-    setTimezone(schedule?.timezone ?? "America/New_York");
-  }, [schedule?.cron, schedule?.timezone]);
+  const [cronDraft, setCron] = useState<string | null>(null);
+  const [timezoneDraft, setTimezone] = useState<string | null>(null);
+  const cron = cronDraft ?? schedule?.cron ?? "0 18 * * 1-5";
+  const timezone = timezoneDraft ?? schedule?.timezone ?? "America/New_York";
 
   if (isLoading) {
     return (
@@ -147,7 +137,7 @@ export function CloudAutomationDetail({ id }: { id: string }) {
         <Metric icon={CalendarClock} label="Schedule" value={schedule ? formatCron(schedule.cron) : "Manual"} detail={schedule ? schedule.timezone : "No registered cron"} />
         <Metric icon={ShieldCheck} label="Trust grants" value={activeTrust.length.toString()} detail={automation.approvalPolicy.mode.replaceAll("_", " ")} />
         <Metric icon={Globe} label="Runtime" value="Basics Cloud" detail="SQS, Fargate worker, Browserbase live view." />
-        <Metric icon={FileSearch} label="Replay" value={latestRun ? latestRun.replayFrames.length.toString() : "0"} detail="JSONL frames available for inspection." />
+        <Metric icon={FileSearch} label="Runs" value={runs.length.toString()} detail="Cloud runs recorded for this automation." />
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)]">
@@ -156,12 +146,12 @@ export function CloudAutomationDetail({ id }: { id: string }) {
             <div className="whitespace-pre-wrap rounded-lg border bg-muted/30 p-4 text-sm leading-relaxed">{automation.goal}</div>
           </Panel>
 
-          <Panel title="Runs and replay" description="Manual, scheduled, webhook, and replay runs share the same event contract.">
+          <Panel title="Runs" description="Every manual, scheduled, and webhook run for this automation. Open one for the full timeline.">
             <RunsTable runs={runs} />
           </Panel>
 
-          {latestRun ? (
-            <Panel title="Latest worker timeline" description="The desktop subscribes to /v1/runs/:id/events or Supabase Realtime for these rows.">
+          {latestRun && latestRun.events.length > 0 ? (
+            <Panel title="Latest worker timeline" description="Live worker events for the most recent run.">
               <LatestRunDetails run={latestRun} />
             </Panel>
           ) : null}
@@ -170,13 +160,13 @@ export function CloudAutomationDetail({ id }: { id: string }) {
         <aside className="space-y-6">
           <Panel title="Schedule" description="New automations should use automations[].triggers[].type='schedule'.">
             <div className="space-y-3">
-              <label className="space-y-1.5 text-sm">
+              <label htmlFor="automation-schedule-cron" className="space-y-1.5 text-sm">
                 <span className="text-muted-foreground text-xs uppercase tracking-wide">Cron</span>
-                <Input value={cron} onChange={(event) => setCron(event.target.value)} />
+                <Input id="automation-schedule-cron" value={cron} onChange={(event) => setCron(event.target.value)} />
               </label>
-              <label className="space-y-1.5 text-sm">
+              <label htmlFor="automation-schedule-timezone" className="space-y-1.5 text-sm">
                 <span className="text-muted-foreground text-xs uppercase tracking-wide">Timezone</span>
-                <Input value={timezone} onChange={(event) => setTimezone(event.target.value)} />
+                <Input id="automation-schedule-timezone" value={timezone} onChange={(event) => setTimezone(event.target.value)} />
               </label>
               <Button
                 variant="outline"
@@ -246,11 +236,10 @@ function AutomationCard({ automation }: { automation: CloudAutomationSummary }) 
         </Button>
       </div>
 
-      <div className="mt-4 grid grid-cols-4 gap-2 border-t pt-3 text-sm">
+      <div className="mt-4 grid grid-cols-3 gap-2 border-t pt-3 text-sm">
         <MiniStat label="Success" value={successPct == null ? "-" : `${successPct}%`} />
         <MiniStat label="Runs 7d" value={automation.runsLast7d.toString()} />
-        <MiniStat label="Next" value={automation.nextRunAt ? formatFuture(automation.nextRunAt) : "Manual"} />
-        <MiniStat label="Spend" value={`$${(automation.monthlySpendCents / 100).toFixed(2)}`} />
+        <MiniStat label="Trigger" value={triggerLabel(automation)} />
       </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -321,9 +310,9 @@ function ActionStrip({ automation, latestRun }: { automation: CloudAutomation; l
         </Button>
       )}
       {latestRun ? (
-        <Button variant="ghost" className="gap-1.5" onClick={() => actions.replayRun.mutate(latestRun.id)} disabled={actions.replayRun.isPending}>
+        <Button variant="ghost" className="gap-1.5" onClick={() => actions.replayRun.mutate(automation.id)} disabled={actions.replayRun.isPending}>
           <RefreshCcw className="size-4" />
-          Replay latest
+          Run again
         </Button>
       ) : null}
     </div>
@@ -331,8 +320,6 @@ function ActionStrip({ automation, latestRun }: { automation: CloudAutomation; l
 }
 
 function RunsTable({ runs }: { runs: CloudAutomationRun[] }) {
-  const actions = useCloudAutomationActions();
-
   if (runs.length === 0) {
     return <div className="rounded-lg border border-dashed p-6 text-center text-muted-foreground text-sm">No cloud runs yet.</div>;
   }
@@ -345,8 +332,7 @@ function RunsTable({ runs }: { runs: CloudAutomationRun[] }) {
             <TableHead>Run</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Trigger</TableHead>
-            <TableHead>Cost</TableHead>
-            <TableHead>Replay</TableHead>
+            <TableHead>Summary</TableHead>
             <TableHead />
           </TableRow>
         </TableHeader>
@@ -354,17 +340,18 @@ function RunsTable({ runs }: { runs: CloudAutomationRun[] }) {
           {runs.map((run) => (
             <TableRow key={run.id}>
               <TableCell>
-                <Link href={`/runs/${run.id}`} prefetch={false} className="font-mono text-xs hover:underline">{run.id}</Link>
+                <Link href={`/runs/${run.id}`} prefetch={false} className="font-mono text-xs hover:underline">{run.id.slice(0, 8)}</Link>
                 <div className="text-muted-foreground text-xs">{formatRelative(run.startedAt)}</div>
               </TableCell>
               <TableCell><StatusPill status={statusForCloudRun(run.status)} /></TableCell>
               <TableCell className="capitalize">{run.trigger}</TableCell>
-              <TableCell>${(run.usage.apiCreditsCents / 100).toFixed(2)}</TableCell>
-              <TableCell>{run.replayFrames.length} frames</TableCell>
+              <TableCell className="max-w-[280px] truncate text-muted-foreground text-xs">{run.resultSummary ?? run.errorSummary ?? "—"}</TableCell>
               <TableCell className="text-right">
-                <Button size="sm" variant="ghost" className="gap-1" onClick={() => actions.replayRun.mutate(run.id)}>
-                  <RefreshCcw className="size-3.5" />
-                  Replay
+                <Button asChild size="sm" variant="ghost" className="gap-1">
+                  <Link href={`/runs/${run.id}`} prefetch={false}>
+                    Open
+                    <ChevronRight className="size-3.5" />
+                  </Link>
                 </Button>
               </TableCell>
             </TableRow>
@@ -376,7 +363,7 @@ function RunsTable({ runs }: { runs: CloudAutomationRun[] }) {
 }
 
 function LatestRunDetails({ run }: { run: CloudAutomationRun }) {
-  const lastFrames = useMemo(() => run.replayFrames.slice(-4), [run.replayFrames]);
+  const lastFrames = run.replayFrames.slice(-4);
 
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
@@ -534,14 +521,11 @@ function statusForCloudRun(status: CloudAutomationRun["status"]): RunStatus {
   return status;
 }
 
-function formatFuture(value: string): string {
-  const ms = new Date(value).getTime() - Date.now();
-  if (ms <= 0) return "due now";
-  const min = Math.round(ms / 60_000);
-  if (min < 60) return `in ${min}m`;
-  const hr = Math.round(min / 60);
-  if (hr < 24) return `in ${hr}h`;
-  return `in ${Math.round(hr / 24)}d`;
+function triggerLabel(automation: CloudAutomationSummary): string {
+  const types = new Set(automation.triggers.map((t) => t.type));
+  if (types.has("schedule")) return "Schedule";
+  if (types.has("composio_webhook")) return "Webhook";
+  return "Manual";
 }
 
 function credentialLabel(key: string): string {

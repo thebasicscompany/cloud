@@ -25,7 +25,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useRuns } from "@/hooks/queries/use-runs";
-import { mockWorkflows } from "@/mocks/workflows";
 import type { Run, RunStatus } from "@/types/runs";
 
 import { LiveRunCard } from "./live-run-card";
@@ -39,12 +38,10 @@ const SKELETON_COLUMNS = ["status", "workflow", "steps", "cost", "started"];
 export function RunsTable() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<RunStatus | "all">("all");
-  const [workflowId, setWorkflowId] = useState<string>("all");
   const [startedDesc, setStartedDesc] = useState(true);
 
   const { data, isLoading } = useRuns({
     status,
-    workflowId: workflowId === "all" ? undefined : workflowId,
     search: search.trim() || undefined,
   });
 
@@ -102,27 +99,13 @@ export function RunsTable() {
                 ))}
               </SelectContent>
             </Select>
-            <Select value={workflowId} onValueChange={setWorkflowId}>
-              <SelectTrigger className="h-9 w-52">
-                <SelectValue placeholder="Workflow" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All workflows</SelectItem>
-                {mockWorkflows.map((wf) => (
-                  <SelectItem key={wf.id} value={wf.id}>
-                    {wf.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {(search || status !== "all" || workflowId !== "all") && (
+            {(search || status !== "all") && (
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => {
                   setSearch("");
                   setStatus("all");
-                  setWorkflowId("all");
                 }}
               >
                 Reset

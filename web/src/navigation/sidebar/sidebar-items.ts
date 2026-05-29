@@ -1,8 +1,10 @@
 import {
+  Building2,
   ClipboardCheck,
   ClipboardCheckSolid,
   Cog,
   CogSolid,
+  FileCheck2,
   FileSearch,
   FileSearchSolid,
   Folder,
@@ -10,16 +12,14 @@ import {
   GlobeSolid,
   Home,
   HomeSolid,
-  MessageSquare,
-  MessageSquareSolid,
   Play,
+  Plug,
   PlaySolid,
   Workflow,
   WorkflowSolid,
+  Wrench,
   type Icon,
 } from "@/icons";
-
-import { conversationThreads } from "@/mocks/conversations";
 
 export interface NavSubItem {
   title: string;
@@ -53,24 +53,14 @@ export const sidebarItems: NavGroup[] = [
     id: 1,
     items: [
       { title: "Home", url: "/", icon: Home, iconActive: HomeSolid },
-      {
-        title: "Conversations",
-        url: "/conversations",
-        icon: MessageSquare,
-        iconActive: MessageSquareSolid,
-        subItems: [
-          ...conversationThreads.map((t) => ({
-            title: t.title,
-            url: `/conversations/${t.id}`,
-          })),
-          { title: "Browse all", url: "/conversations" },
-        ],
-      },
       { title: "Browser", url: "/browser", icon: Globe, iconActive: GlobeSolid },
       { title: "Runs", url: "/runs", icon: Play, iconActive: PlaySolid },
       { title: "Automations", url: "/automations", icon: Workflow, iconActive: WorkflowSolid },
       { title: "Apps", url: "/apps", icon: Folder, iconActive: Folder },
+      { title: "Documents", url: "/documents", icon: FileCheck2, iconActive: FileCheck2, isNew: true },
       { title: "Approvals", url: "/approvals", icon: ClipboardCheck, iconActive: ClipboardCheckSolid },
+      { title: "Agent", url: "/agent", icon: Wrench, iconActive: Wrench, isNew: true },
+      { title: "Team", url: "/team", icon: Building2, iconActive: Building2, isNew: true },
     ],
   },
   {
@@ -78,6 +68,7 @@ export const sidebarItems: NavGroup[] = [
     label: "Workspace",
     items: [
       { title: "Context", url: "/context", icon: Globe, iconActive: GlobeSolid },
+      { title: "Connections", url: "/connections", icon: Plug, iconActive: Plug },
       { title: "Logs/Audit", url: "/logs", icon: FileSearch, iconActive: FileSearchSolid },
     ],
   },

@@ -25,11 +25,15 @@ export interface ResolveDeps {
 
 /**
  * The composio user_id for this run. The plugin passes ctx.accountId
- * to match the convention used by the API service routes.
+ * to match the convention used by the API service routes, plus any extra
+ * ids (e.g. the workspace_id) so a connection filed under either key is
+ * found. Historically some OAuth links were minted under workspace_id and
+ * others under account_id; querying both keeps a connection usable
+ * regardless of which id it was filed under.
  */
 export async function resolveConnectedAccounts(
   composioUserId: string,
-  deps: ResolveDeps = {},
+  deps: ResolveDeps & { extraUserIds?: ReadonlyArray<string> } = {},
 ): Promise<AccountsByToolkit> {
   const result: AccountsByToolkit = new Map();
   let client: Pick<ComposioClient, "listConnectedAccounts">;
@@ -43,9 +47,14 @@ export async function resolveConnectedAccounts(
     throw err;
   }
 
+  // Dedup ids, account first (preferred owner), then any extras (workspace id).
+  const userIds = [composioUserId, ...(deps.extraUserIds ?? [])]
+    .filter((id): id is string => Boolean(id))
+    .filter((id, i, arr) => arr.indexOf(id) === i);
+
   let accounts: ComposioConnectedAccount[];
   try {
-    accounts = await client.listConnectedAccounts(composioUserId);
+    accounts = await client.listConnectedAccounts(userIds);
   } catch (err) {
     // Composio API failure: log and return empty so tools fail soft.
     // Log only the HTTP status (when available) — the full error message

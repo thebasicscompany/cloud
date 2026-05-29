@@ -36,6 +36,8 @@ export type Run = {
   costCents?: number;
   stepCount: number;
   errorSummary?: string;
+  resultSummary?: string;
+  recordingUrl?: string;
   runtime?: string;
   executionTarget?: string;
   actorAccountId?: string;

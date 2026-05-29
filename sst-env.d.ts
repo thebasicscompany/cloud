@@ -22,6 +22,11 @@ declare module "sst" {
       "name": string
       "type": "sst.aws.Function"
     }
+    "BasicsRelay": {
+      "service": string
+      "type": "sst.aws.Service"
+      "url": string
+    }
     "BrowserbaseApiKey": {
       "type": "sst.sst.Secret"
       "value": string

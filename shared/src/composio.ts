@@ -29,6 +29,8 @@ export interface ComposioAuthConfig {
 export interface ComposioConnectedAccount {
   id: string
   status?: string
+  /** The Composio user_id this account is filed under (account_id or workspace_id). */
+  user_id?: string
   toolkit?: {
     slug?: string
   }
@@ -341,8 +343,17 @@ export class ComposioClient {
   // getTriggerType method below, which now exposes `raw` cast to
   // ComposioTriggerType for callers that want the full schema.
 
-  async listConnectedAccounts(userId: string): Promise<ComposioConnectedAccount[]> {
-    const params = new URLSearchParams({ user_ids: userId, limit: '1000' })
+  async listConnectedAccounts(
+    userId: string | readonly string[],
+  ): Promise<ComposioConnectedAccount[]> {
+    // Composio's `user_ids` param accepts a comma-separated list. We file
+    // connections under either the account_id or the workspace_id depending
+    // on where the OAuth was initiated, so callers can pass both ids to find
+    // a connection regardless of which key it was filed under.
+    const ids = (Array.isArray(userId) ? userId : [userId])
+      .filter((id): id is string => Boolean(id))
+    if (ids.length === 0) return []
+    const params = new URLSearchParams({ user_ids: ids.join(','), limit: '1000' })
     return normalizeItems<ComposioConnectedAccount>(
       await this.request(`/connected_accounts?${params.toString()}`),
     )

@@ -46,38 +46,45 @@
 }
 
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+  /*
+   * basicsOS color scheme (https://basicsos.com): calm, monochrome,
+   * operational. Light gray canvas (#F3F3F3), white framed surfaces,
+   * near-black ink (#050505) as the primary action color, DM Sans.
+   * Radius kept at 8px per the design contract. Green is reserved as a
+   * positive/success accent (chart-2 / status), not the base brand color.
+   */
+  --radius: 0.5rem;
+  --background: oklch(0.967 0 0); /* #f3f3f3 basicsOS canvas */
+  --foreground: oklch(0.145 0 0); /* #050505 ink */
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: #1f7d53;
-  --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.97 0 0);
+  --primary: oklch(0.18 0 0); /* near-black basicsOS primary action */
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.94 0 0);
   --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
+  --muted: oklch(0.945 0 0);
+  --muted-foreground: oklch(0.505 0 0);
+  --accent: oklch(0.93 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: #1f7d53;
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  --border: oklch(0.9 0 0);
+  --input: oklch(0.9 0 0);
+  --ring: oklch(0.18 0 0);
+  --chart-1: oklch(0.18 0 0);
+  --chart-2: oklch(0.55 0.13 152); /* Basics green — positive/success */
+  --chart-3: oklch(0.556 0 0);
+  --chart-4: oklch(0.7 0 0);
+  --chart-5: oklch(0.84 0 0);
   --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: #1f7d53;
-  --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-foreground: oklch(0.205 0 0);
+  --sidebar-primary: oklch(0.18 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.93 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-border: oklch(0.9 0 0);
+  --sidebar-ring: oklch(0.18 0 0);
 
   --font-sans: var(--font-dm-sans);
 }
@@ -105,6 +112,31 @@
 
   *::-webkit-scrollbar-corner {
     background: transparent;
+  }
+
+  /*
+   * Tailwind v4's Preflight drops the default `cursor: pointer` on buttons, so
+   * shadcn buttons show the arrow cursor. Restore the pointer (hand) cursor on
+   * every clickable control — buttons, links-as-buttons, role=button, selects,
+   * summary, labels with checkbox/radio — except when disabled.
+   */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]):not(:disabled),
+  [role="tab"]:not([aria-disabled="true"]),
+  [role="menuitem"]:not([aria-disabled="true"]),
+  [role="option"]:not([aria-disabled="true"]),
+  a[href],
+  label[for],
+  summary,
+  select:not(:disabled),
+  [data-slot="select-trigger"]:not([data-disabled]) {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [role="button"][aria-disabled="true"],
+  [aria-disabled="true"] {
+    cursor: not-allowed;
   }
 
   *::-webkit-scrollbar-track {

@@ -2,21 +2,6 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import {
-  decideApproval,
-  findApproval,
-  listApprovals,
-  markApprovalDeployed,
-  readApprovalStore,
-  revokeTrustGrant,
-  writeApprovalStore,
-} from "@/lib/admin-approvals-runtime";
-import {
-  approveWorkspaceAppRelease,
-  deployWorkspaceAppRelease,
-  readWorkspaceAppsStore,
-  writeWorkspaceAppsStore,
-} from "@/lib/workspace-apps-runtime";
 import type {
   WorkspaceApproval,
   WorkspaceApprovalAction,
@@ -27,21 +12,33 @@ import type {
 
 export const WORKSPACE_APPROVALS_QUERY_KEY = ["workspace-approvals"];
 
+interface ApprovalsResponse {
+  approvals: WorkspaceApproval[];
+  trustGrants: WorkspaceApprovalStore["trustGrants"];
+}
+
+async function fetchApprovals(): Promise<ApprovalsResponse> {
+  const res = await fetch("/api/approvals", { cache: "no-store" });
+  if (!res.ok) return { approvals: [], trustGrants: [] };
+  const json = (await res.json()) as Partial<ApprovalsResponse>;
+  return { approvals: json.approvals ?? [], trustGrants: json.trustGrants ?? [] };
+}
+
+/** Real approvals read model (backed by /api/approvals → pending_approvals). */
 export function useApprovalStore() {
   return useQuery({
     queryKey: WORKSPACE_APPROVALS_QUERY_KEY,
-    queryFn: async (): Promise<WorkspaceApprovalStore> => {
-      await delay();
-      return readApprovalStore();
-    },
+    queryFn: fetchApprovals,
   });
 }
 
 export function useApprovals(filter: { status?: WorkspaceApprovalStatus | "all" } = {}) {
   const query = useApprovalStore();
+  const status = filter.status ?? "all";
+  const approvals = query.data?.approvals ?? [];
   return {
     ...query,
-    data: query.data ? listApprovals(query.data, filter.status ?? "all") : [],
+    data: status === "all" ? approvals : approvals.filter((a) => a.status === status),
   };
 }
 
@@ -49,59 +46,60 @@ export function useApproval(approvalId: string | undefined) {
   const query = useApprovalStore();
   return {
     ...query,
-    data: query.data && approvalId ? findApproval(query.data, approvalId) : undefined,
+    data: approvalId ? (query.data?.approvals ?? []).find((a) => a.id === approvalId) : undefined,
   };
 }
 
 export function useApprovalLogs() {
+  // No separate audit-log table for approvals yet — the Logs/Audit surface
+  // carries the platform event stream. Return empty rather than mock rows.
   const query = useApprovalStore();
-  return {
-    ...query,
-    data: query.data ? query.data.logs.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt)) : [],
-  };
+  return { ...query, data: [] as WorkspaceApprovalLogEvent[] };
 }
 
 export function useApprovalActions() {
   const queryClient = useQueryClient();
 
-  const updateStore = (updater: (store: WorkspaceApprovalStore) => WorkspaceApprovalStore) => {
-    const current = readApprovalStore();
-    const next = writeApprovalStore(updater(current));
-    queryClient.setQueryData(WORKSPACE_APPROVALS_QUERY_KEY, next);
-    void queryClient.invalidateQueries({ queryKey: ["runs"] });
-    void queryClient.invalidateQueries({ queryKey: ["workspace-apps"] });
-    return next;
-  };
-
   const decide = useMutation({
-    mutationFn: async ({ approvalId, action, reason }: { approvalId: string; action: WorkspaceApprovalAction; reason?: string }) => {
-      const before = readApprovalStore();
-      const approval = findApproval(before, approvalId);
-      const next = updateStore((store) => decideApproval(store, approvalId, action, reason));
-
-      if (action === "approve" && approval?.releaseId && (approval.kind === "app_release" || approval.kind === "app_update")) {
-        const currentApps = readWorkspaceAppsStore();
-        const approvedApps = approveWorkspaceAppRelease(currentApps, approval.releaseId);
-        const deployedApps = deployWorkspaceAppRelease(approvedApps, approval.releaseId);
-        writeWorkspaceAppsStore(deployedApps);
-        updateStore((store) => markApprovalDeployed(store, approvalId));
-        void queryClient.invalidateQueries({ queryKey: ["workspace-apps"] });
-        void queryClient.invalidateQueries({ queryKey: ["apps"] });
-      }
-
-      return next;
+    mutationFn: async ({
+      approvalId,
+      action,
+      reason,
+    }: {
+      approvalId: string;
+      action: WorkspaceApprovalAction;
+      reason?: string;
+    }) => {
+      const res = await fetch(`/api/approvals/${approvalId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action, reason }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error ?? "decision failed");
+      return res.json();
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: WORKSPACE_APPROVALS_QUERY_KEY });
+      void queryClient.invalidateQueries({ queryKey: ["runs"] });
     },
   });
 
+  // Trust-grant revocation is not yet a standalone real surface; resolving the
+  // backing approval (reject) is the real action. Kept as a no-op-ish mutation
+  // so callers don't break, invalidating the queue afterward.
   const revokeTrust = useMutation({
-    mutationFn: async ({ trustGrantId, reason }: { trustGrantId: string; reason?: string }) =>
-      updateStore((store) => revokeTrustGrant(store, trustGrantId, reason)),
+    mutationFn: async ({ trustGrantId, reason }: { trustGrantId: string; reason?: string }) => {
+      const res = await fetch(`/api/approvals/${trustGrantId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "revoke", reason }),
+      });
+      return res.ok ? res.json() : { ok: false };
+    },
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: WORKSPACE_APPROVALS_QUERY_KEY }),
   });
 
-  return {
-    decide,
-    revokeTrust,
-  };
+  return { decide, revokeTrust };
 }
 
 export function isPendingApproval(approval: WorkspaceApproval): boolean {
@@ -114,8 +112,4 @@ export function isResolvedApproval(approval: WorkspaceApproval): boolean {
 
 export function approvalLogToMessage(log: WorkspaceApprovalLogEvent): string {
   return `${log.event}: ${log.message}`;
-}
-
-function delay(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 60));
 }

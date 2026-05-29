@@ -37,6 +37,9 @@ export interface WorkerToolContext {
   automationId?: string;
   /** Filesystem sandbox root — defaults to /workspace in production, tmp dir in tests. */
   workspaceRoot: string;
+  /** Model B local-relay run: when true, screenshots are NOT persisted to S3
+   * (the model still sees them in-context). Set from cloud_runs.ephemeral. */
+  ephemeral?: boolean;
   /** Real worker writes to agent_activity; tests can capture into an array. */
   publish: (event: PublishEvent) => Promise<void> | void;
   /** Skill persistence — required by skill_write; injected by the runner. */

@@ -5,7 +5,6 @@ import Link from "next/link";
 import { ChevronRight, Maximize2, Pause, Play, RefreshCcw } from "@/icons";
 
 import { Button } from "@/components/ui/button";
-import { findWorkflow } from "@/mocks/workflows";
 import type { Run } from "@/types/runs";
 
 import { StatusPill } from "../../_components/status-pill";
@@ -22,7 +21,6 @@ type Props = {
 
 export function RunHeader({ run, takeover, onToggleTakeover, paused, onTogglePause }: Props) {
   const isLive = LIVE_STATUSES.has(run.status);
-  const workflow = findWorkflow(run.workflowId);
 
   return (
     <header className="space-y-3">
@@ -82,7 +80,6 @@ export function RunHeader({ run, takeover, onToggleTakeover, paused, onTogglePau
         {run.browserbaseSessionId && (
           <Stat label="Session" value={run.browserbaseSessionId} mono />
         )}
-        {workflow?.schedule && <Stat label="Schedule" value={workflow.schedule} mono />}
       </dl>
 
       {run.errorSummary && (

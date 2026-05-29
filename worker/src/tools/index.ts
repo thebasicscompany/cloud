@@ -46,6 +46,9 @@ import { composio_list_triggers } from "./composio_list_triggers.js";
 import { composio_call } from "./composio_call.js";
 import { propose_automation } from "./propose_automation.js";
 import { activate_automation } from "./activate_automation.js";
+import { app_emit } from "./app_emit.js";
+import { app_query } from "./app_query.js";
+import { doc_write } from "./doc_write.js";
 
 export {
   screenshot,
@@ -90,6 +93,9 @@ export {
   composio_call,
   propose_automation,
   activate_automation,
+  app_emit,
+  app_query,
+  doc_write,
 };
 export type { WorkerToolContext, PublishEvent } from "./context.js";
 
@@ -137,5 +143,8 @@ export function buildWorkerToolRegistry(): ToolRegistry<WorkerToolContext> {
     composio_call,
     propose_automation,
     activate_automation,
+    app_emit,
+    app_query,
+    doc_write,
   );
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -28,14 +27,12 @@ export function WorkspaceSettingsView() {
     <div className="space-y-6">
       <div className="space-y-1">
         <h2 className="text-lg font-semibold tracking-tight">Workspace</h2>
-        <p className="text-sm text-muted-foreground">
-          Members and billing for this cloud runtime workspace. Invite flows ship with auth wiring.
-        </p>
+        <p className="text-sm text-muted-foreground">Members and access for this workspace.</p>
       </div>
 
       {isLoading || !data ? (
         <div className="space-y-4">
-          <Skeleton className="h-36 w-full max-w-xl" />
+          <Skeleton className="h-28 w-full max-w-xl" />
           <Skeleton className="h-56 w-full" />
         </div>
       ) : (
@@ -44,41 +41,23 @@ export function WorkspaceSettingsView() {
             <CardHeader className="border-b">
               <CardTitle>{data.workspace.name}</CardTitle>
               <CardDescription>
-                Slug <span className="font-mono text-foreground">{data.workspace.slug}</span>
+                Slug <span className="font-mono text-foreground">{data.workspace.slug || "—"}</span>
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-3 pt-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-muted-foreground text-sm">Plan</span>
-                <Badge variant="secondary">{data.workspace.billing.planName}</Badge>
+                <span className="text-muted-foreground text-sm">Type</span>
+                <Badge variant="secondary" className="capitalize">{data.workspace.billing.planName}</Badge>
               </div>
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-muted-foreground text-sm">Seats</span>
-                <span className="text-sm tabular-nums">
-                  {data.workspace.billing.seatsUsed} / {data.workspace.billing.seatsIncluded} used
-                </span>
+                <span className="text-muted-foreground text-sm">Members</span>
+                <span className="text-sm tabular-nums">{data.members.length}</span>
               </div>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-muted-foreground text-sm">Renews</span>
-                <span className="text-sm">{formatDay(data.workspace.billing.renewsAt)}</span>
-              </div>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-muted-foreground text-sm">Payment</span>
-                <span className="text-sm">{data.workspace.billing.paymentMethodSummary}</span>
-              </div>
-              <Button type="button" variant="outline" size="sm" className="mt-1 w-fit">
-                Manage billing
-              </Button>
             </CardContent>
           </Card>
 
           <div className="space-y-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="font-medium text-sm">Members</h3>
-              <Button type="button" variant="outline" size="sm">
-                Invite member
-              </Button>
-            </div>
+            <h3 className="font-medium text-sm">Members</h3>
             <div className="overflow-hidden rounded-lg border bg-card">
               <Table>
                 <TableHeader>

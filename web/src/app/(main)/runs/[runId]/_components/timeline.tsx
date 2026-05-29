@@ -2,7 +2,6 @@
 
 import { Brain, Check, Eye, MousePointerClick, ShieldCheck, Wrench, X } from "@/icons";
 
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRunSteps } from "@/hooks/queries/use-runs";
 import { cn } from "@/lib/utils";
@@ -34,15 +33,17 @@ export function Timeline({ runId }: { runId: string }) {
     return <div className="p-6 text-center text-muted-foreground text-sm">No timeline events yet.</div>;
   }
 
+  // Plain bounded scroller: scrolls within the panel so a long
+  // tools/reasoning timeline never grows the whole page.
   return (
-    <ScrollArea className="h-full">
-      <ol className="relative space-y-3 px-4 py-4">
+    <div className="h-full min-h-0 overflow-y-auto">
+      <ol className="relative space-y-3 p-4">
         <span aria-hidden className="absolute top-4 bottom-4 left-[27px] w-px bg-border" />
         {data.map((step) => (
           <TimelineRow key={step.id} step={step} />
         ))}
       </ol>
-    </ScrollArea>
+    </div>
   );
 }
 

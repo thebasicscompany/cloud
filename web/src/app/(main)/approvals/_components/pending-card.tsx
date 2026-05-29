@@ -7,14 +7,14 @@ import { Check, Clock, ExternalLink, ShieldCheck, TriangleAlertIcon, X } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useApprovalActions } from "@/hooks/queries/use-approvals";
-import { canApprove, getCurrentActor, readApprovalStore } from "@/lib/admin-approvals-runtime";
 import { formatRelative } from "@/lib/format";
 import type { WorkspaceApproval } from "@/types/approvals";
 
 export function PendingCard({ approval }: { approval: WorkspaceApproval }) {
   const actions = useApprovalActions();
-  const actor = getCurrentActor(readApprovalStore());
-  const approveEnabled = canApprove(actor, approval);
+  // The workspace owner (device owner) is the approver on the local-first
+  // product; there's no separate reviewer role to gate on.
+  const approveEnabled = true;
   const failedCheck = approval.checks.some((check) => check.status === "failed");
   const pending = approval.status === "pending" || approval.status === "draft";
   const canRevokeTrust = approval.kind === "trust_grant" && approval.status === "approved" && approval.trustGrantId;

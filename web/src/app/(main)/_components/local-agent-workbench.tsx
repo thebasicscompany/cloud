@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
 import { Brain, Code2, Clock, FileSearch, Globe, KeyRound, Monitor, Pause, Play, ShieldCheck, Square } from "@/icons";
 
@@ -13,22 +14,119 @@ import { useCodexEngineStatus } from "@/hooks/queries/use-codex-engine";
 import { useActiveLocalAgentRun, useLocalAgentActions } from "@/hooks/queries/use-local-agent-runtime";
 import type { LocalAgentRun, RuntimeTarget } from "@/types/local-agent";
 
+import { VoiceButton } from "./voice-button";
+
 const STARTER_PROMPT = "Use approved local context to summarize my invoice follow-up work and plan the next safe action.";
+
+/** Desktop preload bridge (Model B). Present only inside the Electron app. */
+interface BasichomeBridge {
+  isDesktop?: boolean;
+  localRelayStart?: (opts: { relayUrl: string; session: string; token: string }) => Promise<{ ok?: boolean; error?: string }>;
+}
+function desktopBridge(): BasichomeBridge | undefined {
+  if (typeof window === "undefined") return undefined;
+  return (window as unknown as { basichome?: BasichomeBridge }).basichome;
+}
 
 export function LocalAgentWorkbench() {
   const { data: activeRun } = useActiveLocalAgentRun();
   const { data: codexStatus } = useCodexEngineStatus();
   const actions = useLocalAgentActions();
+  const { push } = useRouter();
   const [prompt, setPrompt] = useState(STARTER_PROMPT);
   const [target, setTarget] = useState<RuntimeTarget>("auto");
-  const activeTool = useMemo(() => activeRun?.toolCalls.find((tool) => tool.id === activeRun.activeToolCallId), [activeRun]);
+  const [triggering, setTriggering] = useState(false);
+  const [triggerError, setTriggerError] = useState<string | null>(null);
+  const [isDesktop, setIsDesktop] = useState(false);
+  const activeTool = activeRun?.toolCalls.find((tool) => tool.id === activeRun.activeToolCallId);
+
+  useEffect(() => {
+    setIsDesktop(Boolean(desktopBridge()?.isDesktop));
+  }, []);
+
+  // Model B — "Run on my computer": provision a relay session, bridge the local
+  // Chrome via the desktop, then trigger a cloud run that drives that browser.
+  const runOnMyComputer = async () => {
+    const bh = desktopBridge();
+    if (!bh?.localRelayStart) {
+      setTriggerError("Local runs need the desktop app.");
+      return;
+    }
+    const task = prompt.trim() || STARTER_PROMPT;
+    setTriggering(true);
+    setTriggerError(null);
+    try {
+      const prov = await fetch("/api/runs/trigger-local", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ goal: task }),
+      }).then((r) => r.json());
+      if (!prov.ok) {
+        setTriggerError(prov.error ?? "Local runs aren't available.");
+        return;
+      }
+      const bridged = await bh.localRelayStart({ relayUrl: prov.relayUrl, session: prov.session, token: prov.token });
+      if (!bridged?.ok) {
+        setTriggerError(bridged?.error ?? "Could not connect your browser.");
+        return;
+      }
+      const run = await fetch("/api/runs/trigger-local", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ goal: task, session: prov.session }),
+      }).then((r) => r.json());
+      if (run.ok && run.runId) {
+        push(`/runs/${run.runId}`);
+        return;
+      }
+      setTriggerError(run.error ?? "Could not start the local run.");
+    } catch (e) {
+      setTriggerError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setTriggering(false);
+    }
+  };
+
+  // Append finalized voice transcripts to the prompt; interim results are ignored
+  // so the textarea isn't flooded with partial guesses.
+  const handleTranscript = (text: string, isFinal: boolean) => {
+    if (!isFinal) return;
+    const chunk = text.trim();
+    if (!chunk) return;
+    setPrompt((prev) => (prev ? `${prev.trimEnd()} ${chunk}` : chunk));
+  };
   const canResume = activeRun?.status === "paused";
   const canPause = activeRun?.status === "running" || activeRun?.status === "thinking" || activeRun?.status === "waiting_for_approval";
   const canStop = activeRun && activeRun.status !== "complete" && activeRun.status !== "stopped" && activeRun.status !== "failed";
 
+  // Starts a REAL cloud run via the deployed kicker → dispatcher → worker, then
+  // opens the real run detail (live Browserbase view + activity trace). The
+  // local store is also nudged so the overlay pill reflects activity.
   const startRun = async () => {
     const task = prompt.trim() || STARTER_PROMPT;
-    await actions.start.mutateAsync({ prompt: task, target });
+    setTriggering(true);
+    setTriggerError(null);
+    try {
+      const goal =
+        target === "local_browser" || target === "basics_cloud"
+          ? `Use the browser if needed to: ${task}`
+          : task;
+      const res = await fetch("/api/runs/trigger", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ goal }),
+      });
+      const data = await res.json();
+      if (data.ok && data.runId) {
+        push(`/runs/${data.runId}`);
+        return;
+      }
+      setTriggerError(data.error ?? "Could not start the cloud run.");
+    } catch (e) {
+      setTriggerError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setTriggering(false);
+    }
   };
 
   return (
@@ -47,9 +145,12 @@ export function LocalAgentWorkbench() {
       <div className="rounded-lg border bg-muted/20 p-4">
         <div className="grid gap-3 lg:grid-cols-[1fr_220px]">
           <div className="space-y-2">
-            <label htmlFor="local-agent-prompt" className="font-medium text-sm">
-              Ask basichome
-            </label>
+            <div className="flex items-center justify-between gap-2">
+              <label htmlFor="local-agent-prompt" className="font-medium text-sm">
+                Ask basichome
+              </label>
+              <VoiceButton onTranscript={handleTranscript} />
+            </div>
             <Textarea
               id="local-agent-prompt"
               value={prompt}
@@ -65,18 +166,21 @@ export function LocalAgentWorkbench() {
               </label>
               <NativeSelect id="local-agent-target" value={target} onChange={(event) => setTarget(event.target.value as RuntimeTarget)} className="w-full bg-background">
                 <NativeSelectOption value="auto">Auto</NativeSelectOption>
-                <NativeSelectOption value="local_device">Local device</NativeSelectOption>
-                <NativeSelectOption value="local_browser">Local browser</NativeSelectOption>
-                <NativeSelectOption value="local_app">Local app</NativeSelectOption>
-                <NativeSelectOption value="codex_app_server">Codex app-server</NativeSelectOption>
-                <NativeSelectOption value="codex_exec">Codex exec JSON</NativeSelectOption>
-                <NativeSelectOption value="basics_cloud">Basics Cloud</NativeSelectOption>
+                <NativeSelectOption value="basics_cloud">Cloud agent</NativeSelectOption>
+                <NativeSelectOption value="local_browser">Cloud browser</NativeSelectOption>
               </NativeSelect>
             </div>
-            <Button type="button" className="w-full" onClick={startRun} disabled={actions.start.isPending}>
+            <Button type="button" className="w-full" onClick={startRun} disabled={triggering}>
               <Play className="size-4" />
-              Start local run
+              {triggering ? "Starting cloud run…" : "Start run"}
             </Button>
+            {isDesktop ? (
+              <Button type="button" variant="outline" className="w-full" onClick={runOnMyComputer} disabled={triggering}>
+                <Monitor className="size-4" />
+                Run on my computer
+              </Button>
+            ) : null}
+            {triggerError ? <p className="text-destructive text-xs">{triggerError}</p> : null}
           </div>
         </div>
       </div>

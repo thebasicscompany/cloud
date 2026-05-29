@@ -1,415 +1,330 @@
 "use client";
 
-import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
-import { CheckCircle2, ExternalLink, Eye, Globe, Hand, KeyRound, Lock, Monitor, Pause, Play, RefreshCcw, ShieldCheck, Square } from "@/icons";
+import { CheckCircle2, Globe, KeyRound, Play, RefreshCcw, ShieldCheck } from "@/icons";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { browserTargetLabel, browserTargetShortLabel, domainFromBrowserPrompt, normalizeBrowserDomain } from "@/lib/browser-runtime";
-import { useBrowserRuntimeActions, useBrowserRuntimeStore } from "@/hooks/queries/use-browser-runtime";
-import { useLocalAgentActions, useLocalAgentStore } from "@/hooks/queries/use-local-agent-runtime";
-import type { BrowserProfileRecord, BrowserRuntimeTarget } from "@/types/browser-runtime";
-import type { LocalAgentRun } from "@/types/local-agent";
+import { domainFromBrowserPrompt, normalizeBrowserDomain } from "@/lib/browser-runtime";
+import type { ConnectionBrowserSite } from "@/lib/connections-data";
 
-const STARTER_PROMPT = "Open Hacker News in a managed browser and summarize the first three visible story titles.";
-const LOGIN_DOMAIN = "jobboardpro.example";
-const PROFILE_SKELETON_ROWS = ["profile-skeleton-1", "profile-skeleton-2"];
+const STARTER_PROMPT = "Open Hacker News and summarize the first three visible story titles.";
+const HOST_RE = /^[a-z0-9.-]+$/;
 
-export function BrowserWorkbench() {
-  const { data: browserStore, isLoading: browserLoading } = useBrowserRuntimeStore();
-  const { data: agentStore } = useLocalAgentStore();
-  const browserActions = useBrowserRuntimeActions();
-  const agentActions = useLocalAgentActions();
+type SignInState =
+  | { phase: "idle" }
+  | { phase: "starting" }
+  | { phase: "live"; host: string; sessionId: string; liveViewUrl: string }
+  | { phase: "finalizing"; host: string }
+  | { phase: "done"; host: string }
+  | { phase: "error"; message: string };
+
+export function BrowserWorkbench({ savedSites }: { savedSites: ConnectionBrowserSite[] }) {
+  const { push, refresh } = useRouter();
   const [prompt, setPrompt] = useState(STARTER_PROMPT);
   const [domain, setDomain] = useState("news.ycombinator.com");
-  const [target, setTarget] = useState<BrowserRuntimeTarget>("local_managed_browser");
+  const [runBusy, setRunBusy] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
 
-  const browserRuns = useMemo(() => (agentStore?.runs ?? []).filter((run) => run.browser), [agentStore?.runs]);
-  const latestRun = browserRuns[0];
-  const activePrompt = browserStore?.activeLoginPrompt;
+  const [signInHost, setSignInHost] = useState("");
+  const [signIn, setSignIn] = useState<SignInState>({ phase: "idle" });
+  const [isDesktop, setIsDesktop] = useState(false);
 
-  const startBrowserTask = async (requiresLogin = false) => {
+  useEffect(() => {
+    const bh = (window as unknown as { basichome?: { exportLocalCookies?: unknown } }).basichome;
+    setIsDesktop(typeof bh?.exportLocalCookies === "function");
+  }, []);
+
+  // "Use my local login" — export this host's cookies from the user's local
+  // Chrome (via the desktop bridge) and save them so the cloud agent reuses the
+  // login. No re-typing a password in a cloud window.
+  const useMyLocalLogin = async () => {
+    const host = signInHost.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "");
+    if (!host || !HOST_RE.test(host)) {
+      setSignIn({ phase: "error", message: 'Enter a valid host like "linkedin.com".' });
+      return;
+    }
+    const bh = (window as unknown as { basichome?: { exportLocalCookies?: (h: string) => Promise<{ ok?: boolean; cookies?: unknown[]; error?: string }> } }).basichome;
+    if (!bh?.exportLocalCookies) {
+      setSignIn({ phase: "error", message: "This needs the desktop app — open Basichome on your computer." });
+      return;
+    }
+    setSignIn({ phase: "finalizing", host });
+    try {
+      const res = await bh.exportLocalCookies(host);
+      if (!res?.ok) throw new Error(res?.error || "Could not read cookies from your local Chrome.");
+      const cookies = Array.isArray(res.cookies) ? res.cookies : [];
+      if (cookies.length === 0)
+        throw new Error(`No cookies found for ${host}. Sign in to it in your Chrome first (and make sure Chrome is the one Basichome can reach).`);
+      const save = await fetch("/api/browser-sites/local-cookies", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ host, cookies }),
+      });
+      const data = await save.json();
+      if (!save.ok || !data.ok) throw new Error(data.error || "Could not save the login.");
+      setSignIn({ phase: "done", host });
+      refresh();
+    } catch (e) {
+      setSignIn({ phase: "error", message: e instanceof Error ? e.message : String(e) });
+    }
+  };
+
+  // Run a REAL cloud browser run (Browserbase) via the kicker, then open the
+  // run detail where the live session + activity trace are embedded.
+  const runBrowserTask = async () => {
     const task = prompt.trim() || STARTER_PROMPT;
     const resolvedDomain = normalizeBrowserDomain(domain || domainFromBrowserPrompt(task));
-    const selectedTarget = target === "basics_cloud_browser" ? "basics_cloud" : "local_browser";
-    if (requiresLogin) {
-      await browserActions.openLogin.mutateAsync(resolvedDomain);
+    setRunBusy(true);
+    setRunError(null);
+    try {
+      const site = resolvedDomain ? ` Start at https://${resolvedDomain}/.` : "";
+      const goal = `Use the browser to: ${task}.${site}`.trim();
+      const res = await fetch("/api/runs/trigger", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ goal }),
+      });
+      const data = await res.json();
+      if (data.ok && data.runId) {
+        push(`/runs/${data.runId}`);
+        return;
+      }
+      setRunError(data.error ?? "Could not start the browser run.");
+    } catch (e) {
+      setRunError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRunBusy(false);
     }
-    await browserActions.setDefaultTarget.mutateAsync(target);
-    await agentActions.start.mutateAsync({
-      prompt: task,
-      target: selectedTarget,
-      options: {
-        browserRuntimeTarget: target,
-        browserDomain: resolvedDomain,
-        browserUrl: requiresLogin ? `https://${resolvedDomain}/login` : `https://${resolvedDomain}/`,
-        requiresLogin,
-        userSelectedActiveBrowser: target === "local_visible_browser",
-      },
-    });
   };
 
-  const openLoginPrompt = async () => {
-    const resolvedDomain = normalizeBrowserDomain(domain || LOGIN_DOMAIN);
-    setTarget("local_managed_browser");
-    setDomain(resolvedDomain);
-    setPrompt(`Sign in to ${resolvedDomain} in a managed local browser, then keep the profile on this device for future browser tasks.`);
-    await browserActions.openLogin.mutateAsync(resolvedDomain);
-    await agentActions.start.mutateAsync({
-      prompt: `Sign in to ${resolvedDomain} in a managed local browser.`,
-      target: "local_browser",
-      options: {
-        browserRuntimeTarget: "local_managed_browser",
-        browserDomain: resolvedDomain,
-        browserUrl: `https://${resolvedDomain}/login`,
-        requiresLogin: true,
-      },
-    });
+  // Cookie → cloud-browser: open a Browserbase live-view, the user signs in
+  // once inside it, then finalize persists the session cookies into a
+  // Browserbase Context the agents reuse. No secrets ever touch basichome.
+  const startSignIn = async (rawHost: string) => {
+    const host = rawHost.trim().toLowerCase();
+    if (!host || !HOST_RE.test(host)) {
+      setSignIn({ phase: "error", message: 'Enter a valid host, e.g. "gmail.com".' });
+      return;
+    }
+    setSignIn({ phase: "starting" });
+    try {
+      const res = await fetch("/api/browser-sites/connect", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ host }),
+      });
+      const data = await res.json();
+      if (res.ok && data.session_id && data.live_view_url) {
+        setSignIn({ phase: "live", host, sessionId: data.session_id, liveViewUrl: data.live_view_url });
+        return;
+      }
+      setSignIn({ phase: "error", message: data.error ?? "Could not start the sign-in session." });
+    } catch (e) {
+      setSignIn({ phase: "error", message: e instanceof Error ? e.message : String(e) });
+    }
   };
 
-  const saveLogin = async () => {
-    await browserActions.saveLogin.mutateAsync();
-  };
-
-  const promoteRun = async (run: LocalAgentRun) => {
-    if (!run.browser) return;
-    const promotedStore = await agentActions.start.mutateAsync({
-      prompt: `Promote to Basics Cloud Browser: ${run.prompt}`,
-      target: "basics_cloud",
-      options: {
-        browserRuntimeTarget: "basics_cloud_browser",
-        browserDomain: run.browser.domain,
-        browserUrl: run.browser.currentUrl,
-        browserTitle: run.browser.pageTitle,
-      },
-    });
-    const promotedRunId = promotedStore.runs[0]?.runId ?? run.runId;
-    await browserActions.recordCloudPromotion.mutateAsync({ runId: promotedRunId, domain: run.browser.domain });
-  };
-
-  const watchRun = async (run: LocalAgentRun) => {
-    if (!run.browser) return;
-    await agentActions.watchBrowser.mutateAsync(run.runId);
-    await browserActions.setRunViewMode.mutateAsync({ runId: run.runId, mode: "watching" });
-  };
-
-  const takeOverRun = async (run: LocalAgentRun) => {
-    if (!run.browser) return;
-    await agentActions.takeOverBrowser.mutateAsync(run.runId);
-    await browserActions.setRunViewMode.mutateAsync({ runId: run.runId, mode: "user_takeover" });
+  const finalizeSignIn = async () => {
+    if (signIn.phase !== "live") return;
+    const { host, sessionId } = signIn;
+    setSignIn({ phase: "finalizing", host });
+    try {
+      const res = await fetch("/api/browser-sites/finalize", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ host, session_id: sessionId }),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setSignIn({ phase: "done", host });
+        refresh();
+        return;
+      }
+      setSignIn({ phase: "error", message: data.error ?? "Could not save the session." });
+    } catch (e) {
+      setSignIn({ phase: "error", message: e instanceof Error ? e.message : String(e) });
+    }
   };
 
   return (
-    <main className="space-y-5">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="font-semibold text-2xl tracking-tight">Browser</h1>
-          <p className="mt-1 max-w-3xl text-muted-foreground text-sm">
-            Local-first browser tasks, on-device managed profiles, explicit active-browser access, and cloud promotion when the work needs to keep running.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Badge variant="outline">Managed local default</Badge>
-          <Badge variant="outline">Active browser explicit</Badge>
-          <Badge variant="outline">Cloud by approval</Badge>
-        </div>
+    <main className="mx-auto max-w-5xl space-y-6">
+      <header>
+        <h1 className="font-semibold text-2xl tracking-tight">Browser</h1>
+        <p className="mt-1 max-w-2xl text-muted-foreground text-sm">
+          Run browser tasks in the cloud, and sign in to a site once so your agents can reuse the session.
+        </p>
       </header>
 
-      <section className="grid gap-3 lg:grid-cols-4">
-        <Metric icon={Monitor} label="Default" value={browserStore ? browserTargetShortLabel(browserStore.defaultTarget) : "Checking"} detail="Generic tasks stay isolated from real tabs." />
-        <Metric icon={KeyRound} label="Profiles" value={(browserStore?.profiles.length ?? 0).toString()} detail="On-device saved browser sessions." />
-        <Metric icon={Globe} label="Cloud Browser" value="Promotion" detail="Scheduled or overnight work uses Basics Cloud." />
-        <Metric icon={ShieldCheck} label="Secrets" value="Not logged" detail="Only metadata and screenshot pointers enter logs." />
-      </section>
-
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="rounded-lg border bg-card p-4">
-          <div className="grid gap-3 lg:grid-cols-[1fr_240px]">
-            <div className="space-y-2">
-              <label htmlFor="browser-task-prompt" className="font-medium text-sm">
-                Browser task
+      {/* Run a browser task */}
+      <section className="rounded-lg border bg-card p-5">
+        <h2 className="font-semibold text-base">Run a browser task</h2>
+        <p className="mt-1 text-muted-foreground text-sm">
+          The agent drives a cloud browser. You can watch it live and take over from the run page.
+        </p>
+        <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_240px]">
+          <Textarea
+            value={prompt}
+            onChange={(event) => setPrompt(event.target.value)}
+            className="min-h-28 resize-none bg-background"
+            placeholder="Tell basichome what the browser should do..."
+            aria-label="Browser task"
+          />
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <label htmlFor="browser-domain" className="font-medium text-sm">
+                Start at
               </label>
-              <Textarea
-                id="browser-task-prompt"
-                value={prompt}
-                onChange={(event) => setPrompt(event.target.value)}
-                className="min-h-28 resize-none bg-background"
-                placeholder="Tell basichome what the browser should do..."
+              <input
+                id="browser-domain"
+                value={domain}
+                onChange={(event) => setDomain(event.target.value)}
+                placeholder="example.com"
+                className="flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
             </div>
-            <div className="space-y-3">
-              <div className="space-y-2">
-                <label htmlFor="browser-target" className="font-medium text-sm">
-                  Browser target
-                </label>
-                <NativeSelect id="browser-target" value={target} onChange={(event) => setTarget(event.target.value as BrowserRuntimeTarget)} className="w-full bg-background">
-                  <NativeSelectOption value="local_managed_browser">Managed local browser</NativeSelectOption>
-                  <NativeSelectOption value="local_visible_browser">Use my active browser</NativeSelectOption>
-                  <NativeSelectOption value="local_headless_browser">Background browser</NativeSelectOption>
-                  <NativeSelectOption value="basics_cloud_browser">Basics Cloud Browser</NativeSelectOption>
-                </NativeSelect>
-              </div>
-              <div className="space-y-2">
-                <label htmlFor="browser-domain" className="font-medium text-sm">
-                  Site
-                </label>
-                <input
-                  id="browser-domain"
-                  value={domain}
-                  onChange={(event) => setDomain(event.target.value)}
-                  className="flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                />
-              </div>
-              <Button type="button" className="w-full" onClick={() => void startBrowserTask(false)} disabled={agentActions.start.isPending}>
-                <Play className="size-4" />
-                Run browser task
-              </Button>
-            </div>
+            <Button type="button" className="w-full" onClick={() => void runBrowserTask()} disabled={runBusy}>
+              <Play className="size-4" />
+              {runBusy ? "Starting cloud run…" : "Run browser task"}
+            </Button>
+            {runError ? <p className="text-destructive text-xs">{runError}</p> : null}
           </div>
-          <div className="mt-4 grid gap-2 sm:grid-cols-3">
-            <TargetFact title="Managed" detail="Separate local profile with saved on-device login." active={target === "local_managed_browser"} />
-            <TargetFact title="Active" detail="Only used when this option is selected." active={target === "local_visible_browser"} />
-            <TargetFact title="Cloud" detail="For scheduled, overnight, or shared-credential work." active={target === "basics_cloud_browser"} />
+        </div>
+      </section>
+
+      {/* Sign in to a site (cookie → cloud browser) */}
+      <section className="rounded-lg border bg-card p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-semibold text-base">Sign in to a site</h2>
+            <p className="mt-1 max-w-2xl text-muted-foreground text-sm">
+              Sign in once in a secure cloud window. basichome saves the session so agents stay logged in — your
+              password is never entered into basichome or stored in logs.
+            </p>
           </div>
-          {latestRun?.browser ? (
-            <div className="mt-4 rounded-lg border bg-muted/20 p-3">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <div className="font-medium text-sm">Cloud promotion</div>
-                  <p className="text-muted-foreground text-xs">Creates a Basics Cloud Browser run with workspace-credit auth and approval logs.</p>
-                </div>
-                <Button type="button" variant="outline" onClick={() => void promoteRun(latestRun)}>
-                  <Globe className="size-4" />
-                  Promote to cloud
-                </Button>
-              </div>
-            </div>
-          ) : null}
+          <Badge variant="outline" className="gap-1">
+            <ShieldCheck className="size-3.5" />
+            Secrets not logged
+          </Badge>
         </div>
 
-        <div className="rounded-lg border bg-card p-4">
-          <h2 className="font-semibold text-base">Login prompt</h2>
-          {activePrompt?.status === "open" ? (
-            <div className="mt-3 space-y-3">
-              <div className="rounded-lg border bg-muted/20 p-3">
-                <div className="font-medium text-sm">Sign in to {activePrompt.domain}</div>
-                <p className="mt-1 text-muted-foreground text-xs">
-                  Basics keeps this managed browser profile on this device. Cookie values, localStorage values, tokens, and raw headers stay out of logs.
-                </p>
+        {signIn.phase === "live" || signIn.phase === "finalizing" ? (
+          <div className="mt-4 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-sm">
+                Signing in to <span className="font-medium">{signIn.host}</span> — complete the login below, then save.
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" size="sm" onClick={saveLogin}>
+              <div className="flex gap-2">
+                <Button type="button" size="sm" onClick={() => void finalizeSignIn()} disabled={signIn.phase === "finalizing"}>
                   <CheckCircle2 className="size-4" />
-                  Done, save local profile
+                  {signIn.phase === "finalizing" ? "Saving…" : "I've finished signing in"}
                 </Button>
-                <Button type="button" size="sm" variant="outline" onClick={() => void browserActions.cancelLogin.mutate()}>
+                <Button type="button" size="sm" variant="outline" onClick={() => setSignIn({ phase: "idle" })}>
                   Cancel
                 </Button>
               </div>
             </div>
-          ) : (
-            <div className="mt-3 space-y-3">
-              <p className="text-muted-foreground text-sm">Open a managed browser login flow without entering secrets into basichome.</p>
-              <Button type="button" variant="outline" onClick={openLoginPrompt}>
-                <KeyRound className="size-4" />
-                Open login prompt
-              </Button>
+            {signIn.phase === "live" ? (
+              <iframe
+                title={`Sign in to ${signIn.host}`}
+                src={signIn.liveViewUrl}
+                className="h-[520px] w-full rounded-lg border bg-background"
+                sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
+                allow="clipboard-read; clipboard-write"
+              />
+            ) : (
+              <div className="grid h-[520px] place-items-center rounded-lg border bg-muted/20 text-muted-foreground text-sm">
+                Saving your session…
+              </div>
+            )}
+            <p className="text-muted-foreground text-xs">
+              Passkeys are tied to this device and won't work in the cloud window — use a password or email/Google login
+              here, or run on your own Chrome from the desktop app for passkey sites.
+            </p>
+          </div>
+        ) : (
+          <div className="mt-4 flex flex-wrap items-end gap-3">
+            <div className="min-w-[220px] flex-1 space-y-1.5">
+              <label htmlFor="signin-host" className="font-medium text-sm">
+                Site host
+              </label>
+              <input
+                id="signin-host"
+                value={signInHost}
+                onChange={(event) => setSignInHost(event.target.value)}
+                placeholder="gmail.com"
+                className="flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
             </div>
-          )}
-        </div>
+            <Button type="button" onClick={() => void startSignIn(signInHost)} disabled={signIn.phase === "starting"}>
+              <KeyRound className="size-4" />
+              {signIn.phase === "starting" ? "Opening…" : "Start sign-in"}
+            </Button>
+            {isDesktop ? (
+              <Button type="button" variant="outline" onClick={() => void useMyLocalLogin()} title="Reuse the login from your local Chrome">
+                <Globe className="size-4" />
+                Use my local login
+              </Button>
+            ) : null}
+          </div>
+        )}
+        {isDesktop ? (
+          <p className="mt-2 text-muted-foreground text-xs">
+            On desktop you can reuse a login from your own Chrome — no re-typing a password in the cloud window.
+          </p>
+        ) : null}
+
+        {signIn.phase === "done" ? (
+          <p className="mt-3 flex items-center gap-1.5 text-emerald-600 text-sm dark:text-emerald-500">
+            <CheckCircle2 className="size-4" />
+            Saved {signIn.host}. Agents can now use this session.
+          </p>
+        ) : null}
+        {signIn.phase === "error" ? <p className="mt-3 text-destructive text-sm">{signIn.message}</p> : null}
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
-        <div className="rounded-lg border bg-card p-4">
-          <h2 className="font-semibold text-base">Managed profiles</h2>
-          <div className="mt-3 space-y-3">
-            {browserLoading ? (
-              PROFILE_SKELETON_ROWS.map((key) => <Skeleton key={key} className="h-28 rounded-lg" />)
-            ) : (
-              (browserStore?.profiles ?? []).map((profile) => (
-                <ProfileCard
-                  key={profile.id}
-                  profile={profile}
-                  onRefresh={() => void browserActions.openLogin.mutate(profile.domain)}
-                  onRevoke={() => void browserActions.revokeProfile.mutate(profile.id)}
-                />
-              ))
-            )}
-          </div>
-        </div>
-
-        <LiveBrowserPanel latestRun={latestRun} onWatch={watchRun} onTakeOver={takeOverRun} onStop={(run) => void agentActions.stop.mutate(run.runId)} onPromote={promoteRun} />
+      {/* Saved sites */}
+      <section className="rounded-lg border bg-card p-5">
+        <h2 className="font-semibold text-base">Saved sites</h2>
+        {savedSites.length === 0 ? (
+          <p className="mt-2 text-muted-foreground text-sm">
+            No saved sessions yet. Sign in to a site above to let agents reuse the login.
+          </p>
+        ) : (
+          <ul className="mt-3 divide-y">
+            {savedSites.map((site) => (
+              <li key={site.host} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <Globe className="size-4 text-muted-foreground" />
+                    <span className="truncate font-medium text-sm">{site.displayName ?? site.host}</span>
+                  </div>
+                  <div className="mt-0.5 truncate font-mono text-muted-foreground text-xs">{site.host}</div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="text-right text-muted-foreground text-xs">
+                    <div>{site.lastVerifiedAt ? `Verified ${formatDate(site.lastVerifiedAt)}` : "Not verified"}</div>
+                    {site.expiresAt ? <div>Expires {formatDate(site.expiresAt)}</div> : null}
+                  </div>
+                  <Button type="button" size="sm" variant="outline" onClick={() => void startSignIn(site.host)}>
+                    <RefreshCcw className="size-4" />
+                    Re-sign in
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
     </main>
   );
 }
 
-function Metric({ icon: Icon, label, value, detail }: { icon: typeof Monitor; label: string; value: string; detail: string }) {
-  return (
-    <div className="rounded-lg border bg-card p-4">
-      <div className="flex items-center gap-2 text-muted-foreground text-xs uppercase tracking-wide">
-        <Icon className="size-4" />
-        {label}
-      </div>
-      <div className="mt-2 font-semibold text-lg">{value}</div>
-      <p className="mt-1 text-muted-foreground text-xs">{detail}</p>
-    </div>
-  );
-}
-
-function TargetFact({ title, detail, active }: { title: string; detail: string; active: boolean }) {
-  return (
-    <div className={active ? "rounded-lg border border-primary/40 bg-primary/5 p-3" : "rounded-lg border bg-background p-3"}>
-      <div className="font-medium text-sm">{title}</div>
-      <p className="mt-1 text-muted-foreground text-xs">{detail}</p>
-    </div>
-  );
-}
-
-function ProfileCard({ profile, onRefresh, onRevoke }: { profile: BrowserProfileRecord; onRefresh: () => void; onRevoke: () => void }) {
-  return (
-    <div className="rounded-lg border bg-background p-3">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="truncate font-medium text-sm">{profile.label}</div>
-          <div className="truncate font-mono text-muted-foreground text-xs">{profile.domain}</div>
-        </div>
-        <Badge variant={profile.status === "ready" ? "default" : "outline"}>{profileStatusLabel(profile.status)}</Badge>
-      </div>
-      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-        <SmallFact label="Cookies" value={profile.cookieCount.toString()} />
-        <SmallFact label="Storage" value={profile.localStorageKeyCount.toString()} />
-      </div>
-      <div className="mt-3 truncate font-mono text-muted-foreground text-[11px]">{profile.storagePath}</div>
-      <div className="mt-3 flex flex-wrap gap-2">
-        <Button type="button" size="sm" variant="outline" onClick={onRefresh}>
-          <RefreshCcw className="size-4" />
-          Refresh login
-        </Button>
-        <Button type="button" size="sm" variant="ghost" onClick={onRevoke}>
-          <Lock className="size-4" />
-          Revoke
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function LiveBrowserPanel({
-  latestRun,
-  onWatch,
-  onTakeOver,
-  onStop,
-  onPromote,
-}: {
-  latestRun: LocalAgentRun | undefined;
-  onWatch: (run: LocalAgentRun) => void;
-  onTakeOver: (run: LocalAgentRun) => void;
-  onStop: (run: LocalAgentRun) => void;
-  onPromote: (run: LocalAgentRun) => void;
-}) {
-  if (!latestRun?.browser) {
-    return (
-      <div className="rounded-lg border border-dashed p-5">
-        <h2 className="font-semibold text-base">Live browser</h2>
-        <p className="mt-2 text-muted-foreground text-sm">Start a browser task to watch the page, take over, stop it, or promote it to Basics Cloud Browser.</p>
-      </div>
-    );
-  }
-
-  const browser = latestRun.browser;
-  const canStop = latestRun.status !== "stopped" && latestRun.status !== "complete" && latestRun.status !== "failed";
-
-  return (
-    <div className="rounded-lg border bg-card">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
-        <div>
-          <h2 className="font-semibold text-base">Live browser</h2>
-          <p className="text-muted-foreground text-sm">{latestRun.taskTitle}</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Badge>{browserTargetShortLabel(browser.runtimeTarget)}</Badge>
-          <Badge variant="outline">{latestRun.status === "paused" ? "Take-over" : latestRun.status}</Badge>
-        </div>
-      </div>
-      <div className="p-4">
-        <div className="overflow-hidden rounded-lg border bg-background">
-          <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-2">
-            <div className="flex gap-1.5">
-              <span className="size-2.5 rounded-full bg-red-400/70" />
-              <span className="size-2.5 rounded-full bg-amber-400/70" />
-              <span className="size-2.5 rounded-full bg-emerald-400/70" />
-            </div>
-            <div className="ml-2 flex-1 truncate rounded bg-background px-2 py-1 font-mono text-muted-foreground text-xs">{browser.currentUrl}</div>
-          </div>
-          <div className="grid min-h-72 place-items-center bg-muted/20 p-6 text-center">
-            <div>
-              <Monitor className="mx-auto size-10 text-muted-foreground/50" />
-              <div className="mt-3 font-semibold">{browser.pageTitle}</div>
-              <p className="mt-1 text-muted-foreground text-sm">
-                {browser.loginRequired ? "Waiting for the user to sign in inside the managed browser." : "Browser task is running with watch, take-over, stop, and cloud promotion controls."}
-              </p>
-            </div>
-          </div>
-        </div>
-        <div className="mt-4 grid gap-2 sm:grid-cols-4">
-          <Button type="button" variant="outline" onClick={() => onWatch(latestRun)}>
-            <Eye className="size-4" />
-            Watch
-          </Button>
-          <Button type="button" variant="outline" onClick={() => onTakeOver(latestRun)}>
-            <Hand className="size-4" />
-            Take over
-          </Button>
-          <Button type="button" variant="outline" onClick={() => onStop(latestRun)} disabled={!canStop}>
-            {latestRun.status === "paused" ? <Pause className="size-4" /> : <Square className="size-4" />}
-            Stop
-          </Button>
-          <Button type="button" variant="outline" onClick={() => onPromote(latestRun)}>
-            <Globe className="size-4" />
-            Cloud
-          </Button>
-        </div>
-        <div className="mt-4 grid gap-2 md:grid-cols-3">
-          <SmallFact label="Run" value={latestRun.runId} mono />
-          <SmallFact label="Domain" value={browser.domain} />
-          <SmallFact label="Screenshot" value={browser.screenshotRef ?? "Not captured"} mono />
-        </div>
-        <div className="mt-3 flex flex-wrap gap-2 text-sm">
-          <Button type="button" size="sm" variant="ghost" asChild>
-            <Link href={`/runs/${latestRun.runId}`} prefetch={false}>
-              <ExternalLink className="size-4" />
-              Run detail
-            </Link>
-          </Button>
-          <Button type="button" size="sm" variant="ghost" asChild>
-            <Link href="/logs" prefetch={false}>
-              Logs
-            </Link>
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SmallFact({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div className="min-w-0 rounded-lg border bg-muted/20 p-2">
-      <div className="text-muted-foreground text-[11px] uppercase tracking-wide">{label}</div>
-      <div className={mono ? "mt-1 truncate font-mono text-[11px]" : "mt-1 truncate font-medium text-xs"}>{value}</div>
-    </div>
-  );
-}
-
-function profileStatusLabel(status: BrowserProfileRecord["status"]): string {
-  if (status === "ready") return "Ready";
-  if (status === "needs_login") return "Login";
-  if (status === "expired") return "Expired";
-  return "Revoked";
+function formatDate(value: string): string {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }

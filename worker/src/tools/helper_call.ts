@@ -142,8 +142,11 @@ export const helper_call = defineTool({
             if (!trimmed.startsWith("select ")) {
               throw new HelperRuntimeError("ctx.sql_read: only SELECT queries allowed");
             }
-            // Conservative allowlist of tables a helper can read. Add
-            // more here once we understand helper read patterns.
+            // Single statement only — block stacked queries / comment tricks.
+            if (query.includes(";") || query.includes("--") || query.includes("/*")) {
+              throw new HelperRuntimeError("ctx.sql_read: a single SELECT statement only (no ';', '--', or '/*')");
+            }
+            // Conservative allowlist of workspace-scoped tables.
             const ALLOWED_TABLES = [
               "automations",
               "automation_outputs",
@@ -152,6 +155,9 @@ export const helper_call = defineTool({
               "workspace_browser_sites",
               "cloud_skills",
               "cloud_agent_helpers",
+              "workspace_apps",
+              "workspace_app_records",
+              "workspace_documents",
             ];
             const tableMatch = /from\s+(?:public\.)?([a-z_][a-z0-9_]*)/i.exec(query);
             if (!tableMatch || !ALLOWED_TABLES.includes(tableMatch[1]!.toLowerCase())) {
@@ -159,10 +165,34 @@ export const helper_call = defineTool({
                 `ctx.sql_read: table not on allowlist (${tableMatch?.[1] ?? "unknown"}). Allowed: ${ALLOWED_TABLES.join(", ")}`,
               );
             }
-            // postgres-js parameterized: use sql.unsafe with the raw query
-            // and the params array. Workspace-scoping is the caller's
-            // responsibility (they need to AND workspace_id = $N).
-            const rows = await sql.unsafe(query, params as unknown[]);
+            // SECURITY (cross-tenant isolation): workspace scoping is ENFORCED
+            // here, never trusted to the helper author. The query MUST constrain
+            // workspace_id to THIS run's workspace; we force the bound value so a
+            // helper cannot read another workspace's rows.
+            const wsId = String((ctx as { workspaceId?: string }).workspaceId ?? "");
+            if (!wsId) throw new HelperRuntimeError("ctx.sql_read: no workspace context");
+            const finalParams = [...params] as unknown[];
+            const paramRef = /workspace_id\s*=\s*\$(\d+)/i.exec(query);
+            const literalRef = /workspace_id\s*=\s*'([0-9a-fA-F-]{36})'/i.exec(query);
+            if (paramRef) {
+              // Force the workspace_id parameter to this run's workspace.
+              finalParams[Number(paramRef[1]) - 1] = wsId;
+            } else if (literalRef) {
+              if (literalRef[1]!.toLowerCase() !== wsId.toLowerCase()) {
+                throw new HelperRuntimeError(
+                  "ctx.sql_read: workspace_id must equal this run's workspace — cross-workspace reads are blocked",
+                );
+              }
+            } else {
+              throw new HelperRuntimeError(
+                "ctx.sql_read: query MUST filter by workspace_id (e.g. WHERE workspace_id = $1) — cross-workspace reads are blocked",
+              );
+            }
+            // Reject obvious predicate-bypass attempts on the scope.
+            if (/\bor\b\s+(1\s*=\s*1|true)\b/i.test(query)) {
+              throw new HelperRuntimeError("ctx.sql_read: disallowed OR-bypass of the workspace filter");
+            }
+            const rows = await sql.unsafe(query, finalParams);
             return rows as Array<Record<string, unknown>>;
           },
           log: (...m: unknown[]) => {

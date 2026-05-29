@@ -2,23 +2,32 @@
 
 import { useQuery } from "@tanstack/react-query";
 
-import { findRun, mockRuns } from "@/mocks/runs";
-import { detailedRunChecks, detailedRunSteps, synthesizeSteps } from "@/mocks/run-steps";
-import { cloudAutomationRunChecks, cloudAutomationRunToRun, cloudAutomationRunToSteps, findCloudAutomationRun, readCloudAutomationStore } from "@/lib/cloud-automation-runtime";
-import { findLocalAgentRun, localAgentRunToRun, localAgentRunToSteps, readLocalAgentStore } from "@/lib/local-agent-runtime";
-import type { CheckResult, Run, RunStep, RunsFilter } from "@/types/runs";
+import type { Run, RunStep, RunsFilter } from "@/types/runs";
 
 /**
- * Mock-backed for now. When `api.trybasics.ai/v1/runtime/runs` is live,
- * swap the queryFn body for a fetch — page components don't change.
+ * Runs are backed entirely by REAL cloud_runs from the Basics Supabase project
+ * via /api/runs (server, service-role). No mock/local runs are merged anymore —
+ * a stuck worker is reaped server-side and stale "live" runs are downgraded in
+ * the mapper, so the list reflects real execution only.
  */
+async function getJson<T>(url: string, fallback: T): Promise<T> {
+  try {
+    const res = await fetch(url);
+    if (res.ok) return (await res.json()) as T;
+  } catch {
+    // network/offline — fall back
+  }
+  return fallback;
+}
+
 export function useRuns(filter: RunsFilter = {}) {
   return useQuery({
     queryKey: ["runs", filter],
     queryFn: async (): Promise<Run[]> => {
-      await delay();
-      return allRuns().filter((r) => matches(r, filter));
+      const { runs } = await getJson<{ runs: Run[] }>("/api/runs", { runs: [] });
+      return (runs ?? []).filter((run) => matches(run, filter));
     },
+    refetchInterval: 8000,
   });
 }
 
@@ -26,14 +35,12 @@ export function useRun(runId: string | undefined) {
   return useQuery({
     queryKey: ["run", runId],
     queryFn: async (): Promise<Run | null> => {
-      await delay();
       if (!runId) return null;
-      const localRun = findLocalAgentRun(readLocalAgentStore(), runId);
-      if (localRun) return localAgentRunToRun(localRun);
-      const cloudRun = findCloudAutomationRun(readCloudAutomationStore(), runId);
-      return cloudRun ? cloudAutomationRunToRun(cloudRun) : findRun(runId) ?? null;
+      const { run } = await getJson<{ run: Run | null }>(`/api/runs/${runId}`, { run: null });
+      return run ?? null;
     },
     enabled: Boolean(runId),
+    refetchInterval: 5000,
   });
 }
 
@@ -41,39 +48,13 @@ export function useRunSteps(runId: string | undefined) {
   return useQuery({
     queryKey: ["run-steps", runId],
     queryFn: async (): Promise<RunStep[]> => {
-      await delay();
       if (!runId) return [];
-      const localRun = findLocalAgentRun(readLocalAgentStore(), runId);
-      if (localRun) return localAgentRunToSteps(localRun);
-      const cloudRun = findCloudAutomationRun(readCloudAutomationStore(), runId);
-      if (cloudRun) return cloudAutomationRunToSteps(cloudRun);
-      const cached = detailedRunSteps[runId];
-      if (cached) return cached;
-      const run = findRun(runId);
-      return run ? synthesizeSteps(runId, run.stepCount, run.status) : [];
+      const { steps } = await getJson<{ steps: RunStep[] }>(`/api/runs/${runId}/steps`, { steps: [] });
+      return steps ?? [];
     },
     enabled: Boolean(runId),
+    refetchInterval: 5000,
   });
-}
-
-export function useRunChecks(runId: string | undefined) {
-  return useQuery({
-    queryKey: ["run-checks", runId],
-    queryFn: async (): Promise<CheckResult[]> => {
-      await delay();
-      if (!runId) return [];
-      const cloudRun = findCloudAutomationRun(readCloudAutomationStore(), runId);
-      if (cloudRun) return cloudAutomationRunChecks(cloudRun);
-      return detailedRunChecks[runId] ?? [];
-    },
-    enabled: Boolean(runId),
-  });
-}
-
-function allRuns(): Run[] {
-  const localRuns = readLocalAgentStore().runs.map(localAgentRunToRun);
-  const cloudRuns = readCloudAutomationStore().runs.map(cloudAutomationRunToRun);
-  return [...localRuns, ...cloudRuns, ...mockRuns];
 }
 
 function matches(run: Run, filter: RunsFilter): boolean {
@@ -86,8 +67,4 @@ function matches(run: Run, filter: RunsFilter): boolean {
     }
   }
   return true;
-}
-
-function delay(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 60));
 }

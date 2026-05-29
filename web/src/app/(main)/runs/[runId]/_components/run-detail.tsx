@@ -8,13 +8,24 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { OrbitRing } from "@/components/ui/orbit-ring";
 import { useRun } from "@/hooks/queries/use-runs";
 
+import { ConnectionNeededBanner } from "./connection-needed-banner";
 import { LiveView } from "./live-view";
 import { RunHeader } from "./run-header";
+import { RunMessageBox } from "./run-message-box";
 import { Timeline } from "./timeline";
 import { VerificationStrip } from "./verification-strip";
 
+const LIVE_STATUSES = new Set([
+  "pending",
+  "booting",
+  "running",
+  "paused",
+  "paused_by_user",
+  "verifying",
+]);
+
 export function RunDetail({ runId }: { runId: string }) {
-  const router = useRouter();
+  const { push } = useRouter();
   const { data: run, isLoading } = useRun(runId);
   const [takeover, setTakeover] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -36,7 +47,7 @@ export function RunDetail({ runId }: { runId: string }) {
         <button
           type="button"
           className="text-primary text-sm hover:underline"
-          onClick={() => router.push("/runs")}
+          onClick={() => push("/runs")}
         >
           ← Back to runs
         </button>
@@ -54,6 +65,8 @@ export function RunDetail({ runId }: { runId: string }) {
         onTogglePause={() => setPaused((v) => !v)}
       />
 
+      <ConnectionNeededBanner runId={run.id} />
+
       {takeover ? (
         <div className="overflow-hidden rounded-lg border bg-card">
           <div className="h-[calc(100vh-12rem)]">
@@ -61,14 +74,14 @@ export function RunDetail({ runId }: { runId: string }) {
           </div>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border bg-card">
-          <ResizablePanelGroup orientation="horizontal" className="h-[calc(100vh-18rem)] min-h-[520px]">
-            <ResizablePanel defaultSize={36} minSize={24}>
+        <div className="h-[calc(100vh-16rem)] min-h-[480px] overflow-hidden rounded-lg border bg-card">
+          <ResizablePanelGroup orientation="horizontal" className="h-full overflow-hidden">
+            <ResizablePanel defaultSize={36} minSize={24} className="min-h-0 overflow-hidden">
               <Timeline runId={run.id} />
             </ResizablePanel>
             <ResizableHandle withHandle />
-            <ResizablePanel defaultSize={64} minSize={40}>
-              <div className="flex h-full flex-col">
+            <ResizablePanel defaultSize={64} minSize={40} className="min-h-0 overflow-hidden">
+              <div className="flex h-full min-h-0 flex-col">
                 <div className="min-h-0 flex-1">
                   <LiveView run={run} takeover={false} onToggleTakeover={() => setTakeover(true)} />
                 </div>
@@ -78,6 +91,8 @@ export function RunDetail({ runId }: { runId: string }) {
           </ResizablePanelGroup>
         </div>
       )}
+
+      <RunMessageBox runId={run.id} isLive={LIVE_STATUSES.has(run.status)} />
     </div>
   );
 }

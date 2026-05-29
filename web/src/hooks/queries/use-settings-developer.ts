@@ -2,7 +2,6 @@
 
 import { useQuery } from "@tanstack/react-query";
 
-import { mockApiTokens, mockWebhooks } from "@/mocks/settings";
 import type { ApiToken, WebhookEndpoint } from "@/types/settings";
 
 export type DeveloperSettingsPayload = {
@@ -10,19 +9,14 @@ export type DeveloperSettingsPayload = {
   webhooks: WebhookEndpoint[];
 };
 
+/** Real developer settings — backed by /api/settings/developer (workspace_api_keys). */
 export function useSettingsDeveloper() {
   return useQuery({
     queryKey: ["settings", "developer"],
     queryFn: async (): Promise<DeveloperSettingsPayload> => {
-      await delay();
-      return {
-        tokens: mockApiTokens,
-        webhooks: mockWebhooks,
-      };
+      const res = await fetch("/api/settings/developer", { cache: "no-store" });
+      if (!res.ok) return { tokens: [], webhooks: [] };
+      return (await res.json()) as DeveloperSettingsPayload;
     },
   });
-}
-
-function delay(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 60));
 }

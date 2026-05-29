@@ -345,7 +345,9 @@ export const composio_call = defineTool({
 
       const callOnce = (): Promise<unknown> =>
         client.executeTool(toolSlug, {
-          userId: ctx.accountId,
+          // Use the connection's actual owner id so an account filed under
+          // the workspace_id (not the account_id) still executes correctly.
+          userId: connectedAccount.user_id ?? ctx.accountId,
           connectedAccountId: connectedAccount.id,
           arguments: params,
         });

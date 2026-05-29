@@ -51,6 +51,11 @@ interface PluginRuntime {
   skills: ReadonlyArray<LoadedSkill>;
   /** K.6 — agent-authored helpers visible to this run, injected into system prompt. */
   helpers: ReadonlyArray<LoadedHelperSummary>;
+  /** App surfaces this workspace has, injected so the agent can app_emit/app_query. */
+  apps: ReadonlyArray<AppSummaryForPrompt>;
+  /** Hosts with a saved cloud browser login (cookies), injected so the agent
+   * knows which gated sites it's already signed into and which to request. */
+  browserSites: ReadonlyArray<string>;
   sessionID: string;
   workspaceId: string;
   runId: string;
@@ -108,6 +113,49 @@ ${lines.join("\n")}
 </helpers>`;
 }
 
+interface AppSummaryForPrompt {
+  slug: string;
+  name: string;
+  kind: string;
+  field_keys: string[];
+}
+
+function composeAppsContext(apps: ReadonlyArray<AppSummaryForPrompt>): string {
+  if (apps.length === 0) return "";
+  const lines = apps.map(
+    (a) => `- ${a.slug} — "${a.name}" (${a.kind})${a.field_keys.length ? `; fields: ${a.field_keys.join(", ")}` : ""}`,
+  );
+  return `<apps>
+This workspace has Apps — typed surfaces (table/board/list) where outputs accumulate and the user reads/edits them. When a result is structured and durable (a lead, a digest entry, a row), persist it with \`app_emit({appSlug, data, status?, dedupKey?})\` instead of only returning text. Read prior data with \`app_query({appSlug})\`. Create a new app by calling app_emit with appName+appKind for a slug that doesn't exist yet.
+
+For long-form narrative output (a report, plan, brief, or drafted message), write a Document with \`doc_write({title, body, summary?, dedupKey?})\` (markdown body) so the user can review it in the Documents area.
+
+${lines.join("\n")}
+</apps>`;
+}
+
+function composeBrowserSitesContext(hosts: ReadonlyArray<string>): string {
+  const saved = hosts.length ? hosts.map((h) => `- ${h}`).join("\n") : "- (none saved yet)";
+  return `<browser_sites>
+This run's cloud browser is signed in to these sites (saved logins / cookies — navigate to them and you are already authenticated):
+${saved}
+
+If a task or automation needs to act on a gated site that is NOT in this list, do NOT try to log in with a password and do NOT treat a sign-in wall as a dead end. Instead, surface it clearly to the user as a required setup step: tell them to open Basichome → Browser → "Sign in to a site", sign in once in the secure cloud window for that host, and re-run. When you are setting up a NEW automation, list every gated site it will need up front (alongside any Composio connections) so the user can connect them before the first scheduled run. Treat missing browser logins with the same priority as missing Composio connections.
+</browser_sites>`;
+}
+
+function composeToolStrategyContext(): string {
+  // Reliability + cost ladder (cf. Clicky's "computer-use as last-mile fallback").
+  // Prefer structured APIs over the browser, and the browser over screen control.
+  return `<tool_strategy>
+Choose the most reliable, lowest-cost path that can do the job — escalate only when the simpler one can't:
+1. Structured API tools first — Composio actions (Gmail, Sheets, Calendar, etc.) and helper SQL/code. Deterministic, fast, no UI brittleness. If a connected toolkit can do it, use it.
+2. Cloud browser second — only when there is no API for the task (a site with no integration). Reuse a saved <browser_sites> login; never re-derive what an API tool already returns.
+3. Computer-use / local control LAST — only as a last-mile fallback when neither an API nor a plain cloud-browser flow works (e.g. a desktop app, a site that blocks cloud IPs, or a flow that needs the user's real local session).
+Don't open a browser to do something an API tool already does. Don't screen-drive what a browser can do with a URL + selector. State which rung you chose and why when it isn't obvious.
+</tool_strategy>`;
+}
+
 // H.2 — per-opencode-session runtime cache. Keyed by ToolContext.sessionID
 // so multiple sessions in the same opencode-serve process get isolated
 // Browserbase sessions, publishers, and skill contexts.
@@ -130,6 +178,13 @@ interface SessionBinding {
   /** E.7 — when true, mutating-outbound tools are intercepted into
    * dry_run_actions instead of executing. Sourced from cloud_runs.dry_run. */
   dryRun?: boolean;
+  /** Model B — 'cloud' (Browserbase, default) or 'local_relay' (drive the
+   * user's local Chrome through the relay). Sourced from cloud_runs. */
+  browserTarget?: string;
+  /** Model B — per-run relay session id pairing this worker to the desktop. */
+  relaySession?: string;
+  /** Model B — when true, screenshots are not persisted (ephemeral). */
+  ephemeral?: boolean;
 }
 
 /** Resolve sessionID → {workspaceId, runId, accountId}. Tries the bindings
@@ -141,9 +196,19 @@ async function resolveBinding(
   const sql = postgres(databaseUrl, { max: 1, prepare: false, idle_timeout: 5 });
   try {
     const rows = await sql<
-      Array<{ workspace_id: string; run_id: string; account_id: string; automation_id: string | null; dry_run: boolean | null }>
+      Array<{
+        workspace_id: string;
+        run_id: string;
+        account_id: string;
+        automation_id: string | null;
+        dry_run: boolean | null;
+        browser_target: string | null;
+        relay_session: string | null;
+        ephemeral: boolean | null;
+      }>
     >`
-      SELECT b.workspace_id, b.run_id, b.account_id, r.automation_id, r.dry_run
+      SELECT b.workspace_id, b.run_id, b.account_id, r.automation_id, r.dry_run,
+             r.browser_target, r.relay_session, r.ephemeral
         FROM public.cloud_session_bindings b
         LEFT JOIN public.cloud_runs r ON r.id = b.run_id
        WHERE b.session_id = ${sessionID}
@@ -157,6 +222,9 @@ async function resolveBinding(
       };
       if (rows[0].automation_id) binding.automationId = rows[0].automation_id;
       if (rows[0].dry_run === true) binding.dryRun = true;
+      if (rows[0].browser_target) binding.browserTarget = rows[0].browser_target;
+      if (rows[0].relay_session) binding.relaySession = rows[0].relay_session;
+      if (rows[0].ephemeral === true) binding.ephemeral = true;
       return binding;
     }
   } catch (e) {
@@ -176,7 +244,9 @@ async function resolveBinding(
 
 async function buildRuntime(sessionID: string): Promise<PluginRuntime> {
   const databaseUrl = readEnv("DATABASE_URL_POOLER");
-  const { workspaceId, runId, accountId, automationId, dryRun } = await resolveBinding(databaseUrl, sessionID);
+  const { workspaceId, runId, accountId, automationId, dryRun, browserTarget, relaySession, ephemeral } =
+    await resolveBinding(databaseUrl, sessionID);
+  const useLocalRelay = browserTarget === "local_relay" && Boolean(relaySession) && Boolean(process.env.RELAY_WS_URL);
   const bbApiKey = readEnv("BROWSERBASE_API_KEY");
   const bbProjectId = readEnv("BROWSERBASE_PROJECT_ID");
 
@@ -227,28 +297,50 @@ async function buildRuntime(sessionID: string): Promise<PluginRuntime> {
     }
   }
 
-  await publisher.emit({
-    type: "browserbase_session_creating",
-    payload: {
+  let bb: BrowserbaseSession;
+  let session: CdpSession;
+  if (useLocalRelay) {
+    // Model B — drive the user's LOCAL Chrome via the relay. Same opencode +
+    // warm pool; only the CDP endpoint differs (no Browserbase session). The
+    // user's real cookies/passkeys are used (their browser), and screenshots
+    // stay ephemeral (see ctx.ephemeral).
+    const base = process.env.RELAY_WS_URL!.replace(/\/+$/, "");
+    const sep = base.includes("?") ? "&" : "?";
+    const cdpWsUrl = `${base}${sep}role=worker&session=${encodeURIComponent(relaySession!)}`;
+    await publisher.emit({
+      type: "browserbase_session_creating",
+      payload: { workspaceId, runId, target: "local_relay", ephemeral: Boolean(ephemeral) },
+    });
+    session = await cdpAttach({ wsUrl: cdpWsUrl });
+    bb = { sessionId: `local-relay:${relaySession}`, cdpWsUrl, liveViewUrl: null } as unknown as BrowserbaseSession;
+    await publisher.emit({
+      type: "browserbase_session_attached",
+      payload: { sessionId: bb.sessionId, liveViewUrl: null, target: "local_relay", ephemeral: Boolean(ephemeral) },
+    });
+  } else {
+    await publisher.emit({
+      type: "browserbase_session_creating",
+      payload: {
+        workspaceId,
+        runId,
+        contextId: contextId ?? null,
+        contextSource,
+        ...(contextHost ? { contextHost } : {}),
+      },
+    });
+    bb = await createBrowserbaseSession({
+      apiKey: bbApiKey,
+      projectId: bbProjectId,
       workspaceId,
       runId,
-      contextId: contextId ?? null,
-      contextSource,
-      ...(contextHost ? { contextHost } : {}),
-    },
-  });
-  const bb = await createBrowserbaseSession({
-    apiKey: bbApiKey,
-    projectId: bbProjectId,
-    workspaceId,
-    runId,
-    ...(contextId ? { contextId } : {}),
-  });
-  const session = await cdpAttach({ wsUrl: bb.cdpWsUrl });
-  await publisher.emit({
-    type: "browserbase_session_attached",
-    payload: { sessionId: bb.sessionId, liveViewUrl: bb.liveViewUrl ?? null },
-  });
+      ...(contextId ? { contextId } : {}),
+    });
+    session = await cdpAttach({ wsUrl: bb.cdpWsUrl });
+    await publisher.emit({
+      type: "browserbase_session_attached",
+      payload: { sessionId: bb.sessionId, liveViewUrl: bb.liveViewUrl ?? null },
+    });
+  }
 
   // G.2 — persist liveUrl + sessionId on the run row so any consumer can iframe it.
   try {
@@ -344,7 +436,11 @@ async function buildRuntime(sessionID: string): Promise<PluginRuntime> {
     console.error("plugin: helper load failed; continuing helper-less", (e as Error).message);
   }
 
-  const accountsByToolkit = await resolveConnectedAccounts(accountId);
+  // Resolve under the account_id (preferred) AND the workspace_id, since
+  // OAuth links may have been minted under either key.
+  const accountsByToolkit = await resolveConnectedAccounts(accountId, {
+    extraUserIds: [workspaceId],
+  });
   await publisher
     .emit({
       type: "composio_resolved",
@@ -355,12 +451,59 @@ async function buildRuntime(sessionID: string): Promise<PluginRuntime> {
     })
     .catch((e) => console.error("composio_resolved emit failed", e));
 
+  // Apps — load this workspace's app surfaces so the agent can SEE what
+  // exists (to decide what to write to / read from) and use app_emit /
+  // app_query. Fail-soft: empty list on error so the run continues.
+  let workspaceApps: AppSummaryForPrompt[] = [];
+  try {
+    const appRows = await quotaSql<Array<{ slug: string; name: string; kind: string; fields: unknown }>>`
+      SELECT slug, name, kind, fields
+        FROM public.workspace_apps
+       WHERE workspace_id = ${workspaceId}::uuid AND status = 'active'
+       ORDER BY updated_at DESC
+       LIMIT 50
+    `;
+    workspaceApps = appRows.map((r) => ({
+      slug: r.slug,
+      name: r.name,
+      kind: r.kind,
+      field_keys: Array.isArray(r.fields)
+        ? (r.fields as Array<{ key?: string }>).map((f) => String(f?.key ?? "")).filter(Boolean)
+        : [],
+    }));
+    if (workspaceApps.length > 0) {
+      await publisher
+        .emit({ type: "apps_loaded", payload: { count: workspaceApps.length, slugs: workspaceApps.map((a) => a.slug) } })
+        .catch(() => undefined);
+    }
+  } catch (e) {
+    console.error("plugin: apps load failed; continuing", (e as Error).message);
+  }
+
+  // Saved browser-site logins (hosts) — so the agent knows which gated sites
+  // it's already signed into and can request missing ones during setup.
+  let savedBrowserHosts: string[] = [];
+  try {
+    const siteRows = await quotaSql<Array<{ host: string }>>`
+      SELECT host
+        FROM public.workspace_browser_sites
+       WHERE workspace_id = ${workspaceId}::uuid
+         AND expires_at > now()
+       ORDER BY last_verified_at DESC NULLS LAST
+       LIMIT 50
+    `;
+    savedBrowserHosts = siteRows.map((r) => r.host).filter(Boolean);
+  } catch (e) {
+    console.error("plugin: browser-sites host load failed; continuing", (e as Error).message);
+  }
+
   const ctx: WorkerToolContext = {
     session,
     runId,
     workspaceId,
     accountId,
     ...(automationId ? { automationId } : {}),
+    ...(ephemeral ? { ephemeral: true } : {}),
     workspaceRoot,
     skillStore,
     quotaStore,
@@ -426,6 +569,8 @@ async function buildRuntime(sessionID: string): Promise<PluginRuntime> {
     bbProjectId,
     skills,
     helpers,
+    apps: workspaceApps,
+    browserSites: savedBrowserHosts,
     sessionID,
     workspaceId,
     runId,
@@ -469,7 +614,11 @@ async function teardownRuntime(sessionID: string): Promise<void> {
     }
     await rt.publisher.emit({ type: "session_teardown", payload: { sessionID } }).catch(() => undefined);
     await cdpDetach(rt.session).catch(() => undefined);
-    await stopBrowserbaseSession(rt.bbApiKey, rt.bbProjectId, rt.bb.sessionId).catch(() => undefined);
+    // Model B local-relay runs have no Browserbase session to stop (the desktop
+    // owns the local Chrome lifecycle); only stop real Browserbase sessions.
+    if (!rt.bb.sessionId.startsWith("local-relay:")) {
+      await stopBrowserbaseSession(rt.bbApiKey, rt.bbProjectId, rt.bb.sessionId).catch(() => undefined);
+    }
     await rt.publisher.close().catch(() => undefined);
     await rt.listenSql.end({ timeout: 2 }).catch(() => undefined);
     await rt.quotaSql.end({ timeout: 2 }).catch(() => undefined);
@@ -651,6 +800,16 @@ export const BasicsBrowserPlugin: Plugin = async (_input) => {
           const helperFragment = composeHelperContext(rt.helpers);
           if (helperFragment) output.system.unshift(helperFragment);
         }
+        // Apps fragment — lets the agent see existing app surfaces.
+        if (rt.apps.length > 0) {
+          const appsFragment = composeAppsContext(rt.apps);
+          if (appsFragment) output.system.unshift(appsFragment);
+        }
+        // Browser-sites fragment — which gated sites are signed in, and to
+        // request (not brute-force) logins for ones that aren't.
+        output.system.unshift(composeBrowserSitesContext(rt.browserSites));
+        // Tool-strategy ladder — prefer APIs > browser > computer-use.
+        output.system.unshift(composeToolStrategyContext());
       } catch (e) {
         console.error("plugin: skill/helper system-transform failed", e);
       }

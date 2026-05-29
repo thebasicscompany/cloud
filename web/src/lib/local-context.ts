@@ -1,16 +1,55 @@
 import { BASICHOME_ONBOARDING_STORAGE_KEY, type BasichomeOnboardingRecord } from "@/lib/onboarding";
-import { createInitialLocalContextStore } from "@/mocks/local-context";
 import type {
   AgentContextResult,
+  CapturePermissionMap,
   CaptureStatus,
   ContextAuditEvent,
   DistilledContextSummary,
+  LocalContextStatus,
   LocalContextStore,
 } from "@/types/local-context";
 
-export const BASICHOME_LOCAL_CONTEXT_STORAGE_KEY = "basichome:lens:local-context:v1";
+// v2: abandons any v1 store that was seeded with demo/mock capture rows — the
+// store is now honestly empty until the local Lens engine produces real data.
+export const BASICHOME_LOCAL_CONTEXT_STORAGE_KEY = "basichome:lens:local-context:v2";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Honest empty local-context store. Lens capture is on-device; until the local
+ * daemon actually captures + distills, there is no context data. We seed an
+ * idle status with EMPTY pointers/summaries/audit (no fabricated rows). Real
+ * data populates as the local Lens engine runs on the desktop.
+ */
+export function createInitialLocalContextStore(onboarding?: BasichomeOnboardingRecord): LocalContextStore {
+  const now = new Date().toISOString();
+  const permissions: CapturePermissionMap = {
+    screen_recording: "skipped",
+    accessibility: "skipped",
+    input_control: "skipped",
+    audio: "skipped",
+    browser_profile: "skipped",
+    ...(onboarding?.permissions as Partial<CapturePermissionMap> | undefined),
+  };
+  const status: LocalContextStatus = {
+    service: "lens_local",
+    status: onboarding?.capture.status ?? "paused",
+    workspaceId: onboarding?.workspace.id ?? "workspace_local",
+    deviceId: onboarding?.device.id ?? "device_local",
+    localProfileId: onboarding?.device.localProfileId ?? "local-owner",
+    storageRoot: onboarding?.capture.storageLocation ?? "~/Library/Application Support/basichome/Lens",
+    retentionDays: onboarding?.capture.retentionDays ?? 30,
+    rawUploadEnabled: false,
+    encryptedAtRest: true,
+    eventDrivenCapture: true,
+    permissions,
+    lastCaptureAt: now,
+    nextRetentionSweepAt: now,
+    captureTriggers: ["app_switch", "window_focus", "click", "typing_pause", "scroll_stop", "clipboard_copy", "idle_fallback"],
+    localApi: { baseUrl: "http://127.0.0.1:3030/v1", auth: "loopback_bearer", exposesRawData: false },
+  };
+  return { schemaVersion: 1, status, rawPointers: [], summaries: [], auditEvents: [] };
+}
 
 export function readLocalContextStore(): LocalContextStore {
   if (typeof window === "undefined") {
