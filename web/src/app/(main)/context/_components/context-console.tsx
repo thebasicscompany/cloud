@@ -180,13 +180,13 @@ function Header() {
       <div>
         <h1 className="font-semibold text-2xl tracking-tight">Context</h1>
         <p className="mt-1 max-w-3xl text-muted-foreground text-sm">
-          Local Lens status, raw-local capture inventory, approved distilled summaries, and the privacy-safe context API agents can query.
+          What basichome remembers from your activity on this device, the summaries your agent is
+          allowed to use, and the privacy rules that keep the raw data on your computer.
         </p>
       </div>
       <div className="flex flex-wrap gap-2">
-        <Badge variant="outline">Screenpipe-grade</Badge>
-        <Badge variant="outline">Raw local</Badge>
-        <Badge variant="outline">Approved summaries</Badge>
+        <Badge variant="outline">Private by default</Badge>
+        <Badge variant="outline">Stays on this device</Badge>
       </div>
     </header>
   );
@@ -249,8 +249,8 @@ function RawTable({ store }: { store: LocalContextStore }) {
   return (
     <div className="rounded-lg border bg-card">
       <div className="border-b p-4">
-        <h2 className="font-semibold text-base">Raw local storage contract</h2>
-        <p className="text-muted-foreground text-sm">Pointers show what exists on device. The table does not expose raw pixels, OCR text, audio, or input contents.</p>
+        <h2 className="font-semibold text-base">What's stored on this device</h2>
+        <p className="text-muted-foreground text-sm">A list of what exists on your computer. It never shows the actual screen images, text, audio, or what you typed.</p>
       </div>
       <Table>
         <TableHeader>

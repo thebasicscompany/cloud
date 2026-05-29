@@ -7,7 +7,7 @@ import { ConnectionsConsole } from "./_components/connections-console";
 export const metadata: Metadata = {
   title: "Connections | basichome",
   description:
-    "Connect and reconnect your apps, model credentials, and saved browser logins for this workspace.",
+    "Connect your apps and save browser logins so your agent can act for you.",
 };
 
 export const dynamic = "force-dynamic";

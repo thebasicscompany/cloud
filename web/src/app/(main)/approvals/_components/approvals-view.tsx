@@ -22,10 +22,10 @@ export function ApprovalsView() {
   return (
     <div className="space-y-4">
       <section className="grid gap-3 md:grid-cols-4">
-        <SummaryCard label="Pending" value={pending.length.toString()} detail="Admin or owner decisions waiting." />
-        <SummaryCard label="Approved" value={approved.length.toString()} detail="Final authorization records." />
-        <SummaryCard label="Trust grants" value={activeTrustGrants.toString()} detail="Scoped autonomous rules active." />
-        <SummaryCard label="Blocked" value={(changes.length + rejected.length).toString()} detail="Needs changes, rejected, expired, or revoked." />
+        <SummaryCard label="Pending" value={pending.length.toString()} detail="Waiting for your decision." />
+        <SummaryCard label="Approved" value={approved.length.toString()} detail="Decisions you've signed off on." />
+        <SummaryCard label="Auto-approved" value={activeTrustGrants.toString()} detail="Actions allowed without asking." />
+        <SummaryCard label="Blocked" value={(changes.length + rejected.length).toString()} detail="Declined, expired, or revoked." />
       </section>
 
       <Tabs defaultValue="pending" className="space-y-4">
@@ -58,7 +58,7 @@ export function ApprovalsView() {
           ) : pending.length === 0 ? (
             <div className="rounded-lg border bg-card p-12 text-center">
               <p className="font-medium text-sm">All caught up.</p>
-              <p className="mt-1 text-muted-foreground text-sm">No workspace policy or rollout decisions are waiting.</p>
+              <p className="mt-1 text-muted-foreground text-sm">Nothing needs your approval right now.</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">

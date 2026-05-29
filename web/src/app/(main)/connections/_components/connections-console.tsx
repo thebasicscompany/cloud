@@ -186,8 +186,14 @@ export function ConnectionsConsole({ data }: { data: ConnectionsData }) {
     }
   }
 
+  // Hide basics-managed plumbing (the model/infra keys basichome provides). Those
+  // aren't something the user connects or fixes, so surfacing them as
+  // "not connected / needs attention" is a false alarm. Only show credentials the
+  // user actually owns (e.g. bring-your-own keys).
+  const userCredentials = data.credentials.filter((c) => c.provenance !== "basics_managed");
+
   const attentionCount =
-    data.credentials.filter((c) => credentialStatusMeta(c.status).attention).length +
+    userCredentials.filter((c) => credentialStatusMeta(c.status).attention).length +
     data.browserSites.filter((s) => isExpired(s.expiresAt)).length;
 
   return (
@@ -196,16 +202,18 @@ export function ConnectionsConsole({ data }: { data: ConnectionsData }) {
         <div>
           <h1 className="font-semibold text-2xl tracking-tight">Connections</h1>
           <p className="mt-1 max-w-3xl text-muted-foreground text-sm">
-            Connect and reconnect your apps, model credentials, and saved browser logins for
-            this workspace. Secret material is never shown here.
+            Connect your apps and save browser logins so your agent can act for you.
+            Passwords and secrets are never shown here.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Badge variant="outline">{data.toolkits.length} toolkits</Badge>
-          <Badge variant="outline">{data.credentials.length} credentials</Badge>
-          <Badge variant={attentionCount > 0 ? "destructive" : "outline"}>
-            {attentionCount} need attention
-          </Badge>
+          <Badge variant="outline">{data.toolkits.length} apps</Badge>
+          {userCredentials.length > 0 ? (
+            <Badge variant="outline">{userCredentials.length} keys</Badge>
+          ) : null}
+          {attentionCount > 0 ? (
+            <Badge variant="destructive">{attentionCount} need attention</Badge>
+          ) : null}
         </div>
       </header>
 
@@ -215,11 +223,13 @@ export function ConnectionsConsole({ data }: { data: ConnectionsData }) {
         onConnect={connect}
       />
 
-      <CredentialsCard
-        credentials={data.credentials}
-        connecting={connecting}
-        onConnect={connect}
-      />
+      {userCredentials.length > 0 ? (
+        <CredentialsCard
+          credentials={userCredentials}
+          connecting={connecting}
+          onConnect={connect}
+        />
+      ) : null}
 
       <BrowserSitesCard
         sites={data.browserSites}
@@ -269,7 +279,7 @@ function LoginSessionDialog({
           </DialogTitle>
           <DialogDescription>
             Log in to this site in the cloud browser below. When you&apos;re fully signed in, choose
-            &ldquo;Done — save cookies&rdquo; to capture the session for the agent. Cookie values are
+            &ldquo;Done, save my login&rdquo; so your agent can stay signed in. Your password is
             never shown or stored in this app.
           </DialogDescription>
         </DialogHeader>
@@ -292,7 +302,7 @@ function LoginSessionDialog({
         <DialogFooter className="items-center sm:justify-between">
           <span className="flex items-center gap-1.5 text-muted-foreground text-xs">
             <Lock className="size-3" />
-            Secure cloud browser — credentials stay in the session.
+            Secure cloud browser. Your password stays in the session.
           </span>
           <Button
             type="button"
@@ -302,7 +312,7 @@ function LoginSessionDialog({
             data-testid="save-cookies"
           >
             {savingCookies ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 data-icon="inline-start" />}
-            Done — save cookies
+            Done, save my login
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -327,18 +337,17 @@ function ToolkitsCard({
           <CardTitle>Connected apps</CardTitle>
         </div>
         <CardDescription>
-          Integrations available to this workspace. Connect or reconnect to refresh OAuth access.
+          Apps your agent can act through. Connect or reconnect to refresh access.
         </CardDescription>
       </CardHeader>
       <CardContent className="p-0">
         {toolkits.length === 0 ? (
-          <EmptyRow text="No toolkits cached for this workspace yet." />
+          <EmptyRow text="No apps connected yet. Connect one to give your agent something it can do for you." />
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Toolkit</TableHead>
-                <TableHead className="hidden sm:table-cell">Schema</TableHead>
+                <TableHead>App</TableHead>
                 <TableHead className="hidden md:table-cell">Last synced</TableHead>
                 <TableHead className="w-[160px] text-right">Action</TableHead>
               </TableRow>
@@ -349,14 +358,8 @@ function ToolkitsCard({
                   <TableCell>
                     <div className="flex items-center gap-2.5">
                       <ConnectionLogo slug={tk.slug} className="size-6 shrink-0" />
-                      <div>
-                        <div className="font-medium">{credentialLabel(tk.slug)}</div>
-                        <div className="font-mono text-muted-foreground text-xs">{tk.slug}</div>
-                      </div>
+                      <div className="font-medium">{credentialLabel(tk.slug)}</div>
                     </div>
-                  </TableCell>
-                  <TableCell className="hidden text-muted-foreground text-sm sm:table-cell">
-                    v{tk.schemaVersion ?? "—"}
                   </TableCell>
                   <TableCell className="hidden text-muted-foreground text-sm md:table-cell">
                     {formatRelative(tk.fetchedAt ?? undefined)}
@@ -396,7 +399,7 @@ function CredentialsCard({
           <CardTitle>Credentials</CardTitle>
         </div>
         <CardDescription>
-          Provider credentials for this workspace. Secrets are encrypted at rest and never displayed.
+          Keys you've added yourself. Secrets are encrypted and never shown.
         </CardDescription>
       </CardHeader>
       <CardContent className="p-0">
@@ -408,7 +411,7 @@ function CredentialsCard({
               <TableRow>
                 <TableHead>Provider</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="hidden md:table-cell">Provenance</TableHead>
+                <TableHead className="hidden md:table-cell">Source</TableHead>
                 <TableHead className="hidden lg:table-cell">Last used</TableHead>
                 <TableHead className="w-[160px] text-right">Action</TableHead>
               </TableRow>

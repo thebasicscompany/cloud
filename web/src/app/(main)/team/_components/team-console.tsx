@@ -72,7 +72,7 @@ export function TeamConsole({ workspaces, selectedWorkspaceId, members, invitati
       if (!data.ok) {
         setResult(`Failed: ${data.error ?? "unknown error"}`);
       } else if (data.emailed) {
-        setResult(`Invite sent to ${email.trim()} (email delivered via SES).`);
+        setResult(`Invite sent to ${email.trim()}.`);
         setEmail("");
         refresh();
       } else {
@@ -107,8 +107,8 @@ export function TeamConsole({ workspaces, selectedWorkspaceId, members, invitati
         <div className="flex flex-col gap-1">
           <h1 className="text-xl font-semibold">Team</h1>
           <p className="max-w-2xl text-sm text-muted-foreground">
-            Invite people to a workspace and manage seats. Invitations are emailed via SES; accepting
-            one adds the member, so a person can belong to multiple workspaces.
+            Invite people to a workspace and manage seats. They get an email with a link to join, and
+            once they accept they're added as a member. A person can belong to multiple workspaces.
           </p>
         </div>
         {workspaces.length > 0 ? (

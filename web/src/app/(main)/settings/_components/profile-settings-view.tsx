@@ -29,8 +29,7 @@ export function ProfileSettingsView({ profile }: { readonly profile: UserProfile
       <div className="space-y-1">
         <h2 className="text-lg font-semibold tracking-tight">Profile</h2>
         <p className="text-sm text-muted-foreground">
-          Loaded from your Supabase session. Saving edits here is local-only until we wire profile updates (or use Supabase
-          dashboard / OAuth provider metadata).
+          Your name and email for this workspace.
         </p>
       </div>
 

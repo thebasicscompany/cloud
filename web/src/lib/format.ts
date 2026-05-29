@@ -48,6 +48,12 @@ const CREDENTIAL_LABELS: Record<string, string> = {
   zendesk: "Zendesk",
   shopify: "Shopify",
   googlesheets: "Google Sheets",
+  googlecalendar: "Google Calendar",
+  googledrive: "Google Drive",
+  googledocs: "Google Docs",
+  notion: "Notion",
+  github: "GitHub",
+  outlook: "Outlook",
 };
 
 export function credentialLabel(key: string): string {

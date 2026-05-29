@@ -11,7 +11,8 @@ export default function ApprovalsPage() {
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">Approvals</h1>
         <p className="text-muted-foreground text-sm">
-          Workspace release, trust, policy, credential, and automation decisions. Admin approval authorizes the rollout; basichome performs deployment and rollback.
+          Things waiting for your sign-off before your agent acts. You approve or decline, and
+          basichome carries it out and can undo it if needed.
         </p>
       </header>
       <ApprovalsView />
