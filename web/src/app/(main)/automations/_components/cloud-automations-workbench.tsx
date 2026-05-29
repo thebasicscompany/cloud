@@ -44,17 +44,17 @@ export function CloudAutomationsWorkbench() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Automations</h1>
           <p className="mt-1 max-w-3xl text-muted-foreground text-sm">
-            Saved agent jobs — each runs a goal on a schedule or an event trigger, in Basics Cloud, with every
-            run inspectable in Runs and Logs. Ask basichome to set one up.
+            Tasks your agent runs for you on a set schedule or when something happens, all in the
+            cloud. Every run shows up in Runs and Logs. Ask basichome to set one up.
           </p>
         </div>
       </header>
 
       <section className="grid gap-3 md:grid-cols-4">
         <Metric icon={Wrench} label="Saved" value={(automations ?? []).length.toString()} detail={`${active.length} active`} />
-        <Metric icon={CalendarClock} label="Scheduled" value={scheduled.length.toString()} detail="Have a cron or webhook trigger." />
-        <Metric icon={Clock} label="Runs (7d)" value={runs7d.toString()} detail="Cloud runs across all automations." />
-        <Metric icon={Globe} label="Runtime" value="Basics Cloud" detail="Managed cloud worker · live browser view." />
+        <Metric icon={CalendarClock} label="Scheduled" value={scheduled.length.toString()} detail="Run on a timer or when something happens." />
+        <Metric icon={Clock} label="Runs (7d)" value={runs7d.toString()} detail="Across all your automations." />
+        <Metric icon={Globe} label="Runs in" value="Basics Cloud" detail="In the cloud, so you can watch it live." />
       </section>
 
       {isLoading ? (
@@ -136,29 +136,29 @@ export function CloudAutomationDetail({ id }: { id: string }) {
       <section className="grid gap-3 md:grid-cols-4">
         <Metric icon={CalendarClock} label="Schedule" value={schedule ? formatCron(schedule.cron) : "Manual"} detail={schedule ? schedule.timezone : "No registered cron"} />
         <Metric icon={ShieldCheck} label="Trust grants" value={activeTrust.length.toString()} detail={automation.approvalPolicy.mode.replaceAll("_", " ")} />
-        <Metric icon={Globe} label="Runtime" value="Basics Cloud" detail="Managed cloud worker with live browser view." />
-        <Metric icon={FileSearch} label="Runs" value={runs.length.toString()} detail="Cloud runs recorded for this automation." />
+        <Metric icon={Globe} label="Runs in" value="Basics Cloud" detail="In the cloud, so you can watch it live." />
+        <Metric icon={FileSearch} label="Runs" value={runs.length.toString()} detail="Times this automation has run." />
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)]">
         <div className="space-y-6">
-          <Panel title="Automation goal" description="The execution prompt passed through the cloud worker wrapper.">
+          <Panel title="What it does" description="What you asked this automation to do.">
             <div className="whitespace-pre-wrap rounded-lg border bg-muted/30 p-4 text-sm leading-relaxed">{automation.goal}</div>
           </Panel>
 
-          <Panel title="Runs" description="Every manual, scheduled, and webhook run for this automation. Open one for the full timeline.">
+          <Panel title="Runs" description="Every time this automation has run. Open one to see the full timeline.">
             <RunsTable runs={runs} />
           </Panel>
 
           {latestRun && latestRun.events.length > 0 ? (
-            <Panel title="Latest worker timeline" description="Live worker events for the most recent run.">
+            <Panel title="Most recent run" description="Step by step of what happened in the latest run.">
               <LatestRunDetails run={latestRun} />
             </Panel>
           ) : null}
         </div>
 
         <aside className="space-y-6">
-          <Panel title="Schedule" description="New automations should use automations[].triggers[].type='schedule'.">
+          <Panel title="Schedule" description="When this automation runs on its own.">
             <div className="space-y-3">
               <label htmlFor="automation-schedule-cron" className="space-y-1.5 text-sm">
                 <span className="text-muted-foreground text-xs uppercase tracking-wide">Cron</span>
@@ -180,7 +180,7 @@ export function CloudAutomationDetail({ id }: { id: string }) {
             </div>
           </Panel>
 
-          <Panel title="Triggers" description="Registered cloud entry points.">
+          <Panel title="Triggers" description="What can start this automation.">
             <div className="space-y-2">
               {automation.triggers.map((trigger) => (
                 <TriggerRow key={trigger.id} trigger={trigger} />
@@ -188,7 +188,7 @@ export function CloudAutomationDetail({ id }: { id: string }) {
             </div>
           </Panel>
 
-          <Panel title="Credentials" description="Credentials required by the cloud worker.">
+          <Panel title="Sign-ins it needs" description="Accounts this automation signs in to when it runs.">
             <div className="flex flex-wrap gap-1.5">
               {automation.requiredCredentials.map((credential) => (
                 <Badge key={credential} variant="secondary" className="h-auto min-h-5 py-0.5">
@@ -199,7 +199,7 @@ export function CloudAutomationDetail({ id }: { id: string }) {
             </div>
           </Panel>
 
-          <Panel title="Trust grants" description="Approval remember decisions scoped narrowly to this automation.">
+          <Panel title="Pre-approved actions" description="Actions you've allowed so it doesn't ask every time.">
             <div className="space-y-2">
               {automation.trustGrants.map((grant) => (
                 <TrustGrantRow key={grant.id} grant={grant} />
@@ -392,9 +392,8 @@ function LatestRunDetails({ run }: { run: CloudAutomationRun }) {
       </div>
       <div className="space-y-3">
         <div className="rounded-lg border p-3">
-          <div className="text-muted-foreground text-xs uppercase tracking-wide">Worker</div>
+          <div className="text-muted-foreground text-xs uppercase tracking-wide">Where it ran</div>
           <div className="mt-1 font-mono text-xs">{run.worker.poolId}</div>
-          <div className="mt-1 truncate font-mono text-muted-foreground text-[11px]">{run.worker.fargateTaskArn}</div>
         </div>
         <div className="rounded-lg border p-3">
           <div className="text-muted-foreground text-xs uppercase tracking-wide">Usage</div>
@@ -406,7 +405,7 @@ function LatestRunDetails({ run }: { run: CloudAutomationRun }) {
           </div>
         </div>
         <div className="rounded-lg border p-3">
-          <div className="text-muted-foreground text-xs uppercase tracking-wide">Replay JSONL</div>
+          <div className="text-muted-foreground text-xs uppercase tracking-wide">Raw events</div>
           <div className="mt-2 space-y-1">
             {lastFrames.map((frame) => (
               <code key={frame.id} className="block truncate rounded bg-muted px-2 py-1 font-mono text-[11px]">
@@ -432,7 +431,7 @@ function TriggerRow({ trigger }: { trigger: CloudAutomationTrigger }) {
       ? `${trigger.timezone} · ${trigger.eventBridgeName}`
       : trigger.type === "composio_webhook"
         ? trigger.triggerRef
-        : "POST /v1/automations/:id/run";
+        : "Started by hand";
   return (
     <div className="rounded-lg border p-3">
       <div className="flex items-center justify-between gap-2">
@@ -524,7 +523,7 @@ function statusForCloudRun(status: CloudAutomationRun["status"]): RunStatus {
 function triggerLabel(automation: CloudAutomationSummary): string {
   const types = new Set(automation.triggers.map((t) => t.type));
   if (types.has("schedule")) return "Schedule";
-  if (types.has("composio_webhook")) return "Webhook";
+  if (types.has("composio_webhook")) return "Event";
   return "Manual";
 }
 
