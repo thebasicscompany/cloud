@@ -4,7 +4,7 @@ import Link from "next/link";
 
 import { useQuery } from "@tanstack/react-query";
 
-import { ChevronRight, Wrench } from "@/icons";
+import { CheckCircle2, ChevronRight, Wrench } from "@/icons";
 
 import { LocalAgentWorkbench } from "@/app/(main)/_components/local-agent-workbench";
 import { PendingActionsBanner } from "@/app/(main)/_components/pending-actions-banner";
@@ -62,6 +62,14 @@ export function HomeDashboard() {
   const recent = (runs ?? []).slice(0, 6);
   const pending = (approvals ?? []).filter(isPendingApproval).slice(0, 3);
 
+  // "Ready for you" — runs that finished with a result in the last day, so a
+  // completed output is surfaced instead of silently sitting on the run page.
+  const READY = new Set(["completed", "verified", "unverified"]);
+  const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+  const ready = (runs ?? [])
+    .filter((r) => READY.has(r.status) && new Date(r.completedAt ?? r.startedAt).getTime() > dayAgo)
+    .slice(0, 4);
+
   return (
     <div className="mx-auto w-full max-w-5xl space-y-8">
       <header className="space-y-1 pt-2">
@@ -72,6 +80,35 @@ export function HomeDashboard() {
       </header>
 
       <PendingActionsBanner />
+
+      {ready.length > 0 ? (
+        <section className="space-y-3">
+          <SectionHeader title="Ready for you" href="/runs" action="All runs" />
+          <div className="grid gap-3 sm:grid-cols-2">
+            {ready.map((run) => (
+              <Link
+                key={run.id}
+                href={`/runs/${run.id}`}
+                prefetch={false}
+                className="group flex items-start gap-3 rounded-lg border bg-card p-4 transition-colors hover:border-foreground/30"
+              >
+                <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-500">
+                  <CheckCircle2 className="size-5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-medium text-sm">
+                    {run.workflowName && run.workflowName !== "ad-hoc" ? run.workflowName : "Agent run"}
+                  </div>
+                  <p className="mt-0.5 text-muted-foreground text-xs">
+                    Finished {formatRelative(run.completedAt ?? run.startedAt)} · view the result
+                  </p>
+                </div>
+                <ChevronRight className="mt-1 size-4 shrink-0 text-muted-foreground" />
+              </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {/* Hero — talk to the agent. No outer card: the workbench's own panels are
           the single containment layer (both Hallmark + impeccable: no nested cards). */}
