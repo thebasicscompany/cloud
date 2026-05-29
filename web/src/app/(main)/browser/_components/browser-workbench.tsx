@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import { CheckCircle2, Globe, KeyRound, Play, RefreshCcw, ShieldCheck } from "@/icons";
+import { CheckCircle2, Globe, KeyRound, Play, RefreshCcw, ShieldCheck, Trash2 } from "@/icons";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,22 @@ export function BrowserWorkbench({ savedSites }: { savedSites: ConnectionBrowser
   const [signInHost, setSignInHost] = useState("");
   const [signIn, setSignIn] = useState<SignInState>({ phase: "idle" });
   const [isDesktop, setIsDesktop] = useState(false);
+  const [removingHost, setRemovingHost] = useState<string | null>(null);
+
+  // Delete a saved login so the user stays in control of what agents can reuse.
+  const removeSite = async (host: string) => {
+    setRemovingHost(host);
+    try {
+      const res = await fetch(`/api/browser-sites/${encodeURIComponent(host)}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "Could not delete this login.");
+      refresh();
+    } catch (e) {
+      setSignIn({ phase: "error", message: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setRemovingHost(null);
+    }
+  };
 
   useEffect(() => {
     const bh = (window as unknown as { basichome?: { exportLocalCookies?: unknown } }).basichome;
@@ -374,6 +390,17 @@ export function BrowserWorkbench({ savedSites }: { savedSites: ConnectionBrowser
                   <Button type="button" size="sm" variant="outline" onClick={() => void startSignIn(site.host)}>
                     <RefreshCcw className="size-4" />
                     Re-sign in
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="text-muted-foreground hover:text-destructive"
+                    onClick={() => void removeSite(site.host)}
+                    disabled={removingHost === site.host}
+                  >
+                    <Trash2 className="size-4" />
+                    {removingHost === site.host ? "Removing…" : "Remove"}
                   </Button>
                 </div>
               </li>
