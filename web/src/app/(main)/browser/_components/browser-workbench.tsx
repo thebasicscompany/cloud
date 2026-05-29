@@ -347,7 +347,7 @@ export function BrowserWorkbench({ savedSites }: { savedSites: ConnectionBrowser
               <li>Quit Chrome completely.</li>
               <li>
                 Relaunch it with debugging on:{" "}
-                <code className="rounded bg-background px-1 py-0.5 font-mono text-xs">chrome --remote-debugging-port=9222</code>
+                <code className="rounded bg-background px-1 py-0.5 font-mono text-xs">chrome --remote-debugging-port=9222 --remote-allow-origins=*</code>
               </li>
               <li>Make sure you&apos;re signed in to {signIn.host} there, then click “Use my local login” again.</li>
             </ol>

@@ -104,7 +104,7 @@ export function LocalAgentWorkbench() {
       if (!bridged?.ok) {
         setTriggerError(
           bridged?.error ??
-            "Couldn't reach your Chrome. Open Chrome with remote debugging on (chrome --remote-debugging-port=9222), then try again.",
+            "Couldn't reach your Chrome. Open Chrome with remote debugging on (chrome --remote-debugging-port=9222 --remote-allow-origins=*), then try again.",
         );
         return;
       }
