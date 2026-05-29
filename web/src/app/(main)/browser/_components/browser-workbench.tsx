@@ -36,7 +36,8 @@ export function BrowserWorkbench({ savedSites }: { savedSites: ConnectionBrowser
 
   useEffect(() => {
     const bh = (window as unknown as { basichome?: { exportLocalCookies?: unknown } }).basichome;
-    setIsDesktop(typeof bh?.exportLocalCookies === "function");
+    const desktop = typeof bh?.exportLocalCookies === "function";
+    setIsDesktop(desktop);
     // Deep-link from the run "Sign in to <host>" banner: /browser?signin=youtube.com
     try {
       const want = new URLSearchParams(window.location.search).get("signin");
@@ -45,18 +46,24 @@ export function BrowserWorkbench({ savedSites }: { savedSites: ConnectionBrowser
         if (host) {
           setSignInHost(host);
           document.getElementById("signin-host")?.scrollIntoView({ behavior: "smooth", block: "center" });
+          // The whole point is to reuse the login you already have. On desktop,
+          // try the local Chrome cookies first — no re-typing in a cloud window.
+          // It falls back gracefully (needs_debug / error) so the manual cloud
+          // sign-in is still one click away.
+          if (desktop) void useMyLocalLogin(host);
         }
       }
     } catch {
       // no query params — ignore
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // "Use my local login" — export this host's cookies from the user's local
   // Chrome (via the desktop bridge) and save them so the cloud agent reuses the
   // login. No re-typing a password in a cloud window.
-  const useMyLocalLogin = async () => {
-    const host = signInHost.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "");
+  const useMyLocalLogin = async (hostArg?: string) => {
+    const host = (hostArg ?? signInHost).trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "");
     if (!host || !HOST_RE.test(host)) {
       setSignIn({ phase: "error", message: 'Enter a valid host like "linkedin.com".' });
       return;
@@ -282,21 +289,28 @@ export function BrowserWorkbench({ savedSites }: { savedSites: ConnectionBrowser
                 className="flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
             </div>
-            <Button type="button" onClick={() => void startSignIn(signInHost)} disabled={signIn.phase === "starting"}>
-              <KeyRound className="size-4" />
-              {signIn.phase === "starting" ? "Opening…" : "Start sign-in"}
-            </Button>
             {isDesktop ? (
-              <Button type="button" variant="outline" onClick={() => void useMyLocalLogin()} title="Reuse the login from your local Chrome">
-                <Globe className="size-4" />
-                Use my local login
+              <>
+                <Button type="button" onClick={() => void useMyLocalLogin()} title="Reuse the login from your local Chrome">
+                  <Globe className="size-4" />
+                  Use my login
+                </Button>
+                <Button type="button" variant="outline" onClick={() => void startSignIn(signInHost)} disabled={signIn.phase === "starting"}>
+                  <KeyRound className="size-4" />
+                  {signIn.phase === "starting" ? "Opening…" : "Sign in manually"}
+                </Button>
+              </>
+            ) : (
+              <Button type="button" onClick={() => void startSignIn(signInHost)} disabled={signIn.phase === "starting"}>
+                <KeyRound className="size-4" />
+                {signIn.phase === "starting" ? "Opening…" : "Start sign-in"}
               </Button>
-            ) : null}
+            )}
           </div>
         )}
         {isDesktop ? (
           <p className="mt-2 text-muted-foreground text-xs">
-            On desktop you can reuse a login from your own Chrome — no re-typing a password in the cloud window.
+            &ldquo;Use my login&rdquo; reuses the login from your own Chrome, so you don&apos;t re-type anything in the cloud window.
           </p>
         ) : null}
 
