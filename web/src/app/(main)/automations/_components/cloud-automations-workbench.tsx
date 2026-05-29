@@ -8,6 +8,7 @@ import {
   CalendarClock,
   ChevronRight,
   Clock,
+  Ellipsis,
   FileSearch,
   Globe,
   KeyRound,
@@ -21,6 +22,13 @@ import {
 import { StatusPill } from "@/app/(main)/runs/_components/status-pill";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -135,7 +143,7 @@ export function CloudAutomationDetail({ id }: { id: string }) {
 
       <section className="grid gap-3 md:grid-cols-4">
         <Metric icon={CalendarClock} label="Schedule" value={schedule ? formatCron(schedule.cron) : "Manual"} detail={schedule ? schedule.timezone : "No registered cron"} />
-        <Metric icon={ShieldCheck} label="Trust grants" value={activeTrust.length.toString()} detail={automation.approvalPolicy.mode.replaceAll("_", " ")} />
+        <Metric icon={ShieldCheck} label="Auto-approved" value={activeTrust.length.toString()} detail={automation.approvalPolicy.mode.replaceAll("_", " ")} />
         <Metric icon={Globe} label="Runs in" value="Basics Cloud" detail="In the cloud, so you can watch it live." />
         <Metric icon={FileSearch} label="Runs" value={runs.length.toString()} detail="Times this automation has run." />
       </section>
@@ -242,14 +250,10 @@ function AutomationCard({ automation }: { automation: CloudAutomationSummary }) 
         <MiniStat label="Trigger" value={triggerLabel(automation)} />
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-2">
+      <div className="mt-4 flex items-center gap-2">
         <Button size="sm" className="gap-1.5" onClick={() => actions.runNow.mutate(automation.id)} disabled={actions.runNow.isPending}>
           <Play className="size-3.5" />
           Run now
-        </Button>
-        <Button size="sm" variant="outline" className="gap-1.5" onClick={() => actions.triggerSchedule.mutate(automation.id)} disabled={actions.triggerSchedule.isPending}>
-          <CalendarClock className="size-3.5" />
-          Trigger schedule
         </Button>
         {automation.status === "paused" ? (
           <Button size="sm" variant="outline" className="gap-1.5" onClick={() => actions.resume.mutate(automation.id)} disabled={actions.resume.isPending}>
@@ -262,17 +266,31 @@ function AutomationCard({ automation }: { automation: CloudAutomationSummary }) 
             Pause
           </Button>
         )}
-        {automation.activeTrustGrantCount > 0 ? (
-          <Button size="sm" variant="ghost" className="gap-1.5" onClick={() => actions.revokeTrust.mutate(automation.id)} disabled={actions.revokeTrust.isPending}>
-            <ShieldCheck className="size-3.5" />
-            Revoke trust
-          </Button>
-        ) : (
-          <Button size="sm" variant="ghost" className="gap-1.5" onClick={() => actions.grantTrust.mutate(automation.id)} disabled={actions.grantTrust.isPending}>
-            <ShieldCheck className="size-3.5" />
-            Grant trust
-          </Button>
-        )}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="icon-sm" variant="ghost" className="ml-auto" aria-label={`More actions for ${automation.name}`}>
+              <Ellipsis className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => actions.triggerSchedule.mutate(automation.id)} disabled={actions.triggerSchedule.isPending}>
+              <CalendarClock className="size-4" />
+              Run on its schedule
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            {automation.activeTrustGrantCount > 0 ? (
+              <DropdownMenuItem onClick={() => actions.revokeTrust.mutate(automation.id)} disabled={actions.revokeTrust.isPending}>
+                <ShieldCheck className="size-4" />
+                Stop auto-approving
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem onClick={() => actions.grantTrust.mutate(automation.id)} disabled={actions.grantTrust.isPending}>
+                <ShieldCheck className="size-4" />
+                Approve actions automatically
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </section>
   );
@@ -301,12 +319,12 @@ function ActionStrip({ automation, latestRun }: { automation: CloudAutomation; l
       {automation.trustGrants.some((grant) => grant.status === "active") ? (
         <Button variant="outline" className="gap-1.5" onClick={() => actions.revokeTrust.mutate(automation.id)} disabled={actions.revokeTrust.isPending}>
           <ShieldCheck className="size-4" />
-          Revoke trust
+          Stop auto-approving
         </Button>
       ) : (
         <Button variant="outline" className="gap-1.5" onClick={() => actions.grantTrust.mutate(automation.id)} disabled={actions.grantTrust.isPending}>
           <ShieldCheck className="size-4" />
-          Grant trust
+          Approve automatically
         </Button>
       )}
       {latestRun ? (
@@ -508,7 +526,7 @@ function TrustBadge({ automation }: { automation: Pick<CloudAutomation, "trustGr
   return (
     <Badge variant={active > 0 ? "secondary" : "outline"} className="h-auto min-h-5 gap-1 py-0.5">
       <ShieldCheck data-icon="inline-start" />
-      {active > 0 ? `${active} trusted` : automation.approvalPolicy.mode.replaceAll("_", " ")}
+      {active > 0 ? `${active} auto-approved` : automation.approvalPolicy.mode.replaceAll("_", " ")}
     </Badge>
   );
 }
