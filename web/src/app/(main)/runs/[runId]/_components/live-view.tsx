@@ -6,6 +6,7 @@ import { ExternalLink, Hand, Maximize2, Monitor } from "@/icons";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { OrbitRing } from "@/components/ui/orbit-ring";
 import { cn } from "@/lib/utils";
 import type { Run } from "@/types/runs";
 
@@ -28,17 +29,21 @@ export function LiveView({ run, takeover, fullBleed, onToggleTakeover }: Props) 
   // the run is live, poll for the ACTIVE tab's view so the embed follows the
   // agent's real work instead of showing a blank page (#32).
   const [activeUrl, setActiveUrl] = useState<string | null>(null);
+  const [pageUrl, setPageUrl] = useState<string | null>(null);
   useEffect(() => {
     if (!liveSession) {
       setActiveUrl(null);
+      setPageUrl(null);
       return;
     }
     let on = true;
     const poll = () => {
       fetch(`/api/runs/${run.id}/live-view`, { cache: "no-store" })
         .then((r) => (r.ok ? r.json() : null))
-        .then((d: { liveViewUrl?: string | null } | null) => {
-          if (on && d?.liveViewUrl) setActiveUrl(d.liveViewUrl);
+        .then((d: { liveViewUrl?: string | null; pageUrl?: string | null } | null) => {
+          if (!on) return;
+          if (d?.liveViewUrl) setActiveUrl(d.liveViewUrl);
+          setPageUrl(d?.pageUrl ?? null);
         })
         .catch(() => {});
     };
@@ -50,6 +55,9 @@ export function LiveView({ run, takeover, fullBleed, onToggleTakeover }: Props) 
     };
   }, [liveSession, run.id]);
 
+  // The agent's tab is still blank (booting, planning, or waiting on a sign-in).
+  // Show that instead of a bare white frame, which reads like a broken page.
+  const onBlank = liveSession && (!pageUrl || pageUrl.startsWith("about:"));
   const embedUrl = liveSession ? (activeUrl ?? run.liveUrl) : run.recordingUrl;
   const externalUrl = embedUrl;
 
@@ -96,14 +104,32 @@ export function LiveView({ run, takeover, fullBleed, onToggleTakeover }: Props) 
               fullBleed && "h-full max-w-none rounded-none",
             )}
           >
-            <BrowserChrome url={run.browserUrl ?? (liveSession ? "browserbase · live session" : "browserbase · recording")} />
-            <iframe
-              src={embedUrl ?? undefined}
-              title={liveSession ? "Browserbase live view" : "Run recording"}
-              className="w-full flex-1 border-0 bg-white"
-              sandbox="allow-scripts allow-same-origin allow-forms"
-              allow="clipboard-read; clipboard-write"
+            <BrowserChrome
+              url={
+                liveSession && pageUrl && !pageUrl.startsWith("about:")
+                  ? pageUrl
+                  : run.browserUrl ?? (liveSession ? "browserbase · live session" : "browserbase · recording")
+              }
             />
+            <div className="relative w-full flex-1">
+              <iframe
+                src={embedUrl ?? undefined}
+                title={liveSession ? "Browserbase live view" : "Run recording"}
+                className="h-full w-full border-0 bg-white"
+                sandbox="allow-scripts allow-same-origin allow-forms"
+                allow="clipboard-read; clipboard-write"
+              />
+              {onBlank ? (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-background/85 text-center backdrop-blur-sm">
+                  <OrbitRing />
+                  <p className="font-medium text-sm">Agent is getting started…</p>
+                  <p className="max-w-xs text-muted-foreground text-xs">
+                    The browser is open but hasn&apos;t loaded a page yet — it&apos;s planning, or waiting on a
+                    sign-in. The view follows along as soon as it navigates.
+                  </p>
+                </div>
+              ) : null}
+            </div>
           </div>
         ) : (
           <div className="flex max-w-lg flex-col items-center gap-3 rounded-lg border bg-card p-6 text-center">

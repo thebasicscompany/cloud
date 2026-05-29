@@ -403,9 +403,12 @@ export async function getRunBrowserLoginNeeds(runId: string): Promise<string[]> 
  * the Browserbase debug API and prefer the last non-blank page. Returns null
  * (caller falls back to the stored URL) if the key/session/page isn't available.
  */
-export async function getActiveLiveViewUrl(runId: string): Promise<string | null> {
+export async function getActiveLiveView(
+  runId: string,
+): Promise<{ liveViewUrl: string | null; pageUrl: string | null }> {
+  const empty = { liveViewUrl: null, pageUrl: null };
   const supabase = getAdminClient();
-  if (!supabase) return null;
+  if (!supabase) return empty;
   const { data: run } = await supabase
     .from("cloud_runs")
     .select("browserbase_session_id")
@@ -413,13 +416,13 @@ export async function getActiveLiveViewUrl(runId: string): Promise<string | null
     .maybeSingle();
   const sid = (run?.browserbase_session_id as string | undefined) ?? undefined;
   const key = process.env.BROWSERBASE_API_KEY;
-  if (!sid || !key) return null;
+  if (!sid || !key) return empty;
   try {
     const res = await fetch(`https://api.browserbase.com/v1/sessions/${sid}/debug`, {
       headers: { "X-BB-API-Key": key },
       cache: "no-store",
     });
-    if (!res.ok) return null;
+    if (!res.ok) return empty;
     const json = (await res.json()) as {
       debuggerFullscreenUrl?: string;
       pages?: Array<{ url?: string; debuggerFullscreenUrl?: string; debuggerUrl?: string }>;
@@ -428,9 +431,12 @@ export async function getActiveLiveViewUrl(runId: string): Promise<string | null
     // Prefer the last non-about:blank page — that's the tab the agent is on.
     const real = [...pages].reverse().find((p) => p.url && !p.url.startsWith("about:"));
     const pick = real ?? pages[pages.length - 1];
-    return pick?.debuggerFullscreenUrl ?? pick?.debuggerUrl ?? json.debuggerFullscreenUrl ?? null;
+    return {
+      liveViewUrl: pick?.debuggerFullscreenUrl ?? pick?.debuggerUrl ?? json.debuggerFullscreenUrl ?? null,
+      pageUrl: pick?.url ?? null,
+    };
   } catch {
-    return null;
+    return empty;
   }
 }
 
