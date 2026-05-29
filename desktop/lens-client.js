@@ -21,8 +21,28 @@ const { spawn } = require("child_process");
 
 const LENS_HOST = "127.0.0.1";
 const LENS_PORT = Number(process.env.BASICS_LENS_PORT || 3030);
-const LENS_TOKEN = process.env.BASICS_LENS_TOKEN || ""; // provisioned by the Lens app/onboarding
 const LENS_SUPPORTED = ["darwin", "win32", "linux"].includes(process.platform);
+
+/** Lens data dir — matches the daemon's `default_cadence_data_dir()` (~/.lens,
+ *  overridable via CADENCE_DATA_DIR). The per-launch bearer token lives here. */
+function lensDataDir() {
+  const env = process.env.CADENCE_DATA_DIR;
+  return env && env.trim() ? env : path.join(os.homedir(), ".lens");
+}
+
+/** Read the daemon's per-launch first-party bearer token from <data dir>/
+ *  auth.token (JSON: { token, port, ... }). The daemon (re)writes it on every
+ *  launch, so read fresh each call. Env override wins for tests/onboarding. */
+function lensToken() {
+  if (process.env.BASICS_LENS_TOKEN) return process.env.BASICS_LENS_TOKEN;
+  try {
+    const raw = fs.readFileSync(path.join(lensDataDir(), "auth.token"), "utf8");
+    const parsed = JSON.parse(raw);
+    return typeof parsed?.token === "string" ? parsed.token : "";
+  } catch {
+    return "";
+  }
+}
 
 let _proc = null;
 let _active = null; // { sessionId }
@@ -149,7 +169,13 @@ async function ensureLensRunning() {
   if (s.running) return true;
   const bin = findLensBinary();
   if (!bin) return false;
-  _proc = spawn(bin, [], { detached: false, stdio: "ignore" });
+  // The daemon serves its /v1 API only under the `record` subcommand (a bare
+  // invocation just prints help and exits). Pin the loopback port and silence
+  // telemetry. It writes its per-launch bearer token to <data dir>/auth.token.
+  _proc = spawn(bin, ["record", "--port", String(LENS_PORT), "--disable-telemetry"], {
+    detached: false,
+    stdio: "ignore",
+  });
   _proc.on("exit", () => {
     _proc = null;
   });
@@ -178,7 +204,7 @@ async function startRecording({ label } = {}) {
   }
   try {
     const res = await reqJson("POST", "/v1/sessions", {
-      token: LENS_TOKEN,
+      token: lensToken(),
       // kind:"teach" marks this as an EXPLICIT narrated demonstration (the
       // pill), distinct from the always-on passive capture. The distiller can
       // treat a teach session as a direct routine (one example is enough,
@@ -202,7 +228,7 @@ async function stopRecording() {
   if (!_active) return { ok: false, error: "No active recording." };
   const sessionId = _active.sessionId;
   try {
-    const res = await reqJson("POST", `/v1/sessions/${encodeURIComponent(sessionId)}/stop`, { token: LENS_TOKEN });
+    const res = await reqJson("POST", `/v1/sessions/${encodeURIComponent(sessionId)}/stop`, { token: lensToken() });
     _active = null;
     if (res.status >= 200 && res.status < 300) {
       return { ok: true, sessionId, counts: res.json?.counts ?? res.json ?? null };

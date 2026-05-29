@@ -1,0 +1,6 @@
+# Built Lens daemon binaries are fetched from CI (see README.md) and bundled at
+# package time — not committed to source (they're tens of MB each).
+lens
+lens.exe
+lens-daemon
+lens-daemon.exe
