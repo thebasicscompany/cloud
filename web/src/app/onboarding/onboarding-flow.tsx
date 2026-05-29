@@ -51,7 +51,7 @@ const STEP_DEFS = [
   {
     id: "welcome",
     title: "Welcome",
-    description: "How basichome works — the pill, the layout, the loop.",
+    description: "How basichome works, and where to find things.",
   },
   {
     id: "workspace",
@@ -147,8 +147,8 @@ const WINDOWS_PERMISSIONS: readonly PermissionDef[] = [
     id: "screen_recording",
     title: "Screen capture",
     icon: Monitor,
-    detail: "Lets Lens understand visible work. Windows asks the first time it is needed — raw frames stay local.",
-    why: "Used for screen context, OCR fallback, and routine demonstrations.",
+    detail: "Lets Lens see what's on your screen. Windows asks the first time it's needed, and nothing it sees leaves your computer.",
+    why: "Used to understand what you're working on and to record routines you demonstrate.",
   },
   {
     id: "input_control",
@@ -181,7 +181,7 @@ const ENGINE_OPTIONS = [
   {
     id: "codex_local",
     title: "Managed cloud (recommended)",
-    detail: "Recommended first. Runs in Basics Cloud — no API keys to set up.",
+    detail: "Recommended. Runs in Basics Cloud, with no API keys to set up.",
     badge: "No key required",
   },
   {
@@ -475,8 +475,8 @@ function WelcomeStep({ os }: { os: ClientOS }) {
   const chord = os === "windows" ? "Ctrl + Shift + Space" : "⌘ + Shift + Space";
   const areas: Array<{ icon: Icon; title: string; detail: string }> = [
     { icon: Home, title: "Home", detail: "Talk to your agent, see your agents, and your recent documents." },
-    { icon: Folder, title: "Apps", detail: "Typed surfaces where run outputs land — a CRM, a digest. You and agents read & write them." },
-    { icon: FileCheck2, title: "Documents", detail: "Long-form things agents write — reports, plans, drafts — for you to review." },
+    { icon: Folder, title: "Apps", detail: "Simple databases where your runs drop results, like a CRM or a digest. You and your agents can both read and write them." },
+    { icon: FileCheck2, title: "Documents", detail: "Longer things your agents write, like reports, plans, and drafts, for you to review." },
     { icon: Globe, title: "Browser", detail: "Run browser tasks in the cloud or on your own Chrome, and sign in to sites once." },
     { icon: Play, title: "Runs", detail: "Watch the agent work live and take over any time." },
     { icon: ClipboardCheck, title: "Approvals", detail: "Risky actions pause here with a preview before they happen." },
@@ -486,7 +486,7 @@ function WelcomeStep({ os }: { os: ClientOS }) {
   return (
     <div className="space-y-6">
       {/* The pill */}
-      <div className="rounded-lg border bg-gradient-to-br from-primary/10 to-transparent p-5">
+      <div className="rounded-lg border bg-primary/5 p-5">
         <div className="flex items-start gap-3">
           <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
             <Mic className="size-5" />
@@ -496,7 +496,7 @@ function WelcomeStep({ os }: { os: ClientOS }) {
             <p className="text-muted-foreground text-sm">
               Press{" "}
               <kbd className="rounded border bg-background px-1.5 py-0.5 font-mono text-xs">{chord}</kbd>{" "}
-              to summon the pill and tell the agent what to do — by voice or text — no matter what app you&apos;re in.
+              to summon the pill and tell the agent what to do, by voice or text, no matter what app you&apos;re in.
               While it works, the pill rides along showing progress; the main window is where you review.
               basichome is review-first, so chat stays minimal.
             </p>
@@ -764,9 +764,9 @@ function EngineStep({
         <div className="flex items-start gap-3">
           <KeyRound className="mt-0.5 size-5 text-primary" />
           <div className="space-y-1">
-            <h3 className="font-medium text-sm">No forced API key on first run</h3>
+            <h3 className="font-medium text-sm">No API key needed to start</h3>
             <p className="text-muted-foreground text-sm">
-              The recommended mode runs in Basics Cloud with managed credits — no API keys to set up. BYOK remains available in team settings if you want it.
+              The recommended mode runs in Basics Cloud with credits included, so there are no API keys to set up. You can add your own key later in team settings if you want.
             </p>
           </div>
         </div>
