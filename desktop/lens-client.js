@@ -188,10 +188,15 @@ async function ensureLensRunning() {
   return false;
 }
 
-/** Start a bounded capture session (lazily spawns Lens on any supported OS). */
-async function startRecording({ label } = {}) {
+/** Start a bounded capture session (lazily spawns Lens on any supported OS).
+ *  workspaceId + userId scope the session and are REQUIRED by /v1/sessions; the
+ *  desktop pill supplies them from /api/lens/context. */
+async function startRecording({ label, workspaceId, userId } = {}) {
   if (!LENS_SUPPORTED) {
     return { ok: false, error: "Recording isn't supported on this platform." };
+  }
+  if (!workspaceId || !userId) {
+    return { ok: false, error: "Sign in to basichome before recording a routine." };
   }
   const up = await ensureLensRunning();
   if (!up) {
@@ -205,12 +210,12 @@ async function startRecording({ label } = {}) {
   try {
     const res = await reqJson("POST", "/v1/sessions", {
       token: lensToken(),
-      // kind:"teach" marks this as an EXPLICIT narrated demonstration (the
+      // role:"teach" marks this as an EXPLICIT narrated demonstration (the
       // pill), distinct from the always-on passive capture. The distiller can
       // treat a teach session as a direct routine (one example is enough,
       // since the user narrated the intent) rather than waiting for the
       // passive pattern to repeat enough to cluster.
-      body: { label: label ?? "Recorded routine", source: "basichome", kind: "teach" },
+      body: { workspace_id: workspaceId, user_id: userId, label: label ?? "Recorded routine", role: "teach" },
     });
     const sessionId = res.json?.id ?? res.json?.session_id;
     if (res.status >= 200 && res.status < 300 && sessionId) {

@@ -19,7 +19,7 @@ const TIMESLICE_MS = 250;
 
 interface PillBridge {
   isDesktop?: boolean;
-  lensRecordStart?: (opts: { label?: string }) => Promise<{ ok?: boolean; sessionId?: string; error?: string }>;
+  lensRecordStart?: (opts: { label?: string; workspaceId?: string; userId?: string }) => Promise<{ ok?: boolean; sessionId?: string; error?: string }>;
   lensRecordStop?: () => Promise<{ ok?: boolean; sessionId?: string; error?: string }>;
   closePill?: () => void;
 }
@@ -113,7 +113,17 @@ export default function PillPage() {
     (async () => {
       const bh = bridge();
       try {
-        const r = bh?.lensRecordStart ? await bh.lensRecordStart({ label: "Recorded routine" }) : { ok: false };
+        // Lens scopes the session to the current workspace + owner account.
+        let ctx: { workspaceId?: string; userId?: string } = {};
+        try {
+          const res = await fetch("/api/lens/context");
+          if (res.ok) ctx = await res.json();
+        } catch {
+          /* fall through — startRecording will surface a clear error */
+        }
+        const r = bh?.lensRecordStart
+          ? await bh.lensRecordStart({ label: "Recorded routine", workspaceId: ctx.workspaceId, userId: ctx.userId })
+          : { ok: false };
         if (r?.ok) sessionId.current = r.sessionId ?? null;
         else if (r?.error) setError(r.error);
       } catch {
