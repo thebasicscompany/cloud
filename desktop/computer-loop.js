@@ -23,6 +23,15 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+// macOS gates input injection (Accessibility + Automation) and capture (Screen
+// Recording) behind TCC. When a hands action fails for that reason, surface a
+// clear, actionable message instead of a cryptic osascript error.
+const MAC_PERM_RE = /not authoriz|assistive access|accessibility|screen recording|-1743|-25211|apple events/i;
+function macPermissionHint(errMsg) {
+  if (process.platform !== "darwin" || !MAC_PERM_RE.test(String(errMsg))) return null;
+  return "macOS needs permission: open System Settings → Privacy & Security and enable basichome under Accessibility, Screen Recording, and Automation, then try again.";
+}
+
 async function fetchContext() {
   try {
     const res = await fetch(`${APP_URL}/api/lens/context`, { cache: "no-store" });
@@ -106,7 +115,10 @@ async function runComputerUse({ goal, maxSteps = MAX_STEPS, onStep } = {}) {
         try {
           await hands.act(scaleAction(a, shot));
         } catch (err) {
-          if (typeof onStep === "function") onStep({ step: step + 1, error: err instanceof Error ? err.message : String(err) });
+          const msg = err instanceof Error ? err.message : String(err);
+          const hint = macPermissionHint(msg);
+          if (hint) return { error: hint }; // permission gap — stop with guidance, don't thrash
+          if (typeof onStep === "function") onStep({ step: step + 1, error: msg });
         }
         await sleep(STEP_PAUSE_MS);
       }
@@ -120,7 +132,8 @@ async function runComputerUse({ goal, maxSteps = MAX_STEPS, onStep } = {}) {
     }
     return { done: false, text: "Reached the step limit without finishing.", steps: maxSteps };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : String(err) };
+    const msg = err instanceof Error ? err.message : String(err);
+    return { error: macPermissionHint(msg) || msg };
   } finally {
     _running = false;
     _stop = false;
