@@ -131,4 +131,12 @@ jobs:
       - name: Deploy SST production
         env:
           WORKER_IMAGE_TAG: ${{ github.sha }}
+          # Production parity: keep the relay service AND the api.trybasics.ai
+          # HTTPS listener. Without these, the default deploy mode (meant for a
+          # clean account) silently deletes the relay and drops the custom-domain
+          # listener — breaking prod. The cert is pre-validated, so the deploy
+          # never blocks on ACM DNS validation.
+          DEPLOY_RELAY: "1"
+          DEPLOY_API_DOMAIN: "1"
+          API_CERT_ARN: arn:aws:acm:us-east-1:635649352555:certificate/c375d77b-7411-4352-87cb-6c6ae7374a40
         run: pnpm sst deploy --stage production

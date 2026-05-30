@@ -465,8 +465,15 @@ export default $config({
           `arn:aws:iam::635649352555:role/basics-scheduler-invoke-production`,
       },
       loadBalancer: {
+        // With the custom domain on, serve BOTH 80/http (the raw ELB URL — kept
+        // as a stable fallback) AND 443/https (api.trybasics.ai). Serving only
+        // 443 silently drops the ELB's HTTP listener, which breaks any client
+        // still pointed at the ELB URL. Without the domain, plain HTTP only.
         ports: useApiCustomDomain
-          ? [{ listen: "443/https", forward: "3001/http" }]
+          ? [
+              { listen: "80/http", forward: "3001/http" },
+              { listen: "443/https", forward: "3001/http" },
+            ]
           : [{ listen: "80/http", forward: "3001/http" }],
         ...(useApiCustomDomain && apiCertArn
           ? {
