@@ -164,6 +164,12 @@ app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
   });
 
+  // Watch for delegated computer_use sub-tasks whenever the app is open — the
+  // desktop is the executor for any LOCAL run, not only browser-relay ones, so
+  // a pure computer-use local run is covered too. Cheap poll; only acts on
+  // requests the gated worker tool enqueues.
+  computerWatcher.startWatcher();
+
   // Start always-on background capture ONLY if the user has opted in (it's off
   // by default — see Settings → Capture). Teach recordings still start the
   // daemon on demand, so recording works without background mode.
