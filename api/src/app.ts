@@ -35,6 +35,15 @@ import { outputsSseRoute } from './routes/outputs-sse.js'
 import { authoringRoute } from './routes/authoring.js'
 import { lensDistillRoute, lensMemoryRoute } from './routes/lens-distill.js'
 import { computerUseRoute } from './routes/computer-use.js'
+import { documentsRoute } from './routes/documents.js'
+import { appsRoute } from './routes/apps.js'
+import { suggestionsRoute } from './routes/suggestions.js'
+import { workspaceSettingsRoute } from './routes/workspace-settings.js'
+import { connectionsRoute } from './routes/connections.js'
+import { pendingApprovalsRoute } from './routes/pending-approvals.js'
+import { runViewsRoute } from './routes/run-views.js'
+import { agentRoute } from './routes/agent.js'
+import { automationViewsRoute } from './routes/automation-views.js'
 import type { WorkspaceToken } from './lib/jwt.js'
 import type { AuthenticatedWorkspaceApiKey } from './lib/workspace-api-keys.js'
 
@@ -159,6 +168,20 @@ export function buildApp() {
   // Computer-use brain (one step per call) for LOCAL runs — the desktop owns
   // eyes + hands; this is the pluggable model/harness. Carries workspace-JWT auth.
   app.route('/v1/computer', computerUseRoute)
+
+  // Renderer data surfaces (per-user, workspace-scoped by the JWT). These power
+  // the web/Electron renderer directly so it never needs the service-role admin
+  // client or a hardcoded workspace. Each route file applies requireWorkspaceJwt
+  // per-handler.
+  app.route('/v1/documents', documentsRoute)
+  app.route('/v1/apps', appsRoute)
+  app.route('/v1/suggestions', suggestionsRoute)
+  app.route('/v1/settings', workspaceSettingsRoute)
+  app.route('/v1/connections', connectionsRoute)
+  app.route('/v1/pending-approvals', pendingApprovalsRoute)
+  app.route('/v1/run-views', runViewsRoute)
+  app.route('/v1/agent', agentRoute)
+  app.route('/v1/automation-views', automationViewsRoute)
 
   // C.5 — /v1/approvals routes carry their OWN auth (workspace JWT OR
   // signed access token via ?token=); intentionally no blanket middleware.
