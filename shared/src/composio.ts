@@ -350,8 +350,9 @@ export class ComposioClient {
     // connections under either the account_id or the workspace_id depending
     // on where the OAuth was initiated, so callers can pass both ids to find
     // a connection regardless of which key it was filed under.
-    const ids = (Array.isArray(userId) ? userId : [userId])
-      .filter((id): id is string => Boolean(id))
+    const ids = (Array.isArray(userId) ? userId : [userId]).filter((id): id is string =>
+      Boolean(id),
+    )
     if (ids.length === 0) return []
     const params = new URLSearchParams({ user_ids: ids.join(','), limit: '1000' })
     return normalizeItems<ComposioConnectedAccount>(
