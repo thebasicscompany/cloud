@@ -598,7 +598,10 @@ async function buildRuntime(sessionID: string): Promise<PluginRuntime> {
     helpers,
     apps: workspaceApps,
     browserSites: savedBrowserHosts,
-    isLocal: useLocalRelay,
+    // computer_use is offered when the desktop is the executor — either a
+    // browser-relay run OR a pure compute run (no browser bridged at all).
+    // 'local_compute' offers computer_use WITHOUT launching any local Chrome.
+    isLocal: useLocalRelay || browserTarget === "local_compute",
     sessionID,
     workspaceId,
     runId,

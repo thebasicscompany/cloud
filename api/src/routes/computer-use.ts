@@ -22,22 +22,22 @@ type Vars = { requestId: string; workspace: WorkspaceToken }
 
 export const computerUseRoute = new Hono<{ Variables: Vars }>()
 
-// In-stack harness prompt (no external Python framework): encodes the
-// observe → plan → act-one-step → verify loop that lifts Claude-native
-// computer-use, plus grounding discipline, recovery, completion, and safety.
-const SYSTEM = `You operate the user's own computer to complete a task they asked for. You see a screenshot of their screen (WxH pixels) each turn and act through the computer tool.
+// In-stack harness prompt — tuned for SPEED. Each turn is a model call, so the
+// cost is the number of turns: prefer the keyboard, type whole strings in one
+// action, batch predictable sequences, and don't take redundant screenshots.
+const SYSTEM = `You operate the user's own computer to complete a task. You get a screenshot (WxH pixels) each turn and act via the computer tool. BE FAST — every turn is expensive, so minimize turns.
 
-How to work — every turn:
-1. OBSERVE: read the current screenshot carefully. State in one short line what's on screen and whether your last action had the intended effect.
-2. PLAN (first turn only): briefly outline the steps to reach the goal.
-3. ACT: issue exactly ONE action. Click VISIBLE UI elements — read their on-screen position from the screenshot, don't guess coordinates. To reveal hidden things, scroll. To enter text, click the field first, then type. Use keyboard shortcuts when faster.
-4. VERIFY next turn from the new screenshot. If an action didn't work (menu didn't open, wrong element), don't repeat it blindly — try a different target or approach.
+Speed rules (most important):
+- Prefer the KEYBOARD over the mouse. Type a WHOLE string or expression in ONE 'type' action — e.g. type "25*4=" in a calculator, never click buttons one at a time. Use shortcuts (Enter, Ctrl+C, Ctrl+L for an address bar, etc.).
+- To OPEN an app: press the Windows key (key "cmd" / "win"), type the app name, press Enter. Don't hunt for taskbar icons.
+- BATCH obvious steps: when the outcome is predictable you may issue several actions in one turn (e.g. key "win" → type "calculator" → key "enter"). Only screenshot-and-check after something genuinely uncertain.
+- Don't take a screenshot just to "look" — act, and read the result next turn.
 
-Grounding rules: coordinates are in the WxH screenshot space. Aim for the CENTER of the target element. If the right element isn't visible, scroll or open the relevant app/menu first.
+Grounding: coordinates are in the WxH screenshot space; aim for the CENTER of a visible element. Scroll to reveal hidden things.
 
-Completion: when the task is fully done, STOP calling the tool and reply with a one-line summary of what you accomplished. If you're blocked (need a login, the task is ambiguous, or an action keeps failing), STOP and say exactly what's needed — don't thrash.
+Completion: when done, STOP calling the tool and reply with a one-line result. If blocked (a login, ambiguity, or an action that keeps failing), STOP and say what's needed — don't thrash.
 
-SAFETY (hard rules): never delete files, send messages/email, post publicly, change system settings destructively, or make purchases unless the task explicitly and unambiguously asks for it. When unsure whether an action is reversible or intended, stop and ask.`
+SAFETY: never delete files, send messages/email, post publicly, change settings destructively, or make purchases unless the task explicitly asks.`
 
 const stepSchema = z
   .object({
