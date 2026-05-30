@@ -102,16 +102,21 @@ async function key(combo) {
     const using = parts
       .map((m) => ({ cmd: "command down", meta: "command down", ctrl: "control down", control: "control down", alt: "option down", option: "option down", shift: "shift down" }[m]))
       .filter(Boolean);
-    const special = { enter: "return", escape: "escape", esc: "escape", tab: "tab", backspace: "delete", up: "up arrow", down: "down arrow", left: "left arrow", right: "right arrow" }[base];
-    if (special && using.length === 0) return run("osascript", ["-e", `tell application "System Events" to key code ${macKeyCode(base)}`]);
     const usingClause = using.length ? ` using {${using.join(", ")}}` : "";
-    return run("osascript", ["-e", `tell application "System Events" to keystroke ${JSON.stringify(base.length === 1 ? base : "")}${usingClause}`]);
+    // Special keys use `key code` (works WITH modifiers too — fixes Cmd+Enter
+    // etc.); regular characters use `keystroke`.
+    const code = macKeyCode(base);
+    if (code != null) return run("osascript", ["-e", `tell application "System Events" to key code ${code}${usingClause}`]);
+    return run("osascript", ["-e", `tell application "System Events" to keystroke ${JSON.stringify(base)}${usingClause}`]);
   }
   return run("xdotool", ["key", parts.concat(base).join("+")]);
 }
 
 function macKeyCode(k) {
-  return { enter: 36, return: 36, tab: 48, space: 49, escape: 53, esc: 53, backspace: 51, delete: 51, left: 123, right: 124, down: 125, up: 126 }[k] ?? 36;
+  // Returns a key code for special keys, or undefined for regular characters
+  // (which go through `keystroke`). Must NOT default — defaulting to Return
+  // would turn every unknown key into Enter.
+  return { enter: 36, return: 36, tab: 48, space: 49, escape: 53, esc: 53, backspace: 51, delete: 51, left: 123, right: 124, down: 125, up: 126 }[k];
 }
 
 async function scroll(amount) {

@@ -81,6 +81,34 @@ function imageBlock(base64) {
   return { type: "image", source: { type: "base64", media_type: "image/jpeg", data: base64 } };
 }
 
+// ── self-learning recipe cache ────────────────────────────────────────────
+async function fetchRecipe(goal) {
+  const r = await fetch(`${APP_URL}/api/computer-use/recipe?task=${encodeURIComponent(goal)}`, { cache: "no-store" });
+  if (!r.ok) return null;
+  return (await r.json()).recipe;
+}
+
+// Compact one action for the recipe — keep the reusable essence (what was typed,
+// which key), drop screen-specific coordinates the next run will re-derive.
+function compactAction(a) {
+  if (a.type === "type") return `type ${JSON.stringify(a.text || "")}`;
+  if (a.type === "key") return `press ${a.key || a.combo || ""}`;
+  if (a.type === "double_click") return "double-click the relevant element";
+  if (a.type === "click") return "click the relevant on-screen element";
+  if (a.type === "scroll") return "scroll";
+  return a.type;
+}
+
+async function saveRecipe(goal, actionLog, summary) {
+  if (!actionLog || actionLog.length === 0) return;
+  const approach = actionLog.join("; ");
+  await fetch(`${APP_URL}/api/computer-use/recipe`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ task: goal, approach, title: (summary || "").slice(0, 120) }),
+  });
+}
+
 /**
  * Run a local computer-use task. onStep({step, text, actions}) streams progress.
  * Returns { done, text, steps } or { error }. Bounded + stoppable.
@@ -99,6 +127,23 @@ async function runComputerUse({ goal, maxSteps = MAX_STEPS, onStep } = {}) {
     let shot = await captureScreen();
     const messages = [{ role: "user", content: [{ type: "text", text: String(goal) }, imageBlock(shot.base64)] }];
 
+    // Self-learning warm-start: if a similar task succeeded before, hand the
+    // model the approach that worked so it follows the known path (fewer steps,
+    // less thinking) instead of re-exploring. It still adapts + self-heals.
+    const actionLog = [];
+    try {
+      const recipe = await fetchRecipe(String(goal));
+      if (recipe && recipe.approach) {
+        messages[0].content.splice(1, 0, {
+          type: "text",
+          text: `You've done a similar task before — this approach worked (used ${recipe.successCount || 1}x). Follow it closely, only adapting the specific values (numbers, text, targets) to THIS task:\n${recipe.approach}`,
+        });
+        if (typeof onStep === "function") onStep({ step: 0, text: "Using a learned shortcut from a past run." });
+      }
+    } catch {
+      /* no recipe — run fresh */
+    }
+
     for (let step = 0; step < maxSteps; step++) {
       if (_stop) return { done: false, stopped: true, text: "Stopped.", steps: step };
 
@@ -106,7 +151,15 @@ async function runComputerUse({ goal, maxSteps = MAX_STEPS, onStep } = {}) {
       messages.push({ role: "assistant", content: res.assistant.content });
       if (typeof onStep === "function") onStep({ step: step + 1, text: res.text, actions: res.actions });
 
-      if (res.done) return { done: true, text: res.text || "Done.", steps: step + 1 };
+      if (res.done) {
+        // Learn: save the approach that worked so the next similar task is faster.
+        try {
+          await saveRecipe(String(goal), actionLog, res.text);
+        } catch {
+          /* best-effort */
+        }
+        return { done: true, text: res.text || "Done.", steps: step + 1 };
+      }
 
       // Execute each action on the real screen.
       for (const a of res.actions) {
@@ -114,6 +167,7 @@ async function runComputerUse({ goal, maxSteps = MAX_STEPS, onStep } = {}) {
         if (a.type === "screenshot" || a.type === "noop" || a.type === "unknown") continue;
         try {
           await hands.act(scaleAction(a, shot));
+          actionLog.push(compactAction(a));
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           const hint = macPermissionHint(msg);

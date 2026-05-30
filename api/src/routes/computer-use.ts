@@ -2,7 +2,7 @@ import type Anthropic from '@anthropic-ai/sdk'
 import { Hono } from 'hono'
 import { z } from 'zod'
 
-import { runMessages } from '../lib/anthropic.js'
+import { getAnthropicClient, runMessages } from '../lib/anthropic.js'
 import type { WorkspaceToken } from '../lib/jwt.js'
 import { requireWorkspaceJwt } from '../middleware/jwt.js'
 import { logger } from '../middleware/logger.js'
@@ -118,4 +118,56 @@ computerUseRoute.post('/step', requireWorkspaceJwt, async (c) => {
     done: actions.length === 0,
     stop_reason: msg.stop_reason,
   })
+})
+
+/**
+ * Speed benchmark — same screenshot + grounding task to Claude Sonnet 4.5 (the
+ * current computer-use brain) and Gemini 3.5 Flash. Returns each model's latency
+ * + answer so we can decide whether a faster brain is worth swapping in. Keys
+ * stay server-side. POST { image: base64Jpeg, width, height }.
+ */
+computerUseRoute.post('/bench', requireWorkspaceJwt, async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { image?: string; width?: number; height?: number }
+  const img = String(body.image ?? '')
+  const w = Number(body.width) || 1280
+  const h = Number(body.height) || 720
+  if (!img) return c.json({ error: 'image (base64 jpeg) required' }, 400)
+  const prompt = `This is a ${w}x${h} pixel screenshot of a Windows desktop. Reply with ONLY a JSON object {"x":<int>,"y":<int>} giving the pixel coordinates of the CENTER of the Windows Start button in the taskbar. No other text.`
+
+  let claude: { ms: number; text: string } = { ms: 0, text: '' }
+  try {
+    const client = getAnthropicClient()
+    const t0 = Date.now()
+    const msg = await client.messages.create({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 100,
+      messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: img } }] }],
+    })
+    claude = { ms: Date.now() - t0, text: msg.content.map((b: Anthropic.Messages.ContentBlock) => (b.type === 'text' ? b.text : '')).join('').slice(0, 120) }
+  } catch (err) {
+    claude = { ms: 0, text: `ERR ${err instanceof Error ? err.message.slice(0, 90) : ''}` }
+  }
+
+  let gemini: { ms: number; text: string; model: string } = { ms: 0, text: '', model: '' }
+  try {
+    const { GoogleGenAI } = await import('@google/genai')
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
+    for (const model of ['gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-flash-latest']) {
+      try {
+        const t0 = Date.now()
+        const res = await ai.models.generateContent({
+          model,
+          contents: [{ role: 'user', parts: [{ text: prompt }, { inlineData: { mimeType: 'image/jpeg', data: img } }] }],
+        })
+        gemini = { ms: Date.now() - t0, text: String(res.text ?? '').slice(0, 120), model }
+        break
+      } catch (e) {
+        gemini = { ms: 0, text: `ERR ${e instanceof Error ? e.message.slice(0, 90) : ''}`, model }
+      }
+    }
+  } catch (err) {
+    gemini = { ms: 0, text: `ERR ${err instanceof Error ? err.message.slice(0, 90) : ''}`, model: '' }
+  }
+
+  return c.json({ claude, gemini })
 })
