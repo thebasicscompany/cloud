@@ -25,6 +25,8 @@ contextBridge.exposeInMainWorld("basichome", {
   // Floating Record/Teach HUD (the pill) — opens over other apps.
   openPill: () => ipcRenderer.send("basichome:pill:open"),
   closePill: () => ipcRenderer.send("basichome:pill:close"),
+  // Capture a screenshot of the screen (the visual half of a demonstration).
+  captureScreen: () => ipcRenderer.invoke("basichome:capture-screen"),
   // Settings → Capture: control the always-on Lens daemon.
   lensAlwaysOn: () => ipcRenderer.invoke("basichome:lens:always-on"),
   lensStopCapture: () => ipcRenderer.invoke("basichome:lens:capture-stop"),

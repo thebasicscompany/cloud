@@ -21,8 +21,12 @@ interface PillBridge {
   isDesktop?: boolean;
   lensRecordStart?: (opts: { label?: string; workspaceId?: string; userId?: string }) => Promise<{ ok?: boolean; sessionId?: string; error?: string }>;
   lensRecordStop?: () => Promise<{ ok?: boolean; sessionId?: string; error?: string }>;
+  captureScreen?: () => Promise<{ ok?: boolean; dataUrl?: string }>;
   closePill?: () => void;
 }
+
+const SHOT_INTERVAL_MS = 6000;
+const MAX_SHOTS = 8;
 function bridge(): PillBridge | undefined {
   if (typeof window === "undefined") return undefined;
   return (window as unknown as { basichome?: PillBridge }).basichome;
@@ -37,6 +41,7 @@ export default function PillPage() {
   const startedAt = useRef(0);
   const narration = useRef("");
   const sessionId = useRef<string | null>(null);
+  const shots = useRef<string[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
   const recRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -147,6 +152,30 @@ export default function PillPage() {
     return () => clearInterval(id);
   }, [phase]);
 
+  // Capture the screen periodically while recording — the visual half of the
+  // demonstration. Capped + downscaled (in main.js) so it stays light.
+  useEffect(() => {
+    if (phase !== "recording") return;
+    const bh = bridge();
+    if (!bh?.captureScreen) return;
+    let on = true;
+    const grab = async () => {
+      if (!on || shots.current.length >= MAX_SHOTS) return;
+      try {
+        const r = await bh.captureScreen!();
+        if (on && r?.ok && r.dataUrl && shots.current.length < MAX_SHOTS) shots.current.push(r.dataUrl);
+      } catch {
+        /* best-effort */
+      }
+    };
+    void grab();
+    const id = setInterval(() => void grab(), SHOT_INTERVAL_MS);
+    return () => {
+      on = false;
+      clearInterval(id);
+    };
+  }, [phase]);
+
   async function stop() {
     setPhase("saving");
     stopNarration();
@@ -155,29 +184,32 @@ export default function PillPage() {
     } catch {
       /* ignore */
     }
+    // Bundle the narration + the screenshots into a routine Document and a prompt
+    // the agent can act on (it opens the screenshot URLs to see what I did). Fall
+    // back to a narration-only prompt if the bundling endpoint is unavailable.
+    let prompt = `Turn this recorded routine into a reusable automation, then run it. Here's what I demonstrated and said out loud:\n\n${narration.current || "(no narration captured)"}`;
     try {
-      const mins = Math.max(1, Math.round(elapsed / 60));
-      await fetch("/api/documents", {
+      const res = await fetch("/api/routines/record", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          title: "Recorded routine",
-          icon: "document",
-          summary: `Recorded ~${mins} min with narration — ask the agent to turn it into an automation.`,
-          body: `# Recorded routine\n\nCaptured locally with Lens (~${mins} min).\n\n## What I said while teaching\n\n${narration.current || "(no narration captured)"}\n\n---\n- Lens session: ${sessionId.current ?? "—"}\n- Next: ask basichome to **build an automation** from this routine.\n`,
+          narration: narration.current,
+          screenshots: shots.current,
+          minutes: Math.max(1, Math.round(elapsed / 60)),
         }),
       });
+      if (res.ok) {
+        const data = (await res.json()) as { prompt?: string };
+        if (data?.prompt) prompt = data.prompt;
+      }
     } catch {
-      /* best-effort */
+      /* best-effort — narration-only prompt still hands off below */
     }
     // Hand the routine to the main window so the loop continues into building an
     // automation (same origin → shared localStorage; Home reads it on mount and
     // via a storage listener if already open).
     try {
-      window.localStorage.setItem(
-        "basichome:routine-prompt",
-        `Turn this recorded routine into a reusable automation, then run it. Here's what I demonstrated and said out loud:\n\n${narration.current || "(no narration captured)"}`,
-      );
+      window.localStorage.setItem("basichome:routine-prompt", prompt);
     } catch {
       /* ignore */
     }

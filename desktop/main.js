@@ -4,7 +4,7 @@
 // renderer in a native desktop window, plus a tray and a global shortcut.
 // The overlay "pill" is part of the web app itself (the in-app overlay
 // component) — the shell does NOT spawn a separate pill window.
-const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, nativeImage, screen } = require("electron");
+const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, nativeImage, screen, desktopCapturer } = require("electron");
 const path = require("path");
 const localBrowser = require("./local-browser");
 const relayClient = require("./relay-client");
@@ -212,6 +212,26 @@ ipcMain.handle("basichome:lens:record-stop", async () => lens.stopRecording());
 // Floating Record/Teach HUD show/hide (driven by the renderer + global chord).
 ipcMain.on("basichome:pill:open", () => openPill());
 ipcMain.on("basichome:pill:close", () => closePill());
+
+// Capture a screenshot of the primary screen for the record-routine flow — the
+// visual half of a demonstration (alongside narration). Downscaled JPEG so a
+// handful of frames stays small enough to bundle into the routine document.
+ipcMain.handle("basichome:capture-screen", async () => {
+  try {
+    const { width, height } = screen.getPrimaryDisplay().size;
+    const scale = Math.min(1, 1280 / Math.max(1, width));
+    const sources = await desktopCapturer.getSources({
+      types: ["screen"],
+      thumbnailSize: { width: Math.round(width * scale), height: Math.round(height * scale) },
+    });
+    const src = sources[0];
+    if (!src) return { ok: false, error: "no screen source" };
+    const jpeg = src.thumbnail.toJPEG(55).toString("base64");
+    return { ok: true, dataUrl: `data:image/jpeg;base64,${jpeg}` };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+});
 
 // Settings → Capture: start/stop the always-on Lens daemon (background pattern
 // capture). Lets the user control capture from the main app's settings.
