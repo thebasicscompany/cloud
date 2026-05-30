@@ -87,18 +87,33 @@ async function type(text) {
 }
 
 // Press a key combo: "enter", "tab", "cmd+a"/"ctrl+a", "escape", "down" ...
-const WIN_KEYS = { enter: "{ENTER}", tab: "{TAB}", escape: "{ESC}", esc: "{ESC}", backspace: "{BS}", delete: "{DEL}", up: "{UP}", down: "{DOWN}", left: "{LEFT}", right: "{RIGHT}", space: " ", home: "{HOME}", end: "{END}", pageup: "{PGUP}", pagedown: "{PGDN}" };
+const WIN_KEYS = { enter: "{ENTER}", return: "{ENTER}", tab: "{TAB}", escape: "{ESC}", esc: "{ESC}", backspace: "{BS}", delete: "{DEL}", del: "{DEL}", up: "{UP}", down: "{DOWN}", left: "{LEFT}", right: "{RIGHT}", space: " ", home: "{HOME}", end: "{END}", pageup: "{PGUP}", pagedown: "{PGDN}", pgup: "{PGUP}", pgdn: "{PGDN}" };
 const WIN_MODS = { ctrl: "^", control: "^", alt: "%", shift: "+", cmd: "^", meta: "^", win: "^" };
+// The standalone app-launcher key. There's no raw keypress for it, so we map it
+// per-OS: Windows → Ctrl+Esc (Start menu); macOS → Cmd+Space (Spotlight); Linux
+// → super via xdotool. Critical: without this, "win" was typed as literal text.
+const LAUNCHER_KEYS = new Set(["win", "windows", "super", "start", "os", "launcher", "lwin", "rwin", "winleft", "spotlight"]);
 
 async function key(combo) {
   const parts = String(combo).toLowerCase().split("+").map((p) => p.trim());
   const base = parts.pop();
   if (PLATFORM === "win32") {
+    // Standalone launcher key → open Start (Ctrl+Esc). NEVER type "win".
+    if (parts.length === 0 && LAUNCHER_KEYS.has(base)) {
+      return psRun(`[System.Windows.Forms.SendKeys]::SendWait("^{ESC}")`);
+    }
     const mods = parts.map((m) => WIN_MODS[m] || "").join("");
-    const k = WIN_KEYS[base] || base;
+    // Known special → SendKeys token; single char → literal; any other key name
+    // → {NAME} so it's pressed as a key, never typed as literal text.
+    const k = WIN_KEYS[base] || (base && base.length === 1 ? base : `{${String(base).toUpperCase()}}`);
     return psRun(`[System.Windows.Forms.SendKeys]::SendWait("${mods}${k}")`);
   }
   if (PLATFORM === "darwin") {
+    // Standalone launcher key → Spotlight (Cmd+Space) — the macOS app launcher,
+    // the equivalent of the Windows key. key code 49 = Space.
+    if (parts.length === 0 && LAUNCHER_KEYS.has(base)) {
+      return run("osascript", ["-e", `tell application "System Events" to key code 49 using {command down}`]);
+    }
     const using = parts
       .map((m) => ({ cmd: "command down", meta: "command down", ctrl: "control down", control: "control down", alt: "option down", option: "option down", shift: "shift down" }[m]))
       .filter(Boolean);

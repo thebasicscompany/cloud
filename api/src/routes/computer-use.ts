@@ -29,8 +29,8 @@ const SYSTEM = `You operate the user's own computer to complete a task. You get 
 
 Speed rules (most important):
 - Prefer the KEYBOARD over the mouse. Type a WHOLE string or expression in ONE 'type' action — e.g. type "25*4=" in a calculator, never click buttons one at a time. Use shortcuts (Enter, Ctrl+C, Ctrl+L for an address bar, etc.).
-- To OPEN an app: press the Windows key (key "cmd" / "win"), type the app name, press Enter. Don't hunt for taskbar icons.
-- BATCH obvious steps: when the outcome is predictable you may issue several actions in one turn (e.g. key "win" → type "calculator" → key "enter"). Only screenshot-and-check after something genuinely uncertain.
+- To OPEN an app: {APP_OPEN}. Don't hunt for taskbar icons. After opening the launcher, WAIT a beat for it to appear before typing.
+- BATCH obvious steps: when the outcome is predictable you may issue several actions in one turn. Only screenshot-and-check after something genuinely uncertain.
 - Don't take a screenshot just to "look" — act, and read the result next turn.
 
 Grounding: coordinates are in the WxH screenshot space; aim for the CENTER of a visible element. Scroll to reveal hidden things.
@@ -46,6 +46,7 @@ const stepSchema = z
     height: z.number().int().positive().max(4096),
     messages: z.array(z.any()),
     maxTokens: z.number().int().positive().max(4096).optional(),
+    platform: z.string().optional(), // 'win32' | 'darwin' | 'linux' — OS-aware app launch
   })
   .passthrough()
 
@@ -95,8 +96,14 @@ computerUseRoute.post('/step', requireWorkspaceJwt, async (c) => {
 
   let msg: Anthropic.Messages.Message
   try {
+    const appOpen =
+      body.platform === 'darwin'
+        ? `press Cmd+Space for Spotlight (key "cmd+space"), type the app name, then press Enter (key "return")`
+        : body.platform === 'linux'
+          ? `press the Super key (key "super"), type the app name, then press Enter (key "return")`
+          : `press the Windows key (key "win"), type the app name, then press Enter (key "return")`
     msg = await runMessages({
-      system: SYSTEM.replace('WxH', `${body.width}x${body.height}`),
+      system: SYSTEM.replace('WxH', `${body.width}x${body.height}`).replace('{APP_OPEN}', appOpen),
       messages: body.messages as Anthropic.MessageParam[],
       tools,
       maxTokens: body.maxTokens ?? 1536, // room to observe + plan before acting

@@ -14,7 +14,7 @@ const hands = require("./computer-hands");
 const APP_URL = process.env.BASICS_APP_URL || "http://localhost:3000";
 const SEND_WIDTH = 1280; // keep within the model's trained resolution band
 const MAX_STEPS = 24;
-const STEP_PAUSE_MS = 120;
+const STEP_PAUSE_MS = 250; // settle time between actions (app launchers need a beat)
 
 let _stop = false;
 let _running = false;
@@ -147,7 +147,7 @@ async function runComputerUse({ goal, maxSteps = MAX_STEPS, onStep } = {}) {
     for (let step = 0; step < maxSteps; step++) {
       if (_stop) return { done: false, stopped: true, text: "Stopped.", steps: step };
 
-      const res = await postStep(ctx, { goal: String(goal), width: shot.sentW, height: shot.sentH, messages });
+      const res = await postStep(ctx, { goal: String(goal), width: shot.sentW, height: shot.sentH, platform: process.platform, messages });
       messages.push({ role: "assistant", content: res.assistant.content });
       if (typeof onStep === "function") onStep({ step: step + 1, text: res.text, actions: res.actions });
 
