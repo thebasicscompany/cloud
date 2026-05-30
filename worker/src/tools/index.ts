@@ -48,6 +48,7 @@ import { propose_automation } from "./propose_automation.js";
 import { activate_automation } from "./activate_automation.js";
 import { app_emit } from "./app_emit.js";
 import { app_query } from "./app_query.js";
+import { computer_use } from "./computer_use.js";
 import { doc_write } from "./doc_write.js";
 import { request_browser_login } from "./request_browser_login.js";
 
@@ -96,6 +97,7 @@ export {
   activate_automation,
   app_emit,
   app_query,
+  computer_use,
   doc_write,
   request_browser_login,
 };
@@ -147,6 +149,7 @@ export function buildWorkerToolRegistry(): ToolRegistry<WorkerToolContext> {
     activate_automation,
     app_emit,
     app_query,
+    computer_use,
     doc_write,
     request_browser_login,
   );

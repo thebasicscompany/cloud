@@ -11,6 +11,7 @@ const localBrowser = require("./local-browser");
 const relayClient = require("./relay-client");
 const lens = require("./lens-client");
 const computerLoop = require("./computer-loop");
+const computerWatcher = require("./computer-watcher");
 
 // Background (always-on) Lens capture is OFF by default — it's a real resource
 // cost, so the user opts in (Settings → Capture) and the choice persists. Lazy
@@ -215,6 +216,9 @@ ipcMain.handle("basichome:browser-sites:export-local", async (_e, opts) => {
 ipcMain.handle("basichome:local-relay:start", async (_e, opts) => {
   try {
     const info = await relayClient.startRelay(opts ?? {});
+    // A local run is now live — watch for computer_use sub-tasks the cloud
+    // agent delegates, so the integrated (agent-decides) path executes locally.
+    computerWatcher.startWatcher();
     return info;
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
@@ -222,6 +226,7 @@ ipcMain.handle("basichome:local-relay:start", async (_e, opts) => {
 });
 ipcMain.handle("basichome:local-relay:stop", async () => {
   relayClient.stopRelay();
+  computerWatcher.stopWatcher();
   return { ok: true };
 });
 
@@ -294,6 +299,7 @@ app.on("will-quit", () => {
   globalShortcut.unregisterAll();
   closePill();
   relayClient.stopRelay();
+  computerWatcher.stopWatcher();
   localBrowser.stopLocalBrowser();
   lens.stopLens();
 });

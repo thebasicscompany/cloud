@@ -56,6 +56,9 @@ interface PluginRuntime {
   /** Hosts with a saved cloud browser login (cookies), injected so the agent
    * knows which gated sites it's already signed into and which to request. */
   browserSites: ReadonlyArray<string>;
+  /** True when this run drives the user's local machine (relay bridged), so
+   * computer_use is actually available. Gates the computer-use prompt rung. */
+  isLocal: boolean;
   sessionID: string;
   workspaceId: string;
   runId: string;
@@ -163,14 +166,19 @@ When SETTING UP a new automation, enumerate every gated site it will touch up fr
 </browser_sites>`;
 }
 
-function composeToolStrategyContext(): string {
+function composeToolStrategyContext(isLocal: boolean): string {
   // Reliability + cost ladder (cf. Clicky's "computer-use as last-mile fallback").
   // Prefer structured APIs over the browser, and the browser over screen control.
+  // The computer-use rung is shown ONLY on local runs — on a cloud run there's
+  // no desktop to drive, so offering it would just mislead the agent.
+  const computerRung = isLocal
+    ? `3. Computer-use LAST — the \`computer_use({task})\` tool drives the user's REAL machine (mouse + keyboard, any app). This is a LOCAL run, so it's available. Reach for it only when neither an API nor a browser flow can: a NATIVE desktop app, an OS dialog, or a non-browser UI. Hand it a clear, self-contained task and let it run.`
+    : `3. (Computer-use is NOT available on this run — it's a cloud run with no desktop to drive. Solve it with an API or the browser, or tell the user it needs a local run.)`;
   return `<tool_strategy>
 Choose the most reliable, lowest-cost path that can do the job — escalate only when the simpler one can't:
 1. Structured API tools first — Composio actions (Gmail, Sheets, Calendar, etc.) and helper SQL/code. Deterministic, fast, no UI brittleness. If a connected toolkit can do it, use it.
-2. Cloud browser second — only when there is no API for the task (a site with no integration). Reuse a saved <browser_sites> login; never re-derive what an API tool already returns.
-3. Computer-use / local control LAST — only as a last-mile fallback when neither an API nor a plain cloud-browser flow works (e.g. a desktop app, a site that blocks cloud IPs, or a flow that needs the user's real local session).
+2. Browser second — only when there is no API for the task (a site with no integration). Reuse a saved <browser_sites> login; never re-derive what an API tool already returns. Click visible UI and type into fields with the browser tools.
+${computerRung}
 Don't open a browser to do something an API tool already does. Don't screen-drive what a browser can do with a URL + selector. State which rung you chose and why when it isn't obvious.
 </tool_strategy>`;
 }
@@ -590,6 +598,7 @@ async function buildRuntime(sessionID: string): Promise<PluginRuntime> {
     helpers,
     apps: workspaceApps,
     browserSites: savedBrowserHosts,
+    isLocal: useLocalRelay,
     sessionID,
     workspaceId,
     runId,
@@ -826,8 +835,9 @@ export const BasicsBrowserPlugin: Plugin = async (_input) => {
         // Browser-sites fragment — which gated sites are signed in, and to
         // request (not brute-force) logins for ones that aren't.
         output.system.unshift(composeBrowserSitesContext(rt.browserSites));
-        // Tool-strategy ladder — prefer APIs > browser > computer-use.
-        output.system.unshift(composeToolStrategyContext());
+        // Tool-strategy ladder — prefer APIs > browser > computer-use. The
+        // computer-use rung only appears on local runs (rt.isLocal).
+        output.system.unshift(composeToolStrategyContext(rt.isLocal));
       } catch (e) {
         console.error("plugin: skill/helper system-transform failed", e);
       }
