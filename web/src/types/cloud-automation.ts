@@ -168,6 +168,9 @@ export type CloudAutomation = {
   description: string;
   goal: string;
   source: "seeded_cloud" | "local_promotion" | "api_import";
+  /** Where it runs: "cloud" (Browserbase/Composio, fires anytime) or "local"
+   *  (drives the user's real machine; only fires when their desktop is online). */
+  runTarget: "cloud" | "local";
   status: CloudAutomationStatus;
   version: number;
   triggers: CloudAutomationTrigger[];

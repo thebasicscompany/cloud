@@ -12,6 +12,7 @@ import {
   FileSearch,
   Globe,
   KeyRound,
+  Monitor,
   Pause,
   Play,
   RefreshCcw,
@@ -133,6 +134,7 @@ export function CloudAutomationDetail({ id }: { id: string }) {
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="truncate text-2xl font-semibold tracking-tight">{automation.name}</h1>
               <AutomationStatus status={automation.status} />
+              <RunTargetBadge runTarget={automation.runTarget} />
               <TrustBadge automation={automation} />
             </div>
             <p className="mt-1 max-w-3xl text-muted-foreground text-sm">{automation.description}</p>
@@ -144,7 +146,11 @@ export function CloudAutomationDetail({ id }: { id: string }) {
       <section className="grid gap-3 md:grid-cols-4">
         <Metric icon={CalendarClock} label="Schedule" value={schedule ? formatCron(schedule.cron) : "Manual"} detail={schedule ? schedule.timezone : "No registered cron"} />
         <Metric icon={ShieldCheck} label="Auto-approved" value={activeTrust.length.toString()} detail={automation.approvalPolicy.mode.replaceAll("_", " ")} />
-        <Metric icon={Globe} label="Runs in" value="Basics Cloud" detail="In the cloud, so you can watch it live." />
+        {automation.runTarget === "local" ? (
+          <Metric icon={Monitor} label="Runs on" value="Your computer" detail="Only when your desktop is online." />
+        ) : (
+          <Metric icon={Globe} label="Runs in" value="Basics Cloud" detail="In the cloud, so you can watch it live." />
+        )}
         <Metric icon={FileSearch} label="Runs" value={runs.length.toString()} detail="Times this automation has run." />
       </section>
 
@@ -185,6 +191,35 @@ export function CloudAutomationDetail({ id }: { id: string }) {
                 <CalendarClock className="size-4" />
                 Save schedule
               </Button>
+            </div>
+          </Panel>
+
+          <Panel title="Where it runs" description="Cloud runs anytime. Local drives your computer — only when your desktop is online.">
+            <div className="grid grid-cols-2 gap-2">
+              {(["cloud", "local"] as const).map((target) => {
+                const selected = automation.runTarget === target;
+                const Icon = target === "local" ? Monitor : Globe;
+                return (
+                  <button
+                    key={target}
+                    type="button"
+                    onClick={() => actions.setRunTarget.mutate({ automationId: automation.id, target })}
+                    disabled={actions.setRunTarget.isPending || selected}
+                    className={cn(
+                      "flex items-center gap-2 rounded-lg border p-3 text-left text-sm transition-colors",
+                      selected ? "border-foreground bg-muted/60 font-medium" : "hover:border-foreground/30",
+                    )}
+                  >
+                    <Icon className="size-4 shrink-0" />
+                    <span>
+                      {target === "local" ? "My computer" : "Basics Cloud"}
+                      <span className="block text-muted-foreground text-xs">
+                        {target === "local" ? "Needs your desktop online" : "Runs anytime"}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </Panel>
 
@@ -233,6 +268,7 @@ function AutomationCard({ automation }: { automation: CloudAutomationSummary }) 
               {automation.name}
             </Link>
             <AutomationStatus status={automation.status} />
+            <RunTargetBadge runTarget={automation.runTarget} />
             <TrustBadge automation={automation} />
           </div>
           <p className="mt-1 line-clamp-2 text-muted-foreground text-sm">{automation.description}</p>
@@ -517,6 +553,17 @@ function AutomationStatus({ status }: { status: CloudAutomation["status"] }) {
     <Badge variant={status === "active" ? "default" : status === "paused" ? "secondary" : "outline"} className="h-auto min-h-5 gap-1 py-0.5">
       {status === "paused" ? <Pause data-icon="inline-start" /> : <Play data-icon="inline-start" />}
       {status}
+    </Badge>
+  );
+}
+
+// Only badge the LOCAL ones — cloud is the default, so a badge there is noise.
+function RunTargetBadge({ runTarget }: { runTarget: CloudAutomation["runTarget"] }) {
+  if (runTarget !== "local") return null;
+  return (
+    <Badge variant="outline" className="h-auto min-h-5 gap-1 py-0.5" title="Runs on your computer — only when your desktop is online">
+      <Monitor data-icon="inline-start" />
+      Local
     </Badge>
   );
 }

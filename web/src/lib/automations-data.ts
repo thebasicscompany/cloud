@@ -34,6 +34,7 @@ interface AutomationRow {
   outputs: unknown;
   version: number | null;
   status: string | null;
+  run_target: string | null;
   created_at: string;
   updated_at: string | null;
 }
@@ -195,6 +196,7 @@ function mapAutomation(row: AutomationRow): CloudAutomation {
     description: row.description ?? "",
     goal: row.goal ?? "",
     source: "seeded_cloud",
+    runTarget: row.run_target === "local" ? "local" : "cloud",
     status: (["draft", "active", "paused", "archived"] as const).includes(row.status as CloudAutomationStatus)
       ? (row.status as CloudAutomationStatus)
       : "draft",
@@ -212,7 +214,7 @@ function mapAutomation(row: AutomationRow): CloudAutomation {
 }
 
 const AUTOMATION_COLS =
-  "id,workspace_id,name,description,goal,triggers,approval_policy,outputs,version,status,created_at,updated_at";
+  "id,workspace_id,name,description,goal,triggers,approval_policy,outputs,version,status,run_target,created_at,updated_at";
 const RUN_COLS =
   "id,automation_id,account_id,cloud_agent_id,status,triggered_by,run_mode,started_at,completed_at,created_at,result_summary,error_message,browserbase_session_id,live_view_url";
 

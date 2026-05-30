@@ -78,6 +78,11 @@ export function useCloudAutomationActions() {
       patch(automationId, { action: "updateSchedule", cron, timezone }),
     onSuccess: invalidate,
   });
+  const setRunTarget = useMutation({
+    mutationFn: ({ automationId, target }: { automationId: string; target: "cloud" | "local" }) =>
+      patch(automationId, { action: "setRunTarget", target }),
+    onSuccess: invalidate,
+  });
 
-  return { runNow, triggerSchedule, pause, resume, grantTrust, revokeTrust, replayRun, updateSchedule };
+  return { runNow, triggerSchedule, pause, resume, grantTrust, revokeTrust, replayRun, updateSchedule, setRunTarget };
 }

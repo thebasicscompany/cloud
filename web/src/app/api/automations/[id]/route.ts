@@ -23,7 +23,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
  */
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
-  let body: { action?: string; cron?: string; timezone?: string; workspaceId?: string } = {};
+  let body: { action?: string; cron?: string; timezone?: string; target?: string; workspaceId?: string } = {};
   try {
     body = (await req.json()) as typeof body;
   } catch {
@@ -65,6 +65,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       patch.triggers = triggers;
       break;
     }
+    case "setRunTarget":
+      patch.run_target = body.target === "local" ? "local" : "cloud";
+      break;
     default:
       return NextResponse.json({ error: "invalid action" }, { status: 400 });
   }

@@ -261,6 +261,7 @@ const UpdateSchema = z.object({
   triggers: TriggersArray.optional(),
   approval_policy: ApprovalPolicy,
   status: StatusEnum.optional(),
+  run_target: z.enum(['cloud', 'local']).optional(),
 }).refine((v) => Object.keys(v).length > 0, 'at least one field required')
 
 // ─── helpers ─────────────────────────────────────────────────────────────
@@ -451,11 +452,12 @@ automationsRoute.put('/:id', zValidator('json', UpdateSchema), async (c) => {
            triggers        = ${JSON.stringify(newTriggers)}::jsonb,
            approval_policy = ${newPolicy == null ? null : JSON.stringify(newPolicy)}::jsonb,
            status          = ${newStatus},
+           run_target      = COALESCE(${body.run_target ?? null}, run_target),
            version         = ${prior.version + 1},
            updated_at      = now()
      WHERE id = ${id} AND workspace_id = ${ws}
      RETURNING id, workspace_id, name, description, goal, context, outputs, triggers,
-               approval_policy, version, status, created_by,
+               approval_policy, version, status, run_target, created_by,
                created_at::text AS created_at, updated_at::text AS updated_at,
                archived_at::text AS archived_at
   `)) as unknown as Array<AutomationRow>
