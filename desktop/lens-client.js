@@ -172,10 +172,17 @@ async function ensureLensRunning() {
   // The daemon serves its /v1 API only under the `record` subcommand (a bare
   // invocation just prints help and exits). Pin the loopback port and silence
   // telemetry. It writes its per-launch bearer token to <data dir>/auth.token.
-  _proc = spawn(bin, ["record", "--port", String(LENS_PORT), "--disable-telemetry"], {
-    detached: false,
-    stdio: "ignore",
-  });
+  //
+  // --disable-audio: the always-on daemon must NEVER hold the microphone — the
+  //   only mic use is the pill's narration during an active teach recording
+  //   (captured browser-side via getUserMedia), not background capture.
+  // --video-quality low: keep background screen capture light so it doesn't bog
+  //   the machine down; teach sessions are short and still capture enough.
+  _proc = spawn(
+    bin,
+    ["record", "--port", String(LENS_PORT), "--disable-telemetry", "--disable-audio", "--video-quality", "low"],
+    { detached: false, stdio: "ignore" },
+  );
   _proc.on("exit", () => {
     _proc = null;
   });
