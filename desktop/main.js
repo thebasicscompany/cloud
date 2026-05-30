@@ -10,6 +10,7 @@ const fs = require("fs");
 const localBrowser = require("./local-browser");
 const relayClient = require("./relay-client");
 const lens = require("./lens-client");
+const computerLoop = require("./computer-loop");
 
 // Background (always-on) Lens capture is OFF by default — it's a real resource
 // cost, so the user opts in (Settings → Capture) and the choice persists. Lazy
@@ -254,6 +255,24 @@ ipcMain.handle("basichome:capture-screen", async () => {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
 });
+
+// Computer-use (LOCAL): run a closed eyes→brain→hands loop that drives the real
+// machine. Streams step updates to the renderer; bounded + stoppable. Only ever
+// started by an explicit local run the user kicked off.
+ipcMain.handle("basichome:computer-use:start", async (event, opts) => {
+  const goal = typeof opts === "string" ? opts : opts && opts.goal;
+  return computerLoop.runComputerUse({
+    goal,
+    onStep: (s) => {
+      try {
+        if (!event.sender.isDestroyed()) event.sender.send("basichome:computer-use:step", s);
+      } catch {
+        /* renderer gone */
+      }
+    },
+  });
+});
+ipcMain.on("basichome:computer-use:stop", () => computerLoop.stopComputerUse());
 
 // Settings → Capture: start/stop the always-on Lens daemon (background pattern
 // capture). Lets the user control capture from the main app's settings.

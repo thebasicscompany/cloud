@@ -30,4 +30,12 @@ contextBridge.exposeInMainWorld("basichome", {
   // Settings → Capture: control the always-on Lens daemon.
   lensAlwaysOn: () => ipcRenderer.invoke("basichome:lens:always-on"),
   lensStopCapture: () => ipcRenderer.invoke("basichome:lens:capture-stop"),
+  // Computer-use (local): drive the real machine to do a task. Streams steps.
+  computerUseStart: (goal) => ipcRenderer.invoke("basichome:computer-use:start", { goal }),
+  computerUseStop: () => ipcRenderer.send("basichome:computer-use:stop"),
+  onComputerUseStep: (cb) => {
+    const h = (_e, s) => cb(s);
+    ipcRenderer.on("basichome:computer-use:step", h);
+    return () => ipcRenderer.removeListener("basichome:computer-use:step", h);
+  },
 });
