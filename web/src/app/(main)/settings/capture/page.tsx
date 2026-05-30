@@ -53,6 +53,11 @@ export default function CaptureSettingsPage() {
     const bh = bridge();
     setIsDesktop(Boolean(bh?.isDesktop));
     void refresh();
+    // Re-probe periodically so the indicator reflects the daemon coming up or
+    // down on its own (the bundled engine finishing load, capture stopping, a
+    // crash) without the user having to leave + reopen the page.
+    const id = setInterval(() => void refresh(), 5000);
+    return () => clearInterval(id);
   }, [refresh]);
 
   const toggleAlwaysOn = async (on: boolean) => {
@@ -68,6 +73,21 @@ export default function CaptureSettingsPage() {
     }
   };
 
+  // A single, clear read on the Lens engine — is it loaded + ready, already on,
+  // recording, or absent — so you know its state before flipping anything below.
+  const engine =
+    status === null
+      ? { label: "checking…", dot: "bg-muted-foreground animate-pulse", ready: false }
+      : !status.supported
+        ? { label: "not supported on this platform", dot: "bg-muted-foreground", ready: false }
+        : !status.installed
+          ? { label: "not installed yet", dot: "bg-red-500", ready: false }
+          : status.recording
+            ? { label: "recording a routine", dot: "bg-red-500 animate-pulse", ready: true }
+            : status.running
+              ? { label: "on — capturing in the background", dot: "bg-emerald-500", ready: true }
+              : { label: "loaded · ready to turn on", dot: "bg-amber-500", ready: true };
+
   return (
     <div className="max-w-2xl space-y-6">
       <div className="space-y-1">
@@ -80,6 +100,21 @@ export default function CaptureSettingsPage() {
           suggest automations and learn routines you record. Nothing it sees ever leaves your computer.
         </p>
       </div>
+
+      {isDesktop ? (
+        <div className="flex items-center justify-between gap-3 rounded-lg border bg-card px-4 py-3">
+          <div className="flex items-center gap-2.5">
+            <span className={`size-2.5 shrink-0 rounded-full ${engine.dot}`} aria-hidden />
+            <p className="text-sm">
+              <span className="font-medium">Lens engine</span>
+              <span className="text-muted-foreground"> — {engine.label}</span>
+            </p>
+          </div>
+          <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => void refresh()}>
+            Check
+          </Button>
+        </div>
+      ) : null}
 
       {!isDesktop ? (
         <Note icon={Monitor} title="Capture runs in the desktop app">
