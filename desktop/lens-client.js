@@ -18,6 +18,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { spawn } = require("child_process");
+const authContext = require("./auth-context");
 
 const LENS_HOST = "127.0.0.1";
 const LENS_PORT = Number(process.env.BASICS_LENS_PORT || 3030);
@@ -39,20 +40,18 @@ let _bg = null; // background loop state: { timer, sessionId }
 /** Fetch (and cache) the workspace identity + API base + workspace JWT the
  *  daemon needs to distill into this stack. Best-effort. */
 async function lensContext() {
-  try {
-    const res = await fetch(`${APP_URL}/api/lens/context`, { cache: "no-store" });
-    if (res.ok) {
-      const j = await res.json();
-      _lensCtx = {
-        workspaceId: j.workspaceId || "",
-        userId: j.userId || "",
-        apiBase: (j.apiBase || "").replace(/\/+$/, ""),
-        token: j.token || "",
-        userRole: j.userRole || "other",
-      };
-    }
-  } catch {
-    /* keep any prior context */
+  // Workspace identity + cloud/api base + workspace JWT from the shared
+  // auth-context (renderer-fed; a transitional /api/lens/context fallback lives
+  // inside auth-context, so no secret is minted here).
+  const c = await authContext.resolveContext();
+  if (c && (c.token || c.workspaceId)) {
+    _lensCtx = {
+      workspaceId: c.workspaceId || "",
+      userId: c.userId || "",
+      apiBase: (c.apiBase || "").replace(/\/+$/, ""),
+      token: c.token || "",
+      userRole: c.userRole || "other",
+    };
   }
   return _lensCtx;
 }

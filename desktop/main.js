@@ -12,6 +12,7 @@ const relayClient = require("./relay-client");
 const lens = require("./lens-client");
 const computerLoop = require("./computer-loop");
 const computerWatcher = require("./computer-watcher");
+const authContext = require("./auth-context");
 
 // Background (always-on) Lens capture is OFF by default — it's a real resource
 // cost, so the user opts in (Settings → Capture) and the choice persists. Lazy
@@ -284,6 +285,19 @@ ipcMain.handle("basichome:computer-use:start", async (event, opts) => {
   });
 });
 ipcMain.on("basichome:computer-use:stop", () => computerLoop.stopComputerUse());
+
+// Workspace auth: the renderer holds the Supabase session, exchanges it for a
+// short-lived workspace JWT (cloud/api POST /v1/auth/token), and pushes it here.
+// The desktop loops then call cloud/api directly with it. Nothing is minted in
+// the desktop process — only the JWT is held, in memory.
+ipcMain.handle("basichome:auth:set", (_e, payload) => {
+  authContext.setToken(payload || {});
+  return { ok: true };
+});
+ipcMain.handle("basichome:auth:clear", () => {
+  authContext.clearToken();
+  return { ok: true };
+});
 
 // Settings → Capture: start/stop the always-on Lens daemon (background pattern
 // capture). Lets the user control capture from the main app's settings.

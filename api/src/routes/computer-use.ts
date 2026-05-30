@@ -4,6 +4,7 @@ import { z } from 'zod'
 
 import { getAnthropicClient, runMessages, COMPUTER_USE_MODEL } from '../lib/anthropic.js'
 import { recordUsage } from '../lib/usage-meter.js'
+import { supabaseAdmin } from '../lib/supabase.js'
 import type { WorkspaceToken } from '../lib/jwt.js'
 import { requireWorkspaceJwt } from '../middleware/jwt.js'
 import { logger } from '../middleware/logger.js'
@@ -187,6 +188,165 @@ Action types: {"type":"key","key":"..."} | {"type":"type","text":"..."} | {"type
   } catch (err) {
     return c.json({ error: 'plan_failed', message: err instanceof Error ? err.message : 'model error', actions: [] }, 502)
   }
+})
+
+// ── Desktop computer-use QUEUE + self-learning recipe cache ────────────────
+// The worker's `computer_use` tool enqueues a row in public.computer_use_requests
+// for the run's workspace; the user's desktop watcher claims it here, runs the
+// local eyes→brain→hands loop (calling /step above), and posts the result back.
+//
+// These three endpoints were previously in the Next web app, where they used the
+// service-role admin client AND a CLIENT-SUPPLIED `workspaceId` from the request
+// body — a cross-workspace hole (any caller could claim/resolve another
+// workspace's requests, or read/poison its recipes). Here the workspace comes
+// from the VERIFIED JWT (`c.var.workspace.workspace_id`), never the body, so a
+// token can only ever touch its own workspace's queue and recipes.
+
+// POST /v1/computer/next — atomically claim the oldest pending request for the
+// caller's workspace (pending → running). { request: null } when idle.
+computerUseRoute.post('/next', requireWorkspaceJwt, async (c) => {
+  const ws = c.var.workspace.workspace_id
+  const supabase = supabaseAdmin()
+
+  const { data: pending } = await supabase
+    .from('computer_use_requests')
+    .select('id,task,run_id')
+    .eq('workspace_id', ws)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+  if (!pending) return c.json({ request: null })
+
+  // Claim only if STILL pending — avoids two desktops double-claiming.
+  const { data: claimed } = await supabase
+    .from('computer_use_requests')
+    .update({ status: 'running', updated_at: new Date().toISOString() })
+    .eq('id', pending.id)
+    .eq('status', 'pending')
+    .select('id,task,run_id')
+    .maybeSingle()
+  if (!claimed) return c.json({ request: null })
+
+  return c.json({ request: { id: claimed.id, task: claimed.task, runId: claimed.run_id } })
+})
+
+// POST /v1/computer/:id/result — desktop posts the loop outcome; flips the row
+// to done/error so the worker's polling computer_use tool returns it to the agent.
+computerUseRoute.post('/:id/result', requireWorkspaceJwt, async (c) => {
+  const id = c.req.param('id')
+  const ws = c.var.workspace.workspace_id
+  const body = (await c.req.json().catch(() => ({}))) as {
+    ok?: boolean; text?: string; steps?: number; error?: string
+  }
+  const ok = body.ok !== false && !body.error
+  const result = ok
+    ? { text: body.text ?? 'done', steps: body.steps ?? null }
+    : { error: body.error ?? 'computer-use failed' }
+
+  const { error } = await supabaseAdmin()
+    .from('computer_use_requests')
+    .update({ status: ok ? 'done' : 'error', result, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('workspace_id', ws) // scope to the JWT workspace — can't resolve another ws's request
+  if (error) return c.json({ error: error.message }, 500)
+  return c.json({ ok: true })
+})
+
+// Recipe matching by task "shape": significant tokens, numbers/quotes stripped,
+// so "compute 25*4" and "compute 17*9" share a recipe. (Ported verbatim from the
+// web route — pure functions, no I/O.)
+const RECIPE_STOP = new Set([
+  'the', 'a', 'an', 'to', 'in', 'on', 'of', 'and', 'then', 'with', 'for', 'my', 'me', 'it',
+  'this', 'that', 'use', 'using', 'please', 'app', 'desktop', 'windows', 'mac', 'report',
+  'tell', 'show', 'result', 'do', 'open',
+])
+function recipeTokens(task: string): Set<string> {
+  return new Set(
+    task.toLowerCase()
+      .replace(/https?:\/\/\S+/g, ' ')
+      .replace(/[^a-z\s]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !RECIPE_STOP.has(w)),
+  )
+}
+function recipeSignature(task: string): string {
+  return [...recipeTokens(task)].sort().join(' ')
+}
+function recipeJaccard(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 || b.size === 0) return 0
+  let inter = 0
+  for (const x of a) if (b.has(x)) inter += 1
+  return inter / (a.size + b.size - inter)
+}
+const RECIPE_MATCH_THRESHOLD = 0.6
+
+// GET /v1/computer/recipe?task=... — best prior approach for a task shape, so the
+// loop can warm-start. Scoped to the caller's workspace.
+computerUseRoute.get('/recipe', requireWorkspaceJwt, async (c) => {
+  const task = c.req.query('task') ?? ''
+  if (!task.trim()) return c.json({ recipe: null })
+  const ws = c.var.workspace.workspace_id
+
+  const { data } = await supabaseAdmin()
+    .from('computer_use_recipes')
+    .select('id,signature,approach,success_count')
+    .eq('workspace_id', ws)
+    .order('last_used_at', { ascending: false })
+    .limit(50)
+
+  const taskTokens = recipeTokens(task)
+  let best: { approach: string; successCount: number; sim: number } | null = null
+  for (const r of (data ?? []) as Array<{ signature: string; approach: string; success_count: number }>) {
+    const sim = recipeJaccard(taskTokens, new Set(r.signature.split(' ').filter(Boolean)))
+    if (sim >= RECIPE_MATCH_THRESHOLD && (!best || sim > best.sim)) {
+      best = { approach: r.approach, successCount: r.success_count, sim }
+    }
+  }
+  return c.json({ recipe: best ? { approach: best.approach, successCount: best.successCount } : null })
+})
+
+// POST /v1/computer/recipe — save the approach that worked. Upsert on (ws, shape).
+computerUseRoute.post('/recipe', requireWorkspaceJwt, async (c) => {
+  const ws = c.var.workspace.workspace_id
+  const body = (await c.req.json().catch(() => ({}))) as {
+    task?: unknown; approach?: unknown; title?: unknown; app?: unknown
+  }
+  const task = typeof body.task === 'string' ? body.task.trim() : ''
+  const approach = typeof body.approach === 'string' ? body.approach.trim() : ''
+  if (!task || !approach) return c.json({ ok: false, error: 'task + approach required' }, 400)
+  const sig = recipeSignature(task)
+  if (!sig) return c.json({ ok: false, error: 'no signature' }, 400)
+
+  const supabase = supabaseAdmin()
+  const { data: existing } = await supabase
+    .from('computer_use_recipes')
+    .select('id,success_count')
+    .eq('workspace_id', ws)
+    .eq('signature', sig)
+    .maybeSingle()
+
+  if (existing) {
+    await supabase
+      .from('computer_use_recipes')
+      .update({
+        approach: approach.slice(0, 2000),
+        success_count: ((existing.success_count as number | null) ?? 1) + 1,
+        last_used_at: new Date().toISOString(),
+        ...(typeof body.title === 'string' ? { title: body.title.slice(0, 160) } : {}),
+        ...(typeof body.app === 'string' ? { app_hint: body.app.slice(0, 120) } : {}),
+      })
+      .eq('id', existing.id)
+  } else {
+    await supabase.from('computer_use_recipes').insert({
+      workspace_id: ws,
+      signature: sig,
+      title: typeof body.title === 'string' ? body.title.slice(0, 160) : '',
+      approach: approach.slice(0, 2000),
+      app_hint: typeof body.app === 'string' ? body.app.slice(0, 120) : null,
+    })
+  }
+  return c.json({ ok: true })
 })
 
 // Hybrid grounding/reason/bench endpoints (UI-TARS A/B experiment) were removed

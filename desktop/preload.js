@@ -38,4 +38,13 @@ contextBridge.exposeInMainWorld("basichome", {
     ipcRenderer.on("basichome:computer-use:step", h);
     return () => ipcRenderer.removeListener("basichome:computer-use:step", h);
   },
+  // Workspace auth: the renderer exchanges its Supabase session for a short-lived
+  // workspace JWT (cloud/api POST /v1/auth/token) and pushes it to the desktop
+  // loops here. Only the JWT crosses — never the Supabase service-role key or the
+  // workspace-JWT signing secret (those live solely in cloud/api).
+  setWorkspaceToken: (payload) => ipcRenderer.invoke("basichome:auth:set", payload),
+  clearWorkspaceToken: () => ipcRenderer.invoke("basichome:auth:clear"),
+  // The deployed cloud/api base, owned by the desktop, so the renderer can call
+  // /v1/* directly without its own api-base env.
+  apiBase: (process.env.BASICS_API_URL || "https://api.trybasics.ai").replace(/\/+$/, ""),
 });

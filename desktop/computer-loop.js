@@ -10,6 +10,7 @@
 const { desktopCapturer, screen } = require("electron");
 
 const hands = require("./computer-hands");
+const authContext = require("./auth-context");
 
 const APP_URL = process.env.BASICS_APP_URL || "http://localhost:3000";
 const SEND_WIDTH = 1456; // within Anthropic's <=1568 bound; more legible small UI text
@@ -33,16 +34,10 @@ function macPermissionHint(errMsg) {
 }
 
 async function fetchContext() {
-  try {
-    const res = await fetch(`${APP_URL}/api/lens/context`, { cache: "no-store" });
-    if (res.ok) {
-      const j = await res.json();
-      return { apiBase: (j.apiBase || "").replace(/\/+$/, ""), token: j.token || "" };
-    }
-  } catch {
-    /* fall through */
-  }
-  return { apiBase: "", token: "" };
+  // Workspace JWT + cloud/api base from the shared auth-context (renderer-fed,
+  // with a transitional /api/lens/context fallback). No secret lives here.
+  const c = await authContext.resolveContext();
+  return { apiBase: c.apiBase, token: c.token };
 }
 
 // Capture the primary screen, downscaled to SEND_WIDTH. Returns the JPEG +
@@ -82,10 +77,27 @@ function imageBlock(base64) {
 }
 
 // ── self-learning recipe cache ────────────────────────────────────────────
-async function fetchRecipe(goal) {
-  const r = await fetch(`${APP_URL}/api/computer-use/recipe?task=${encodeURIComponent(goal)}`, { cache: "no-store" });
-  if (!r.ok) return null;
-  return (await r.json()).recipe;
+// Recipes live in cloud/api (/v1/computer/recipe), scoped to the JWT workspace.
+// Transitional fallback to the dev web route until the api deploy lands.
+async function fetchRecipe(ctx, goal) {
+  if (authContext.cloudEnabled() && ctx && ctx.token) {
+    try {
+      const r = await fetch(`${ctx.apiBase}/v1/computer/recipe?task=${encodeURIComponent(goal)}`, {
+        headers: { "x-workspace-token": ctx.token },
+        cache: "no-store",
+      });
+      if (r.ok) return (await r.json()).recipe;
+    } catch {
+      /* fall back to web */
+    }
+  }
+  try {
+    const r = await fetch(`${APP_URL}/api/computer-use/recipe?task=${encodeURIComponent(goal)}`, { cache: "no-store" });
+    if (r.ok) return (await r.json()).recipe;
+  } catch {
+    /* none */
+  }
+  return null;
 }
 
 // One-shot plan: adapt a recipe into concrete actions for this task (the fast
@@ -115,14 +127,31 @@ function compactAction(a) {
   return a.type;
 }
 
-async function saveRecipe(goal, actionLog, summary) {
+async function saveRecipe(ctx, goal, actionLog, summary) {
   if (!actionLog || actionLog.length === 0) return;
   const approach = actionLog.join("; ");
-  await fetch(`${APP_URL}/api/computer-use/recipe`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ task: goal, approach, title: (summary || "").slice(0, 120) }),
-  });
+  const body = JSON.stringify({ task: goal, approach, title: (summary || "").slice(0, 120) });
+  if (authContext.cloudEnabled() && ctx && ctx.token) {
+    try {
+      const r = await fetch(`${ctx.apiBase}/v1/computer/recipe`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-workspace-token": ctx.token },
+        body,
+      });
+      if (r.ok) return;
+    } catch {
+      /* fall back to web */
+    }
+  }
+  try {
+    await fetch(`${APP_URL}/api/computer-use/recipe`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body,
+    });
+  } catch {
+    /* best-effort */
+  }
 }
 
 /**
@@ -150,7 +179,7 @@ async function runComputerUse({ goal, maxSteps = MAX_STEPS, onStep } = {}) {
     // is the smart bit: replay when confident, but the step loop re-checks
     // reality and takes over the moment the screen doesn't match.
     try {
-      const recipe = await fetchRecipe(String(goal));
+      const recipe = await fetchRecipe(ctx, String(goal));
       if (recipe && recipe.approach) {
         if (typeof onStep === "function") onStep({ step: 0, text: "Found a learned recipe — replaying the fast path." });
         const plan = await fetchPlan(ctx, String(goal), recipe.approach, shot);
@@ -192,7 +221,7 @@ async function runComputerUse({ goal, maxSteps = MAX_STEPS, onStep } = {}) {
       if (res.done) {
         // Learn: save the approach that worked so the next similar task is faster.
         try {
-          await saveRecipe(String(goal), actionLog, res.text);
+          await saveRecipe(ctx, String(goal), actionLog, res.text);
         } catch {
           /* best-effort */
         }
