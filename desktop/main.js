@@ -6,9 +6,31 @@
 // component) — the shell does NOT spawn a separate pill window.
 const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, nativeImage, screen, desktopCapturer } = require("electron");
 const path = require("path");
+const fs = require("fs");
 const localBrowser = require("./local-browser");
 const relayClient = require("./relay-client");
 const lens = require("./lens-client");
+
+// Background (always-on) Lens capture is OFF by default — it's a real resource
+// cost, so the user opts in (Settings → Capture) and the choice persists. Lazy
+// teach recordings still work regardless (the daemon starts on demand).
+function capturePrefPath() {
+  return path.join(app.getPath("userData"), "capture-prefs.json");
+}
+function backgroundCaptureEnabled() {
+  try {
+    return JSON.parse(fs.readFileSync(capturePrefPath(), "utf8")).backgroundCapture === true;
+  } catch {
+    return false;
+  }
+}
+function setBackgroundCapturePref(on) {
+  try {
+    fs.writeFileSync(capturePrefPath(), JSON.stringify({ backgroundCapture: Boolean(on) }));
+  } catch {
+    /* best-effort */
+  }
+}
 
 const APP_URL = process.env.BASICS_APP_URL || "http://localhost:3000";
 
@@ -140,15 +162,15 @@ app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
   });
 
-  // Start Lens in ALWAYS-ON mode (continuous background pattern capture) once
-  // the app is up. Best-effort + no-ops when Lens isn't installed; the pill's
-  // explicit "teach" sessions are bounded windows within this same daemon.
-  // (Capture consent is captured in onboarding; on a real install Lens honors
-  // it, and the renderer can pause/resume via the capture controls.)
-  lens
-    .ensureAlwaysOn()
-    .then((s) => console.log("lens always-on:", JSON.stringify(s)))
-    .catch((e) => console.error("lens always-on failed (non-fatal):", e && e.message));
+  // Start always-on background capture ONLY if the user has opted in (it's off
+  // by default — see Settings → Capture). Teach recordings still start the
+  // daemon on demand, so recording works without background mode.
+  if (backgroundCaptureEnabled()) {
+    lens
+      .ensureAlwaysOn()
+      .then((s) => console.log("lens always-on:", JSON.stringify(s)))
+      .catch((e) => console.error("lens always-on failed (non-fatal):", e && e.message));
+  }
 });
 
 ipcMain.on("basichome:open-app", (_e, route) => {
@@ -235,8 +257,12 @@ ipcMain.handle("basichome:capture-screen", async () => {
 
 // Settings → Capture: start/stop the always-on Lens daemon (background pattern
 // capture). Lets the user control capture from the main app's settings.
-ipcMain.handle("basichome:lens:always-on", async () => lens.ensureAlwaysOn());
+ipcMain.handle("basichome:lens:always-on", async () => {
+  setBackgroundCapturePref(true); // persist the opt-in so it survives relaunch
+  return lens.ensureAlwaysOn();
+});
 ipcMain.handle("basichome:lens:capture-stop", async () => {
+  setBackgroundCapturePref(false);
   lens.stopLens();
   return { ok: true };
 });

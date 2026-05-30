@@ -108,8 +108,12 @@ export default function CaptureSettingsPage() {
                   {status.recording ? <Badge>Recording routine</Badge> : null}
                 </div>
                 <p className="text-muted-foreground text-sm">
-                  Runs quietly in the background and suggests automations over time. It doesn&apos;t use any
-                  AI credits while watching.
+                  Off by default. When on, it watches quietly in the background and suggests automations
+                  over time, without using any AI credits while watching.
+                </p>
+                <p className="text-amber-700 text-xs dark:text-amber-500">
+                  Heads up: continuous capture can use noticeable CPU and may make your computer feel
+                  slower. Turn it on only when you want passive automation suggestions.
                 </p>
               </div>
               <Switch
