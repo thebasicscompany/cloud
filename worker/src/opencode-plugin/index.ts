@@ -127,10 +127,20 @@ function composeAppsContext(apps: ReadonlyArray<AppSummaryForPrompt>): string {
       )
     : ["- (no apps yet — create one with app_emit using appName+appKind when output is structured/repeating)"];
   return `<outputs>
-PERSIST YOUR OUTPUT — don't just return text. A run's final text goes into the run log, which users don't browse. Anything a user would want to keep, re-read, find later, or act on MUST be written to a durable surface before you finish:
-- Long-form / narrative (a report, summary, digest, plan, brief, drafted email/message, list of findings) ⇒ \`doc_write({title, body, summary?, dedupKey?})\` (markdown). It appears in Documents.
-- Structured / repeating records (a lead, a row, a tracked item, a digest entry that accrues over time) ⇒ \`app_emit({appSlug, data, status?, dedupKey?})\`. It appears in Apps. Read prior rows with \`app_query({appSlug})\`. Make a new app by calling app_emit with appName+appKind for a slug that doesn't exist yet.
-Default to persisting. For a scheduled automation especially, EVERY run should leave a durable artifact (a new Document, or a row appended to its App) so the user has something to open — not just a log entry. Use a stable dedupKey so re-runs update rather than duplicate. Only skip persistence for trivial/conversational answers. Still also return a short summary as your final answer.
+PERSIST YOUR OUTPUT — returning text is not enough. A run's final text goes into the run log, which users don't browse. Anything a user would want to keep, re-read, find later, or act on MUST be written to a durable surface before you finish. Treat persisting as part of doing the task, not an afterthought.
+
+Pick the surface:
+- Structured or repeating data (a lead, a row, a tracked item, a metric, an entry that accrues over time) ⇒ an APP via \`app_emit({appSlug, data, status?, dedupKey?})\`. Strongly prefer an App for anything that could recur — it turns your runs into a living dataset the user can sort, filter, and build on.
+  • First \`app_query({appSlug})\` a fitting app from the list below and ADD this run's records to it.
+  • If no app fits and the output is structured/recurring, CREATE one — call \`app_emit\` with appName+appKind for a new slug. Creating an app is encouraged, not a last resort. If you can imagine this run happening again (a daily check, a scheduled task, a repeated lookup), make an app for it now.
+- Long-form / narrative (a report, summary, digest, plan, brief, drafted message) ⇒ a DOCUMENT via \`doc_write({title, body, summary?, dedupKey?})\` (markdown).
+
+ACCUMULATE across runs. This run may be one of many — a manual re-run, a scheduled/cron automation, or a task the user repeats. Do NOT start fresh each time:
+- Read what prior runs produced (\`app_query\`, or update the same Document by stable dedupKey) and APPEND/UPDATE the same surface rather than creating a new one each run.
+- Use a stable dedupKey tied to the record's identity so re-runs update in place instead of duplicating, and new items get added.
+- For a scheduled or repeating automation, EVERY run should leave the surface richer than it found it — a new row in its App, or its Document brought up to date.
+
+Only skip persistence for genuinely trivial/conversational answers. Always also return a short summary as your final answer.
 
 Apps available in this workspace:
 ${lines.join("\n")}

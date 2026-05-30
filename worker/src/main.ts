@@ -889,6 +889,47 @@ async function handleOpencodeEvent(
       `.catch((e) => console.error("worker: failed to mark cloud_runs terminal", e));
     }
 
+    // Output backstop — if a successful run produced a real result but the agent
+    // didn't persist anything durable (no doc_write / app_emit linked to this
+    // run), save the result as a Document so the output is never stranded on the
+    // run page. The strengthened <outputs> prompt drives smart, accumulating
+    // persistence into Apps/Docs; this is the floor that guarantees every run
+    // leaves something the user can open.
+    if (msg?.runId && status === "completed" && resultSummary && resultSummary.trim().length >= 40) {
+      try {
+        const persisted = await sql<Array<{ one: number }>>`
+          SELECT 1 AS one FROM public.workspace_documents WHERE source_run_id = ${msg.runId}::uuid
+          UNION ALL
+          SELECT 1 AS one FROM public.workspace_app_records WHERE source_run_id = ${msg.runId}::uuid
+          LIMIT 1
+        `;
+        if (persisted.length === 0) {
+          const runRows = await sql<Array<{ wsid: string; goal: string | null; autoid: string | null }>>`
+            SELECT workspace_id::text AS wsid, goal, automation_id::text AS autoid
+              FROM public.cloud_runs WHERE id = ${msg.runId}::uuid LIMIT 1
+          `;
+          const runRow = runRows[0];
+          if (runRow?.wsid) {
+            const title =
+              runRow.goal && runRow.goal.trim().length > 0
+                ? runRow.goal.trim().replace(/\s+/g, " ").slice(0, 70)
+                : `Run result ${String(msg.runId).slice(0, 8)}`;
+            const slug = `run-${String(msg.runId).slice(0, 8)}-result`;
+            await sql`
+              INSERT INTO public.workspace_documents
+                (workspace_id, slug, title, summary, icon, body, status, source_run_id, source_automation_id)
+              VALUES
+                (${runRow.wsid}::uuid, ${slug}, ${title}, ${resultSummary.slice(0, 200)},
+                 'document', ${resultSummary}, 'ready', ${msg.runId}::uuid, ${runRow.autoid}::uuid)
+              ON CONFLICT (workspace_id, slug) DO NOTHING
+            `;
+          }
+        }
+      } catch (e) {
+        console.error("worker: output backstop failed", e);
+      }
+    }
+
     // D-E.5-3 — Per-automation outputs dispatch. The runner.ts one-shot
     // path already called dispatchOutputs at run completion; the pool
     // worker (this file, main.ts) missed it, so automations triggered
