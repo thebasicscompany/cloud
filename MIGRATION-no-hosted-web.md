@@ -95,3 +95,39 @@ never the body — a token can only touch its own workspace's queue.
 web + its dev routes still serve the app exactly as before; the new secure path
 turns on only when explicitly activated (deploy + flag), so no functionality is
 lost and nothing ships half-migrated.
+
+## Deploy-readiness findings (2026-05-30)
+
+Deploying `cloud/api` is **not** a targeted endpoint push — it's a release, and
+it's currently blocked. Findings:
+
+- **Trigger = push to `main`** (`.github/workflows/deploy-production.yml`), which
+  promotes **all 29 commits** on `codex/basicsHome` (the whole computer-use /
+  lens / automations line) to production + runs `db:migrate` + builds/pushes the
+  worker image + `sst deploy --stage production`. main is 0 behind (clean ff).
+- **The CI `lint` gate FAILS** (6 pre-existing `web/` errors — CI only runs on
+  `main`, so the branch was never gated):
+  - 5× "Definition for rule was not found" — `eslint-disable` directives for
+    `react-hooks/exhaustive-deps` + `@next/next/no-img-element`, plugins the flat
+    `eslint.config.js` doesn't load (apps-overview, browser-workbench,
+    documents-overview, pill/page, connection-logo).
+  - 1× real `@typescript-eslint/no-unused-expressions` — `web/.../pill/page.tsx:57`.
+  - **Must be fixed before any deploy** (config decision — your call).
+- **Two Supabase projects:** active = **`Basics` `xihupmgkamnfbzacksja` (us-east-2)**
+  (has the recent schema); `bascisos` (us-east-1) is older and lacks it. Confirm
+  the api's `SUPABASE_URL` points at `Basics`.
+- **`computer_use_requests` / `computer_use_recipes` are untracked** (no `.sql`
+  migration; created ad-hoc). They EXIST in `Basics`, so the deploy won't break,
+  but add a tracked drizzle migration. Live schema:
+  - `computer_use_requests(id uuid pk default gen_random_uuid, workspace_id uuid
+    not null, run_id uuid, session text, task text not null, status text not null
+    default 'pending', result jsonb, created_at timestamptz default now,
+    updated_at timestamptz default now)`
+  - `computer_use_recipes(id uuid pk, workspace_id uuid not null, signature text
+    not null, title text not null default '', approach text not null, app_hint
+    text, success_count int not null default 1, created_at timestamptz default
+    now, last_used_at timestamptz default now)`
+
+**Unblock order:** fix the 6 web lint errors → confirm api → `Basics` →
+(optionally) add `0034_computer_use.sql` to the drizzle schema → ff `main` →
+deploy → `BASICS_USE_CLOUD_QUEUE=1` → E2E → renderer/bundling stages.

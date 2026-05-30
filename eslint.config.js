@@ -68,4 +68,17 @@ export default [
       'preserve-caught-error': 'off',
     },
   },
+  // Web components carry `eslint-disable` directives for rules from the Next.js /
+  // react-hooks plugins, which the web app's own (Next) lint loads but this
+  // workspace flat-config does not. Register them as no-ops so those directives
+  // resolve here instead of erroring "Definition for rule … was not found" —
+  // behavior is unchanged (the rules were never active in this config), and it
+  // adds no dependency. Proper long-term fix: adopt eslint-config-next for web/.
+  {
+    files: ['web/**/*.{ts,tsx}'],
+    plugins: {
+      'react-hooks': { rules: { 'exhaustive-deps': { create: () => ({}) } } },
+      '@next/next': { rules: { 'no-img-element': { create: () => ({}) } } },
+    },
+  },
 ]

@@ -54,7 +54,7 @@ export default function PillPage() {
 
   function stopNarration() {
     try {
-      recRef.current?.state !== "inactive" && recRef.current?.stop();
+      if (recRef.current && recRef.current.state !== "inactive") recRef.current.stop();
     } catch {
       /* ignore */
     }
