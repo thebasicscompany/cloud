@@ -8,6 +8,7 @@ import { CheckCircle2, ChevronRight, Wrench } from "@/icons";
 
 import { LocalAgentWorkbench } from "@/app/(main)/_components/local-agent-workbench";
 import { PendingActionsBanner } from "@/app/(main)/_components/pending-actions-banner";
+import { SuggestionsCard } from "@/app/(main)/_components/suggestions-card";
 import { PendingCard } from "@/app/(main)/approvals/_components/pending-card";
 import { StatusPill } from "@/app/(main)/runs/_components/status-pill";
 import { Badge } from "@/components/ui/badge";
@@ -109,6 +110,10 @@ export function HomeDashboard() {
           </div>
         </section>
       ) : null}
+
+      {/* Proactive pattern recognition — "I noticed you do X, want to automate it?"
+          Sits just above the agent box so Build flows the prompt straight in. */}
+      <SuggestionsCard />
 
       {/* Hero — talk to the agent. No outer card: the workbench's own panels are
           the single containment layer (both Hallmark + impeccable: no nested cards). */}

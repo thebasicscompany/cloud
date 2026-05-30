@@ -23,6 +23,53 @@ const LENS_HOST = "127.0.0.1";
 const LENS_PORT = Number(process.env.BASICS_LENS_PORT || 3030);
 const LENS_SUPPORTED = ["darwin", "win32", "linux"].includes(process.platform);
 
+// The web app (same machine) mints the workspace identity + JWT and knows the
+// deployed API base. The daemon ships distilled candidates to that API, so the
+// suggestions land in THIS workspace's Supabase (not the upstream's cloud).
+const APP_URL = process.env.BASICS_APP_URL || "http://localhost:3000";
+
+// Background distill cadence: rotate a fresh capture window every 15 min and
+// distill the one that just closed. Big enough to contain a real task, timely
+// enough to feel alive, ~one cheap model call per window.
+const BG_WINDOW_MS = 15 * 60 * 1000;
+
+let _lensCtx = null; // { workspaceId, userId, apiBase, token, userRole }
+let _bg = null; // background loop state: { timer, sessionId }
+
+/** Fetch (and cache) the workspace identity + API base + workspace JWT the
+ *  daemon needs to distill into this stack. Best-effort. */
+async function lensContext() {
+  try {
+    const res = await fetch(`${APP_URL}/api/lens/context`, { cache: "no-store" });
+    if (res.ok) {
+      const j = await res.json();
+      _lensCtx = {
+        workspaceId: j.workspaceId || "",
+        userId: j.userId || "",
+        apiBase: (j.apiBase || "").replace(/\/+$/, ""),
+        token: j.token || "",
+        userRole: j.userRole || "other",
+      };
+    }
+  } catch {
+    /* keep any prior context */
+  }
+  return _lensCtx;
+}
+
+/** Env that points the daemon's distillation at THIS stack's API. Without an
+ *  apiBase the daemon falls back to its compiled-in (upstream) default, so we
+ *  only override when we actually know our API base. */
+function lensSpawnEnv(ctx) {
+  const env = { ...process.env };
+  const base = ctx && ctx.apiBase;
+  if (base) {
+    env.CADENCE_DISTILL_URL = `${base}/v1/lens/distill`;
+    env.CADENCE_AGENT_URL = base; // daemon appends /v1/memory/sessions
+  }
+  return env;
+}
+
 /** Lens data dir — matches the daemon's `default_cadence_data_dir()` (~/.lens,
  *  overridable via CADENCE_DATA_DIR). The per-launch bearer token lives here. */
 function lensDataDir() {
@@ -169,6 +216,9 @@ async function ensureLensRunning() {
   if (s.running) return true;
   const bin = findLensBinary();
   if (!bin) return false;
+  // Point the daemon's distillation at THIS stack's API (CADENCE_* env) so
+  // candidates land in this workspace's Supabase, not the upstream's cloud.
+  const ctx = _lensCtx || (await lensContext());
   // The daemon serves its /v1 API only under the `record` subcommand (a bare
   // invocation just prints help and exits). Pin the loopback port and silence
   // telemetry. It writes its per-launch bearer token to <data dir>/auth.token.
@@ -181,7 +231,7 @@ async function ensureLensRunning() {
   _proc = spawn(
     bin,
     ["record", "--port", String(LENS_PORT), "--disable-telemetry", "--disable-audio", "--video-quality", "low"],
-    { detached: false, stdio: "ignore" },
+    { detached: false, stdio: "ignore", env: lensSpawnEnv(ctx) },
   );
   _proc.on("exit", () => {
     _proc = null;
@@ -252,21 +302,117 @@ async function stopRecording() {
   }
 }
 
+/** Start a bounded PASSIVE background window (no narration, role:"passive"). */
+async function startPassiveSession() {
+  const ctx = _lensCtx || (await lensContext());
+  if (!ctx || !ctx.workspaceId || !ctx.userId) return null;
+  try {
+    const res = await reqJson("POST", "/v1/sessions", {
+      token: lensToken(),
+      body: { workspace_id: ctx.workspaceId, user_id: ctx.userId, label: "Background capture", role: "passive" },
+    });
+    const sessionId = res.json?.id ?? res.json?.session_id;
+    return res.status >= 200 && res.status < 300 && sessionId ? sessionId : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Ask the daemon to distill one closed window. The daemon reads the window's
+ *  events locally and POSTs the condensed stream to OUR API (CADENCE_DISTILL_URL)
+ *  using the workspace JWT we pass; the API records a tier-1 observation. The
+ *  call returns fast — the distill runs in the daemon's background. */
+async function triggerDistill(sessionId) {
+  const ctx = _lensCtx || (await lensContext());
+  if (!ctx || !ctx.token || !ctx.apiBase) return { ok: false, error: "no workspace context" };
+  try {
+    const res = await reqJson("POST", `/v1/sessions/${encodeURIComponent(sessionId)}/distill`, {
+      token: lensToken(), // daemon's own bearer; workspace_jwt rides in the body
+      body: { workspace_jwt: ctx.token, user_role: ctx.userRole || "other" },
+      timeoutMs: 8000,
+    });
+    return { ok: res.status >= 200 && res.status < 300, status: res.status };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+async function stopSession(sessionId) {
+  try {
+    await reqJson("POST", `/v1/sessions/${encodeURIComponent(sessionId)}/stop`, { token: lensToken() });
+  } catch {
+    /* best-effort */
+  }
+}
+
 /**
- * Ensure the ALWAYS-ON Lens daemon is running — continuous background capture
- * for passive pattern detection (the distiller surfaces automation candidates
- * over time). Independent of any record session; the pill's teach session is a
- * bounded window WITHIN this same daemon. Best-effort: no-ops off-platform or
- * when Lens isn't installed.
+ * Rolling background-capture loop (tier 1 sampling). Every BG_WINDOW_MS we open
+ * a fresh window and distill the one that just closed, so each window becomes a
+ * lens_observation. Recurrence across windows (tier 2) is decided server-side.
+ */
+async function startBackgroundLoop() {
+  if (_bg) return true; // already looping
+  await lensContext();
+  const up = await ensureLensRunning();
+  if (!up) return false;
+  const first = await startPassiveSession();
+  _bg = { timer: null, sessionId: first };
+
+  const rotate = async () => {
+    const prev = _bg ? _bg.sessionId : null;
+    const next = await startPassiveSession(); // start next first → continuous capture
+    if (_bg) _bg.sessionId = next;
+    if (prev) {
+      await stopSession(prev);
+      await lensContext(); // keep the workspace JWT fresh over long sessions
+      await triggerDistill(prev);
+    }
+  };
+  _bg.timer = setInterval(() => {
+    rotate().catch(() => {});
+  }, BG_WINDOW_MS);
+  return true;
+}
+
+/** Stop the loop and FLUSH the final window (distill it) before killing capture. */
+async function stopBackgroundLoop() {
+  if (!_bg) return;
+  const { timer, sessionId } = _bg;
+  _bg = null;
+  if (timer) clearInterval(timer);
+  if (sessionId) {
+    await stopSession(sessionId);
+    await lensContext();
+    await triggerDistill(sessionId); // daemon still alive — flush works
+  }
+}
+
+/**
+ * Ensure ALWAYS-ON background capture is running as a rolling, self-distilling
+ * loop. Best-effort: no-ops off-platform or when Lens isn't installed.
  */
 async function ensureAlwaysOn() {
   if (!LENS_SUPPORTED) return { ok: false, supported: false };
   if (!findLensBinary()) return { ok: false, supported: true, installed: false };
-  const ok = await ensureLensRunning();
+  const ok = await startBackgroundLoop();
   return { ok, supported: true, installed: true, alwaysOn: ok };
 }
 
+/** Turn background capture OFF: flush the final window, then kill the daemon. */
+async function stopAlwaysOn() {
+  await stopBackgroundLoop();
+  stopLens();
+}
+
 function stopLens() {
+  if (_bg && _bg.timer) {
+    try {
+      clearInterval(_bg.timer);
+    } catch {
+      /* ignore */
+    }
+  }
+  _bg = null;
   if (_proc && !_proc.killed) {
     try {
       _proc.kill();
@@ -277,4 +423,12 @@ function stopLens() {
   }
 }
 
-module.exports = { lensStatus, startRecording, stopRecording, stopLens, findLensBinary, ensureAlwaysOn };
+module.exports = {
+  lensStatus,
+  startRecording,
+  stopRecording,
+  stopLens,
+  stopAlwaysOn,
+  findLensBinary,
+  ensureAlwaysOn,
+};

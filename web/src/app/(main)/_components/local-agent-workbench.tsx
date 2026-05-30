@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Brain, Clock, FileSearch, Globe, KeyRound, Monitor, Pause, Play, Square } from "@/icons";
 
@@ -36,6 +36,7 @@ export function LocalAgentWorkbench() {
   const [triggering, setTriggering] = useState(false);
   const [triggerError, setTriggerError] = useState<string | null>(null);
   const [isDesktop, setIsDesktop] = useState(false);
+  const promptRef = useRef<HTMLTextAreaElement>(null);
   const activeTool = activeRun?.toolCalls.find((tool) => tool.id === activeRun.activeToolCallId);
 
   useEffect(() => {
@@ -69,6 +70,21 @@ export function LocalAgentWorkbench() {
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  // Same-window hand-off: the Home "Suggested automations" card dispatches this
+  // when the user clicks Build (storage events don't fire in the same window).
+  useEffect(() => {
+    const onUsePrompt = (e: Event) => {
+      const detail = (e as CustomEvent<string>).detail;
+      if (typeof detail === "string" && detail.trim()) {
+        setPrompt(detail);
+        promptRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+        promptRef.current?.focus();
+      }
+    };
+    window.addEventListener("basichome:use-prompt", onUsePrompt as EventListener);
+    return () => window.removeEventListener("basichome:use-prompt", onUsePrompt as EventListener);
   }, []);
 
   // Model B — "Run on my computer": provision a relay session, bridge the local
@@ -181,6 +197,7 @@ export function LocalAgentWorkbench() {
               <VoiceButton onTranscript={handleTranscript} />
             </div>
             <Textarea
+              ref={promptRef}
               id="local-agent-prompt"
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}

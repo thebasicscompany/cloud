@@ -33,6 +33,7 @@ import { browserSitesRoute } from './routes/browser-sites.js'
 import { approvalsSseRoute } from './routes/approvals-sse.js'
 import { outputsSseRoute } from './routes/outputs-sse.js'
 import { authoringRoute } from './routes/authoring.js'
+import { lensDistillRoute, lensMemoryRoute } from './routes/lens-distill.js'
 import type { WorkspaceToken } from './lib/jwt.js'
 import type { AuthenticatedWorkspaceApiKey } from './lib/workspace-api-keys.js'
 
@@ -147,6 +148,12 @@ export function buildApp() {
   // Opencode-driven automation authoring chat (replaces the gemini
   // managedAssistantRunner surface for "build me an automation" flows).
   app.route('/v1/workspaces', authoringRoute)
+
+  // Lens distillation — the desktop points the lens daemon's CADENCE_DISTILL_URL
+  // at /v1/lens/distill and CADENCE_AGENT_URL at /v1/memory. Both carry their own
+  // workspace-JWT auth via requireWorkspaceJwt inside the route.
+  app.route('/v1/lens', lensDistillRoute)
+  app.route('/v1/memory', lensMemoryRoute)
 
   // C.5 — /v1/approvals routes carry their OWN auth (workspace JWT OR
   // signed access token via ?token=); intentionally no blanket middleware.

@@ -263,7 +263,7 @@ ipcMain.handle("basichome:lens:always-on", async () => {
 });
 ipcMain.handle("basichome:lens:capture-stop", async () => {
   setBackgroundCapturePref(false);
-  lens.stopLens();
+  await lens.stopAlwaysOn(); // flush + distill the final window, then stop capture
   return { ok: true };
 });
 
