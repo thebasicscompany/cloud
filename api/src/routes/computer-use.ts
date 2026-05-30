@@ -2,7 +2,8 @@ import type Anthropic from '@anthropic-ai/sdk'
 import { Hono } from 'hono'
 import { z } from 'zod'
 
-import { getAnthropicClient, runMessages } from '../lib/anthropic.js'
+import { getAnthropicClient, runMessages, COMPUTER_USE_MODEL } from '../lib/anthropic.js'
+import { recordUsage } from '../lib/usage-meter.js'
 import type { WorkspaceToken } from '../lib/jwt.js'
 import { requireWorkspaceJwt } from '../middleware/jwt.js'
 import { logger } from '../middleware/logger.js'
@@ -115,6 +116,20 @@ computerUseRoute.post('/step', requireWorkspaceJwt, async (c) => {
     return c.json({ error: 'brain_unavailable', message: err instanceof Error ? err.message : 'model error' }, 502)
   }
 
+  // Meter this call into the shared daily ledger — closes the computer-use cost
+  // blind spot; the recorded cost also counts toward the workspace budget ceiling.
+  const ws = c.var.workspace
+  const usage = msg.usage as { input_tokens?: number; output_tokens?: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number } | undefined
+  recordUsage({
+    workspaceId: ws.workspace_id,
+    accountId: ws.account_id,
+    model: COMPUTER_USE_MODEL,
+    inputTokens: usage?.input_tokens ?? 0,
+    outputTokens: usage?.output_tokens ?? 0,
+    cacheCreationTokens: usage?.cache_creation_input_tokens ?? 0,
+    cacheReadTokens: usage?.cache_read_input_tokens ?? 0,
+  })
+
   const actions = msg.content
     .filter((b): b is Anthropic.Messages.ToolUseBlock => b.type === 'tool_use')
     .map((t) => ({ tool_use_id: t.id, ...normalizeAction(t.input as ToolUseInput) }))
@@ -174,84 +189,5 @@ Action types: {"type":"key","key":"..."} | {"type":"type","text":"..."} | {"type
   }
 })
 
-/**
- * Flexible grounding — Claude Sonnet 4.5 returns the pixel coords of an
- * arbitrary target on a screenshot. Used to fairly compare Claude grounding vs
- * UI-TARS on identical targets. POST { image, width, height, target }.
- */
-computerUseRoute.post('/ground', requireWorkspaceJwt, async (c) => {
-  const body = (await c.req.json().catch(() => ({}))) as { image?: string; width?: number; height?: number; target?: string }
-  const img = String(body.image ?? '')
-  const w = Number(body.width) || 1280
-  const h = Number(body.height) || 720
-  const target = String(body.target ?? '').slice(0, 300)
-  if (!img || !target) return c.json({ error: 'image + target required' }, 400)
-  const prompt = `This is a ${w}x${h} pixel screenshot. Reply with ONLY a JSON object {"x":<int>,"y":<int>} = the pixel coordinates of the CENTER of this exact element: ${target}. No other text.`
-  try {
-    const client = getAnthropicClient()
-    const t0 = Date.now()
-    const msg = await client.messages.create({
-      model: 'claude-sonnet-4-5',
-      max_tokens: 100,
-      messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: img } }] }],
-    })
-    const text = msg.content.map((b: Anthropic.Messages.ContentBlock) => (b.type === 'text' ? b.text : '')).join('')
-    const m = text.match(/\{[\s\S]*?\}/)
-    const xy = m ? (JSON.parse(m[0]) as { x?: number; y?: number }) : {}
-    return c.json({ x: xy.x ?? null, y: xy.y ?? null, ms: Date.now() - t0, raw: text.slice(0, 80) })
-  } catch (err) {
-    return c.json({ error: err instanceof Error ? err.message.slice(0, 100) : 'model error' }, 502)
-  }
-})
-
-/**
- * Speed benchmark — same screenshot + grounding task to Claude Sonnet 4.5 (the
- * current computer-use brain) and Gemini 3.5 Flash. Returns each model's latency
- * + answer so we can decide whether a faster brain is worth swapping in. Keys
- * stay server-side. POST { image: base64Jpeg, width, height }.
- */
-computerUseRoute.post('/bench', requireWorkspaceJwt, async (c) => {
-  const body = (await c.req.json().catch(() => ({}))) as { image?: string; width?: number; height?: number }
-  const img = String(body.image ?? '')
-  const w = Number(body.width) || 1280
-  const h = Number(body.height) || 720
-  if (!img) return c.json({ error: 'image (base64 jpeg) required' }, 400)
-  const prompt = `This is a ${w}x${h} pixel screenshot of a Windows desktop. Reply with ONLY a JSON object {"x":<int>,"y":<int>} giving the pixel coordinates of the CENTER of the Windows Start button in the taskbar. No other text.`
-
-  let claude: { ms: number; text: string } = { ms: 0, text: '' }
-  try {
-    const client = getAnthropicClient()
-    const t0 = Date.now()
-    const msg = await client.messages.create({
-      model: 'claude-sonnet-4-5',
-      max_tokens: 100,
-      messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: img } }] }],
-    })
-    claude = { ms: Date.now() - t0, text: msg.content.map((b: Anthropic.Messages.ContentBlock) => (b.type === 'text' ? b.text : '')).join('').slice(0, 120) }
-  } catch (err) {
-    claude = { ms: 0, text: `ERR ${err instanceof Error ? err.message.slice(0, 90) : ''}` }
-  }
-
-  let gemini: { ms: number; text: string; model: string } = { ms: 0, text: '', model: '' }
-  try {
-    const { GoogleGenAI } = await import('@google/genai')
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
-    for (const model of ['gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-flash-latest']) {
-      try {
-        const t0 = Date.now()
-        const res = await ai.models.generateContent({
-          model,
-          contents: [{ role: 'user', parts: [{ text: prompt }, { inlineData: { mimeType: 'image/jpeg', data: img } }] }],
-        })
-        gemini = { ms: Date.now() - t0, text: String(res.text ?? '').slice(0, 120), model }
-        break
-      } catch (e) {
-        gemini = { ms: 0, text: `ERR ${e instanceof Error ? e.message.slice(0, 90) : ''}`, model }
-      }
-    }
-  } catch (err) {
-    gemini = { ms: 0, text: `ERR ${err instanceof Error ? err.message.slice(0, 90) : ''}`, model: '' }
-  }
-
-  return c.json({ claude, gemini })
-})
+// Hybrid grounding/reason/bench endpoints (UI-TARS A/B experiment) were removed
+// 2026-05-30 — Claude-native /step won the eval and is the production harness.

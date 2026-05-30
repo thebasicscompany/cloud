@@ -80,10 +80,30 @@ async function doubleClick(x, y) {
 
 async function type(text) {
   if (!text) return "";
+  // Unicode (emoji, accents, non-Latin) gets mangled by SendKeys/keystroke, so
+  // route it through the clipboard + paste instead (Agent-S3's trick). ASCII —
+  // the common case — types normally and is unaffected.
+  if (/[^\x00-\x7F]/.test(text)) return pasteText(text);
   if (PLATFORM === "win32") return psRun(`[System.Windows.Forms.SendKeys]::SendWait("${sendKeysEscape(text).replace(/"/g, '`"')}")`);
   if (PLATFORM === "darwin")
     return run("osascript", ["-e", `tell application "System Events" to keystroke ${JSON.stringify(text)}`]);
   return run("xdotool", ["type", "--", text]);
+}
+
+// Type via clipboard paste — the reliable path for Unicode. Sets the clipboard
+// (UTF-8 safe, via base64 to dodge shell-quoting) then sends the paste hotkey.
+async function pasteText(text) {
+  const b64 = Buffer.from(text, "utf8").toString("base64");
+  if (PLATFORM === "win32") {
+    await psRun(`Set-Clipboard -Value ([System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String("${b64}")))`);
+    return psRun(`[System.Windows.Forms.SendKeys]::SendWait("^v")`);
+  }
+  if (PLATFORM === "darwin") {
+    await run("bash", ["-c", `printf %s "$(echo ${b64} | base64 --decode)" | pbcopy`]);
+    return run("osascript", ["-e", `tell application "System Events" to keystroke "v" using {command down}`]);
+  }
+  await run("bash", ["-c", `printf %s "$(echo ${b64} | base64 --decode)" | xclip -selection clipboard`]);
+  return run("xdotool", ["key", "ctrl+v"]);
 }
 
 // Press a key combo: "enter", "tab", "cmd+a"/"ctrl+a", "escape", "down" ...
