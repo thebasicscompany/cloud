@@ -88,6 +88,22 @@ async function fetchRecipe(goal) {
   return (await r.json()).recipe;
 }
 
+// One-shot plan: adapt a recipe into concrete actions for this task (the fast
+// path that gets REPLAYED). Hits the API brain (not the web).
+async function fetchPlan(ctx, goal, recipe, shot) {
+  try {
+    const r = await fetch(`${ctx.apiBase}/v1/computer/plan`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${ctx.token}` },
+      body: JSON.stringify({ goal, recipe, platform: process.platform, width: shot.sentW, height: shot.sentH, image: shot.base64 }),
+    });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch {
+    return null;
+  }
+}
+
 // Compact one action for the recipe — keep the reusable essence (what was typed,
 // which key), drop screen-specific coordinates the next run will re-derive.
 function compactAction(a) {
@@ -125,24 +141,46 @@ async function runComputerUse({ goal, maxSteps = MAX_STEPS, onStep } = {}) {
   _stop = false;
   try {
     let shot = await captureScreen();
-    const messages = [{ role: "user", content: [{ type: "text", text: String(goal) }, imageBlock(shot.base64)] }];
-
-    // Self-learning warm-start: if a similar task succeeded before, hand the
-    // model the approach that worked so it follows the known path (fewer steps,
-    // less thinking) instead of re-exploring. It still adapts + self-heals.
     const actionLog = [];
+    let replayed = false;
+
+    // Self-learning FAST PATH: if a similar task succeeded before, adapt that
+    // recipe into a concrete plan in ONE call and REPLAY it (no per-step model),
+    // then verify via the step loop below — which HEALS on any divergence. This
+    // is the smart bit: replay when confident, but the step loop re-checks
+    // reality and takes over the moment the screen doesn't match.
     try {
       const recipe = await fetchRecipe(String(goal));
       if (recipe && recipe.approach) {
-        messages[0].content.splice(1, 0, {
-          type: "text",
-          text: `You've done a similar task before — this approach worked (used ${recipe.successCount || 1}x). Follow it closely, only adapting the specific values (numbers, text, targets) to THIS task:\n${recipe.approach}`,
-        });
-        if (typeof onStep === "function") onStep({ step: 0, text: "Using a learned shortcut from a past run." });
+        if (typeof onStep === "function") onStep({ step: 0, text: "Found a learned recipe — replaying the fast path." });
+        const plan = await fetchPlan(ctx, String(goal), recipe.approach, shot);
+        if (plan && Array.isArray(plan.actions) && plan.actions.length) {
+          for (const a of plan.actions) {
+            if (_stop) break;
+            if (!a || a.type === "screenshot" || a.type === "noop") continue;
+            try {
+              await hands.act(scaleAction(a, shot));
+              actionLog.push(compactAction(a));
+            } catch (err) {
+              const hint = macPermissionHint(err instanceof Error ? err.message : String(err));
+              if (hint) return { error: hint };
+            }
+            await sleep(STEP_PAUSE_MS);
+          }
+          replayed = true;
+          shot = await captureScreen();
+        }
       }
     } catch {
-      /* no recipe — run fresh */
+      /* no recipe / plan failed — fall through to thinking */
     }
+
+    // After a replay, the FIRST step-loop call just verifies + heals; without a
+    // replay it's a normal fresh run.
+    const firstText = replayed
+      ? `${goal}\n\n(You just replayed a learned recipe for a similar task. Verify from the screenshot whether THIS task is complete. If it's done, stop and report the result. If anything is off or incomplete, take over and finish it.)`
+      : String(goal);
+    const messages = [{ role: "user", content: [{ type: "text", text: firstText }, imageBlock(shot.base64)] }];
 
     for (let step = 0; step < maxSteps; step++) {
       if (_stop) return { done: false, stopped: true, text: "Stopped.", steps: step };
@@ -158,7 +196,7 @@ async function runComputerUse({ goal, maxSteps = MAX_STEPS, onStep } = {}) {
         } catch {
           /* best-effort */
         }
-        return { done: true, text: res.text || "Done.", steps: step + 1 };
+        return { done: true, text: res.text || "Done.", steps: step + 1, replayed };
       }
 
       // Execute each action on the real screen.

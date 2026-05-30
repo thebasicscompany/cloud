@@ -128,6 +128,51 @@ computerUseRoute.post('/step', requireWorkspaceJwt, async (c) => {
 })
 
 /**
+ * Fast-path planner for self-learning. Given the goal + a known-good recipe +
+ * the current screen, return a concrete action PLAN (params adapted to this
+ * task) plus the expected end state — to be REPLAYED without per-step model
+ * calls. The loop replays it, then verifies via /step (which heals on any
+ * divergence). One call instead of N.
+ */
+computerUseRoute.post('/plan', requireWorkspaceJwt, async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as {
+    goal?: string; recipe?: string; platform?: string; width?: number; height?: number; image?: string
+  }
+  const goal = String(body.goal ?? '')
+  const recipe = String(body.recipe ?? '')
+  const w = Number(body.width) || 1280
+  const h = Number(body.height) || 720
+  const img = String(body.image ?? '')
+  if (!goal || !recipe || !img) return c.json({ error: 'goal, recipe, image required', actions: [] }, 400)
+
+  const appOpen =
+    body.platform === 'darwin' ? 'key "cmd+space" (Spotlight), type the app name, key "return"'
+    : body.platform === 'linux' ? 'key "super", type the app name, key "return"'
+    : 'key "win" (Start), type the app name, key "return"'
+  const sys = `You convert a known-good recipe into a concrete action PLAN for a NEW task, to be REPLAYED with no further input. Output ONLY a JSON object, no prose:
+{"actions":[{"type":"key","key":"win"},{"type":"type","text":"calculator"},{"type":"key","key":"return"},{"type":"type","text":"18*7="}],"expected":"one line: what the screen shows when the task is done"}
+Action types: {"type":"key","key":"..."} | {"type":"type","text":"..."} | {"type":"click","x":<int>,"y":<int>} | {"type":"double_click","x":..,"y":..} | {"type":"scroll","amount":<int>} | {"type":"wait","ms":<int>}. Coordinates are in the ${w}x${h} screenshot space. To open an app: ${appOpen}. ADAPT the recipe's specifics (numbers, text, targets) to THIS task. Include ONLY the steps needed; no extras.`
+  const userMsg = `New task: ${goal}\n\nRecipe that worked for a similar task:\n${recipe}\n\nThe current screen is attached (${w}x${h}). Produce the action plan + expected end state.`
+
+  try {
+    const client = getAnthropicClient()
+    const msg = await client.messages.create({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 800,
+      system: sys,
+      messages: [{ role: 'user', content: [{ type: 'text', text: userMsg }, { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: img } }] }],
+    })
+    const text = msg.content.map((b: Anthropic.Messages.ContentBlock) => (b.type === 'text' ? b.text : '')).join('')
+    const m = text.match(/\{[\s\S]*\}/)
+    const parsed = m ? (JSON.parse(m[0]) as { actions?: unknown; expected?: unknown }) : { actions: [] }
+    const actions = Array.isArray(parsed.actions) ? parsed.actions.slice(0, 30) : []
+    return c.json({ actions, expected: String(parsed.expected ?? '') })
+  } catch (err) {
+    return c.json({ error: 'plan_failed', message: err instanceof Error ? err.message : 'model error', actions: [] }, 502)
+  }
+})
+
+/**
  * Speed benchmark — same screenshot + grounding task to Claude Sonnet 4.5 (the
  * current computer-use brain) and Gemini 3.5 Flash. Returns each model's latency
  * + answer so we can decide whether a faster brain is worth swapping in. Keys
