@@ -175,6 +175,36 @@ Action types: {"type":"key","key":"..."} | {"type":"type","text":"..."} | {"type
 })
 
 /**
+ * Flexible grounding — Claude Sonnet 4.5 returns the pixel coords of an
+ * arbitrary target on a screenshot. Used to fairly compare Claude grounding vs
+ * UI-TARS on identical targets. POST { image, width, height, target }.
+ */
+computerUseRoute.post('/ground', requireWorkspaceJwt, async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { image?: string; width?: number; height?: number; target?: string }
+  const img = String(body.image ?? '')
+  const w = Number(body.width) || 1280
+  const h = Number(body.height) || 720
+  const target = String(body.target ?? '').slice(0, 300)
+  if (!img || !target) return c.json({ error: 'image + target required' }, 400)
+  const prompt = `This is a ${w}x${h} pixel screenshot. Reply with ONLY a JSON object {"x":<int>,"y":<int>} = the pixel coordinates of the CENTER of this exact element: ${target}. No other text.`
+  try {
+    const client = getAnthropicClient()
+    const t0 = Date.now()
+    const msg = await client.messages.create({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 100,
+      messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: img } }] }],
+    })
+    const text = msg.content.map((b: Anthropic.Messages.ContentBlock) => (b.type === 'text' ? b.text : '')).join('')
+    const m = text.match(/\{[\s\S]*?\}/)
+    const xy = m ? (JSON.parse(m[0]) as { x?: number; y?: number }) : {}
+    return c.json({ x: xy.x ?? null, y: xy.y ?? null, ms: Date.now() - t0, raw: text.slice(0, 80) })
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message.slice(0, 100) : 'model error' }, 502)
+  }
+})
+
+/**
  * Speed benchmark — same screenshot + grounding task to Claude Sonnet 4.5 (the
  * current computer-use brain) and Gemini 3.5 Flash. Returns each model's latency
  * + answer so we can decide whether a faster brain is worth swapping in. Keys
