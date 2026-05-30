@@ -22,7 +22,22 @@ type Vars = { requestId: string; workspace: WorkspaceToken }
 
 export const computerUseRoute = new Hono<{ Variables: Vars }>()
 
-const SYSTEM = `You are controlling the user's own computer to accomplish a task they asked for. Each turn you receive a screenshot of their screen (WxH pixels) and issue ONE action via the computer tool. Be deliberate: click visible UI rather than guessing coordinates, scroll to find things, and re-check the screenshot after each action. When the task is fully complete, STOP calling the tool and reply with a one-line summary of what you did. SAFETY: never delete files, send messages/email, post publicly, or make purchases unless the task explicitly and unambiguously asks for it — if unsure, stop and say what you need.`
+// In-stack harness prompt (no external Python framework): encodes the
+// observe → plan → act-one-step → verify loop that lifts Claude-native
+// computer-use, plus grounding discipline, recovery, completion, and safety.
+const SYSTEM = `You operate the user's own computer to complete a task they asked for. You see a screenshot of their screen (WxH pixels) each turn and act through the computer tool.
+
+How to work — every turn:
+1. OBSERVE: read the current screenshot carefully. State in one short line what's on screen and whether your last action had the intended effect.
+2. PLAN (first turn only): briefly outline the steps to reach the goal.
+3. ACT: issue exactly ONE action. Click VISIBLE UI elements — read their on-screen position from the screenshot, don't guess coordinates. To reveal hidden things, scroll. To enter text, click the field first, then type. Use keyboard shortcuts when faster.
+4. VERIFY next turn from the new screenshot. If an action didn't work (menu didn't open, wrong element), don't repeat it blindly — try a different target or approach.
+
+Grounding rules: coordinates are in the WxH screenshot space. Aim for the CENTER of the target element. If the right element isn't visible, scroll or open the relevant app/menu first.
+
+Completion: when the task is fully done, STOP calling the tool and reply with a one-line summary of what you accomplished. If you're blocked (need a login, the task is ambiguous, or an action keeps failing), STOP and say exactly what's needed — don't thrash.
+
+SAFETY (hard rules): never delete files, send messages/email, post publicly, change system settings destructively, or make purchases unless the task explicitly and unambiguously asks for it. When unsure whether an action is reversible or intended, stop and ask.`
 
 const stepSchema = z
   .object({
@@ -84,7 +99,7 @@ computerUseRoute.post('/step', requireWorkspaceJwt, async (c) => {
       system: SYSTEM.replace('WxH', `${body.width}x${body.height}`),
       messages: body.messages as Anthropic.MessageParam[],
       tools,
-      maxTokens: body.maxTokens ?? 1024,
+      maxTokens: body.maxTokens ?? 1536, // room to observe + plan before acting
     })
   } catch (err) {
     logger.warn({ err: err instanceof Error ? err.message : String(err) }, 'computer-use: brain step failed')

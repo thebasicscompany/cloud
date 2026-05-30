@@ -18,9 +18,18 @@ import { VoiceButton } from "./voice-button";
 const STARTER_PROMPT = "Use approved local context to summarize my invoice follow-up work and plan the next safe action.";
 
 /** Desktop preload bridge (Model B). Present only inside the Electron app. */
+interface CuStep {
+  step?: number;
+  text?: string;
+  error?: string;
+  actions?: Array<{ type?: string }>;
+}
 interface BasichomeBridge {
   isDesktop?: boolean;
   localRelayStart?: (opts: { relayUrl: string; session: string; token: string; mode?: string; port?: number }) => Promise<{ ok?: boolean; error?: string }>;
+  computerUseStart?: (goal: string) => Promise<{ done?: boolean; text?: string; steps?: number; error?: string; stopped?: boolean }>;
+  computerUseStop?: () => void;
+  onComputerUseStep?: (cb: (s: CuStep) => void) => () => void;
 }
 function desktopBridge(): BasichomeBridge | undefined {
   if (typeof window === "undefined") return undefined;
@@ -32,7 +41,10 @@ export function LocalAgentWorkbench() {
   const actions = useLocalAgentActions();
   const { push } = useRouter();
   const [prompt, setPrompt] = useState(STARTER_PROMPT);
-  const [where, setWhere] = useState<"cloud" | "computer">("cloud");
+  const [where, setWhere] = useState<"cloud" | "computer" | "computer-full">("cloud");
+  const [cuSteps, setCuSteps] = useState<CuStep[]>([]);
+  const [cuRunning, setCuRunning] = useState(false);
+  const [cuResult, setCuResult] = useState<string | null>(null);
   const [triggering, setTriggering] = useState(false);
   const [triggerError, setTriggerError] = useState<string | null>(null);
   const [isDesktop, setIsDesktop] = useState(false);
@@ -141,6 +153,33 @@ export function LocalAgentWorkbench() {
     }
   };
 
+  // Full computer control (beta): hand the goal to the desktop computer-use loop
+  // (eyes→brain→hands), streaming each step here. Drives the real machine, so
+  // it's desktop-only and the user can Stop at any point.
+  const runFullComputerControl = async () => {
+    const bh = desktopBridge();
+    if (!bh?.computerUseStart) {
+      setTriggerError("Full computer control needs the desktop app.");
+      return;
+    }
+    const task = prompt.trim() || STARTER_PROMPT;
+    setCuSteps([]);
+    setCuResult(null);
+    setCuRunning(true);
+    setTriggerError(null);
+    const off = bh.onComputerUseStep?.((s) => setCuSteps((prev) => [...prev, s].slice(-12)));
+    try {
+      const res = await bh.computerUseStart(task);
+      if (res?.error) setTriggerError(res.error);
+      else setCuResult(res?.stopped ? "Stopped." : res?.text || "Done.");
+    } catch (e) {
+      setTriggerError(e instanceof Error ? e.message : String(e));
+    } finally {
+      off?.();
+      setCuRunning(false);
+    }
+  };
+
   // Append finalized voice transcripts to the prompt; interim results are ignored
   // so the textarea isn't flooded with partial guesses.
   const handleTranscript = (text: string, isFinal: boolean) => {
@@ -213,33 +252,66 @@ export function LocalAgentWorkbench() {
               <NativeSelect
                 id="run-where"
                 value={where}
-                onChange={(event) => setWhere(event.target.value as "cloud" | "computer")}
+                onChange={(event) => setWhere(event.target.value as "cloud" | "computer" | "computer-full")}
                 className="w-full bg-background"
               >
                 <NativeSelectOption value="cloud">Cloud (recommended)</NativeSelectOption>
                 {isDesktop ? (
                   <NativeSelectOption value="computer">My computer — your Chrome</NativeSelectOption>
                 ) : null}
+                {isDesktop ? (
+                  <NativeSelectOption value="computer-full">My computer — full control (beta)</NativeSelectOption>
+                ) : null}
               </NativeSelect>
               <p className="text-muted-foreground text-xs">
-                {where === "computer"
-                  ? "Drives your own Chrome with your logins. Keep Chrome open."
-                  : "Runs on Basics Cloud — watch it live, review it after."}
+                {where === "computer-full"
+                  ? "Drives your whole computer — mouse, keyboard, any app. It takes over while it works; you can Stop anytime."
+                  : where === "computer"
+                    ? "Drives your own Chrome with your logins. Keep Chrome open."
+                    : "Runs on Basics Cloud — watch it live, review it after."}
               </p>
             </div>
             <Button
               type="button"
               className="w-full"
-              onClick={() => void (where === "computer" ? runOnMyComputer() : startRun())}
-              disabled={triggering}
+              onClick={() =>
+                void (where === "computer-full" ? runFullComputerControl() : where === "computer" ? runOnMyComputer() : startRun())
+              }
+              disabled={triggering || cuRunning}
             >
               <Play className="size-4" />
-              {triggering ? "Starting…" : where === "computer" ? "Run on my computer" : "Start run"}
+              {cuRunning ? "Working…" : triggering ? "Starting…" : where === "computer-full" ? "Take control" : where === "computer" ? "Run on my computer" : "Start run"}
             </Button>
+            {where === "computer-full" && cuRunning ? (
+              <Button type="button" variant="outline" className="w-full" onClick={() => desktopBridge()?.computerUseStop?.()}>
+                <Square className="size-4" />
+                Stop
+              </Button>
+            ) : null}
             {triggerError ? <p className="text-destructive text-xs">{triggerError}</p> : null}
           </div>
         </div>
       </div>
+
+      {cuRunning || cuSteps.length > 0 || cuResult ? (
+        <div className="rounded-lg border bg-card p-4">
+          <div className="flex items-center gap-2">
+            <Monitor className="size-4 text-primary" />
+            <h3 className="font-medium text-sm">Full computer control {cuRunning ? "— working" : cuResult ? "— done" : ""}</h3>
+          </div>
+          <ol className="mt-3 space-y-1.5 text-sm">
+            {cuSteps.map((s, i) => (
+              <li key={i} className="flex gap-2 text-muted-foreground">
+                <span className="shrink-0 font-mono text-xs tabular-nums">{s.step ?? i + 1}.</span>
+                <span className={s.error ? "text-destructive" : ""}>
+                  {s.error ? `Error: ${s.error}` : s.text || (s.actions?.length ? s.actions.map((a) => a.type).join(", ") : "…")}
+                </span>
+              </li>
+            ))}
+          </ol>
+          {cuResult ? <p className="mt-3 font-medium text-sm">{cuResult}</p> : null}
+        </div>
+      ) : null}
 
       {activeRun ? (
         <div className="grid gap-3 xl:grid-cols-[1fr_320px]">
