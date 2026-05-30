@@ -12,7 +12,7 @@ const { desktopCapturer, screen } = require("electron");
 const hands = require("./computer-hands");
 
 const APP_URL = process.env.BASICS_APP_URL || "http://localhost:3000";
-const SEND_WIDTH = 1280; // keep within the model's trained resolution band
+const SEND_WIDTH = 1456; // within Anthropic's <=1568 bound; more legible small UI text
 const MAX_STEPS = 24;
 const STEP_PAUSE_MS = 250; // settle time between actions (app launchers need a beat)
 
@@ -56,7 +56,7 @@ async function captureScreen() {
   const sources = await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: sentW, height: sentH } });
   const src = sources[0];
   if (!src) throw new Error("no screen source");
-  const base64 = src.thumbnail.toJPEG(70).toString("base64");
+  const base64 = src.thumbnail.toJPEG(88).toString("base64"); // q88: small UI text stays legible for "read" tasks
   return { base64, sentW, sentH, realW, realH };
 }
 

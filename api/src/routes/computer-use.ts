@@ -35,6 +35,8 @@ Speed rules (most important):
 
 Grounding: coordinates are in the WxH screenshot space; aim for the CENTER of a visible element. Scroll to reveal hidden things.
 
+Reading: when the task asks you to READ or report specific information, look at the EXACT on-screen element and report the PRECISE text you see — e.g. the full drive label "Local Disk (C:)" or "Windows (C:)", an exact value, a specific filename — never a vague summary like "one drive" or "a few items". If small text is hard to read, look more closely before answering; don't guess or hand-wave.
+
 Completion: when done, STOP calling the tool and reply with a one-line result. If blocked (a login, ambiguity, or an action that keeps failing), STOP and say what's needed — don't thrash.
 
 SAFETY: never delete files, send messages/email, post publicly, change settings destructively, or make purchases unless the task explicitly asks.`
