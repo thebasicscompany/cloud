@@ -3,6 +3,7 @@ import { Hono } from 'hono'
 import { supabaseAdmin } from '../lib/supabase.js'
 import type { WorkspaceToken } from '../lib/jwt.js'
 import { requireWorkspaceJwt } from '../middleware/jwt.js'
+import { refreshSuggestionsIfStale } from '../lib/suggestion-generators.js'
 
 /**
  * Automation suggestions — the "I noticed you do X, want to automate it?" surface.
@@ -67,6 +68,9 @@ export const suggestionsRoute = new Hono<{ Variables: Vars }>()
 /** GET / — pending suggestions for the JWT's workspace (mirrors getPendingSuggestions). */
 suggestionsRoute.get('/', requireWorkspaceJwt, async (c) => {
   const ws = c.var.workspace.workspace_id
+  // Refresh both signals (run-history + lens recurrence) before reading, throttled
+  // per workspace so we don't re-cluster on every request. Best-effort.
+  await refreshSuggestionsIfStale(ws)
   const { data } = await supabaseAdmin()
     .from('automation_suggestions')
     .select('id,source,title,rationale,suggested_prompt,evidence,confidence,created_at')
