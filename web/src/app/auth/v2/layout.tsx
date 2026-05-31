@@ -12,21 +12,41 @@ export default function Layout({ children }: Readonly<{ children: ReactNode }>) 
   return (
     <main>
       <div className="grid h-dvh justify-center p-2 lg:grid-cols-2">
-        <div className="relative order-2 hidden h-full rounded-3xl bg-primary lg:flex">
-          <div className="absolute top-10 space-y-2 px-10 text-primary-foreground">
-            <h1 className="text-2xl font-medium">{APP_CONFIG.name}</h1>
-            <p className="text-sm">Run B2B SaaS playbooks in cloud Chrome with live-view, take-over, and audit log.</p>
+        <div className="relative order-2 hidden h-full overflow-hidden rounded-3xl bg-gradient-to-br from-primary via-primary to-primary/85 lg:flex">
+          {/* Soft decorative glows so the panel reads as an intentional brand
+              surface rather than a flat slab. */}
+          <div className="pointer-events-none absolute -right-28 -top-28 size-80 rounded-full bg-primary-foreground/10 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-32 -left-24 size-80 rounded-full bg-primary-foreground/[0.07] blur-3xl" />
+
+          <div className="absolute top-10 space-y-3 px-10 text-primary-foreground">
+            <div className="flex items-center gap-3">
+              <Image
+                src="/basics-logo.png"
+                alt={APP_CONFIG.name}
+                width={40}
+                height={40}
+                className="rounded-xl ring-1 ring-primary-foreground/20"
+              />
+              <h1 className="text-2xl font-semibold tracking-tight">{APP_CONFIG.name}</h1>
+            </div>
+            <p className="max-w-md text-sm text-primary-foreground/80">
+              Run B2B SaaS playbooks in cloud Chrome with live-view, take-over, and an audit log.
+            </p>
           </div>
 
           <div className="absolute bottom-10 flex w-full justify-between px-10">
             <div className="flex-1 space-y-1 text-primary-foreground">
               <h2 className="font-medium">Demonstrate once.</h2>
-              <p className="text-sm">Record a workflow in your browser. Cloud Chrome replays it on schedule.</p>
+              <p className="text-sm text-primary-foreground/75">
+                Record a workflow in your browser. Cloud Chrome replays it on schedule.
+              </p>
             </div>
-            <Separator orientation="vertical" className="mx-3 h-auto!" />
+            <Separator orientation="vertical" className="mx-3 h-auto! bg-primary-foreground/20" />
             <div className="flex-1 space-y-1 text-primary-foreground">
               <h2 className="font-medium">Stay in control.</h2>
-              <p className="text-sm">Approval gating, take-over, outcome verification — every run audited.</p>
+              <p className="text-sm text-primary-foreground/75">
+                Approval gating, take-over, outcome verification — every run audited.
+              </p>
             </div>
           </div>
         </div>

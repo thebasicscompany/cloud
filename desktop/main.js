@@ -1,4 +1,4 @@
-// Basichome cross-platform desktop shell (Electron) — macOS + Windows.
+// Basics cross-platform desktop shell (Electron) — macOS + Windows.
 //
 // The web app (cloud/web) IS the product: this shell simply wraps that
 // renderer in a native desktop window, plus a tray and a global shortcut.
@@ -13,6 +13,7 @@ const lens = require("./lens-client");
 const computerLoop = require("./computer-loop");
 const computerWatcher = require("./computer-watcher");
 const authContext = require("./auth-context");
+const authExternal = require("./auth-external");
 const { startWebServer, stopWebServer } = require("./web-server");
 
 // Background (always-on) Lens capture is OFF by default — it's a real resource
@@ -109,7 +110,7 @@ function createMainWindow() {
     height: 880,
     minWidth: 960,
     minHeight: 620,
-    title: "Basichome",
+    title: "Basics",
     backgroundColor: "#f3f3f3",
     autoHideMenuBar: true,
     icon: path.join(__dirname, "build", "icon.png"),
@@ -160,10 +161,10 @@ app.whenReady().then(async () => {
 
   try {
     tray = new Tray(trayImage());
-    tray.setToolTip("Basichome");
+    tray.setToolTip("Basics");
     tray.setContextMenu(
       Menu.buildFromTemplate([
-        { label: "Open Basichome", click: () => createMainWindow() },
+        { label: "Open Basics", click: () => createMainWindow() },
         { type: "separator" },
         { label: "Quit", click: () => app.quit() },
       ]),
@@ -315,6 +316,17 @@ ipcMain.handle("basichome:auth:set", (_e, payload) => {
 });
 ipcMain.handle("basichome:auth:clear", () => {
   authContext.clearToken();
+  return { ok: true };
+});
+
+// Sign-in: open the OAuth URL in the user's REAL browser (Google blocks embedded
+// webviews) and capture the redirect via a loopback server; hand the auth code
+// back to the renderer, which exchanges it so the session lands in the app.
+ipcMain.handle("basichome:auth:open-external", (event, url) => {
+  if (typeof url !== "string" || !url) return { ok: false };
+  authExternal.openExternalAuth(url, (result) => {
+    if (!event.sender.isDestroyed()) event.sender.send("basichome:auth:code", result);
+  });
   return { ok: true };
 });
 

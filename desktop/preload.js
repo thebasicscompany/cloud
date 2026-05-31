@@ -44,6 +44,14 @@ contextBridge.exposeInMainWorld("basichome", {
   // workspace-JWT signing secret (those live solely in cloud/api).
   setWorkspaceToken: (payload) => ipcRenderer.invoke("basichome:auth:set", payload),
   clearWorkspaceToken: () => ipcRenderer.invoke("basichome:auth:clear"),
+  // Open an OAuth URL in the user's real browser; the resolved { code, error }
+  // comes back via onAuthCode (the renderer then exchanges the code for a session).
+  openExternalAuth: (url) => ipcRenderer.invoke("basichome:auth:open-external", url),
+  onAuthCode: (cb) => {
+    const h = (_e, result) => cb(result);
+    ipcRenderer.on("basichome:auth:code", h);
+    return () => ipcRenderer.removeListener("basichome:auth:code", h);
+  },
   // The deployed cloud/api base, owned by the desktop, so the renderer can call
   // /v1/* directly without its own api-base env.
   apiBase: (process.env.BASICS_API_URL || "https://api.trybasics.ai").replace(/\/+$/, ""),

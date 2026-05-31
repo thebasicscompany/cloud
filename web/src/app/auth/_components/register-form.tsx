@@ -60,9 +60,12 @@ export function RegisterForm() {
       return;
     }
 
-    toast.success("Check your email", {
-      description: "We sent a confirmation link. Click it to finish signing up.",
+    // Email confirmation required: send them to login with a clear next step
+    // (so the form doesn't appear to "go nowhere").
+    toast.success("Check your email to confirm", {
+      description: "Click the confirmation link, then sign in here.",
     });
+    router.replace("/auth/v2/login");
   };
 
   return (

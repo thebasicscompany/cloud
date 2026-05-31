@@ -19,7 +19,7 @@
   },
   "build": {
     "appId": "ai.trybasics.basichome",
-    "productName": "Basichome",
+    "productName": "Basics",
     "files": ["main.js", "web-server.js", "preload.js", "relay-client.js", "local-browser.js", "lens-client.js", "package.json", "build/icon.png"],
     "//icon": "electron-builder auto-generates per-platform app icons (icns/ico) from build/icon.png (1024x1024). The runtime BrowserWindow icon also references build/icon.png.",
     "//extraResources": "Bundles the Lens capture daemon INSIDE the app (one download). Drop the per-platform compiled daemon (lens / lens.exe, built from the lens repo) into desktop/vendor/lens/ before building; it lands at resources/lens/ where lens-client.findLensBinary() looks first.",
