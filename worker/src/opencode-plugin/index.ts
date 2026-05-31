@@ -34,7 +34,7 @@ import {
 import { PgSkillLoader, composeSkillContext, type LoadedSkill } from "../skill-loader.js";
 import { PgSkillStore } from "../skill-store.js";
 import { PgQuotaStore } from "../quota-store.js";
-import { resolveConnectedAccounts } from "../composio/connection-resolver.js";
+import { resolveConnectedAccounts, resolveEnabledToolkits } from "../composio/connection-resolver.js";
 import { PgComposioToolCache } from "../composio/cache.js";
 import { loadComposioPolicy } from "../composio/denylist.js";
 import { executeWithApproval } from "../approvals/with-approval.js";
@@ -56,6 +56,9 @@ interface PluginRuntime {
   /** Hosts with a saved cloud browser login (cookies), injected so the agent
    * knows which gated sites it's already signed into and which to request. */
   browserSites: ReadonlyArray<string>;
+  /** Toolkit slugs the ORG has enabled in Composio (connectable via Composio),
+   * so the agent tells "ask to connect via Composio" from "use the browser". */
+  enabledToolkits: ReadonlyArray<string>;
   /** True when this run drives the user's local machine (relay bridged), so
    * computer_use is actually available. Gates the computer-use prompt rung. */
   isLocal: boolean;
@@ -136,6 +139,7 @@ Pick the surface:
 - Structured or repeating data (a lead, a row, a tracked item, a metric, an entry that accrues over time) ⇒ an APP via \`app_emit({appSlug, data, status?, dedupKey?})\`. Strongly prefer an App for anything that could recur — it turns your runs into a living dataset the user can sort, filter, and build on.
   • First \`app_query({appSlug})\` a fitting app from the list below and ADD this run's records to it.
   • If no app fits and the output is structured/recurring, CREATE one — call \`app_emit\` with appName+appKind for a new slug. Creating an app is encouraged, not a last resort. If you can imagine this run happening again (a daily check, a scheduled task, a repeated lookup), make an app for it now.
+  • EMPTY RESULTS STILL CREATE THE APP. If your output is an app but you found NO data this run (a sync that returned nothing yet, a search with no hits), STILL create it — call \`app_emit\` with appName + appKind + \`fields\` (the columns) and OMIT \`data\`. A missing app means future runs have nowhere to write and the user can't see the automation set up its output; an empty app with the right columns is the correct, ready state.
 - Long-form / narrative (a report, summary, digest, plan, brief, drafted message) ⇒ a DOCUMENT via \`doc_write({title, body, summary?, dedupKey?})\` (markdown).
 
 ACCUMULATE across runs. This run may be one of many — a manual re-run, a scheduled/cron automation, or a task the user repeats. Do NOT start fresh each time:
@@ -163,6 +167,8 @@ YOU must figure out which logins a task needs — the user will NOT spell it out
 For each needed site: if it's in the saved list above, just use it. If it is NOT, do NOT type a password and do NOT treat a sign-in wall as a dead end — and do NOT fabricate results. Instead, CALL the \`request_browser_login({host, reason})\` tool — this surfaces a one-click "Sign in to <host>" prompt to the user on the run and on their Home screen (without it, the user never sees that a login is needed). Then stop and tell them to connect it and re-run. At RUNTIME, also treat any logged-out signal (a sign-in/login wall, a "Sign in" call-to-action, or the absence of the user's personalized content) as exactly this — call request_browser_login and stop, never guess around it.
 
 When SETTING UP a new automation, enumerate every gated site it will touch up front — alongside any Composio connections — so the user can connect them before the first run. Missing browser logins are first-class setup requirements, same priority as Composio connections.
+
+HOST SPECIFICITY: use the EXACT host a task lives on, INCLUDING subdomain. Many apps run on a subdomain — the Stripe dashboard is dashboard.stripe.com (NOT stripe.com), HubSpot is app.hubspot.com, etc. A login is per-host: stripe.com cookies do NOT sign you into dashboard.stripe.com. Always request_browser_login for the precise host you navigate to. And if a SAVED login STILL shows a sign-in wall, the saved login is for the WRONG host — re-request request_browser_login for the EXACT host you're on (the subdomain), not the bare domain, then stop.
 </browser_sites>`;
 }
 
@@ -181,6 +187,44 @@ Choose the most reliable, lowest-cost path that can do the job — escalate only
 ${computerRung}
 Don't open a browser to do something an API tool already does. Don't screen-drive what a browser can do with a URL + selector. State which rung you chose and why when it isn't obvious.
 </tool_strategy>`;
+}
+
+function composeAutonomyContext(): string {
+  // The whole product is "low human-in-the-loop": the agent decides and acts;
+  // humans only review the result and correct course after the fact. A headless
+  // cloud run has NO channel to answer a question (opencode's stdin is ignored),
+  // so any question hangs the run. This directive makes the agent never ask.
+  return `<autonomy>
+You are running AUTONOMOUSLY in the cloud — headless, with NO human watching and NO way to answer a question. Stopping to ask anything HANGS the run; it never reaches a person. So:
+- NEVER ask the user a question, ask for clarification, or wait for confirmation/input. If you catch yourself wanting to ask, instead MAKE THE BEST DECISION yourself from sensible defaults and proceed. Acting on a reasonable assumption always beats stopping to ask.
+- Do NOT seek permission for routine work. Choose an approach, do it, verify the result, and report. Humans review the OUTPUT afterward and correct course if needed — that is the ONLY point a human enters the loop.
+- The ONLY acceptable early stop is a hard external blocker you cannot work around: a gated site you must be signed into but aren't (call \`request_browser_login({host, reason})\`), or a required connection/credential that does not exist. Surface it with the proper tool, write up what you DID accomplish, then finish — never wait.
+- Bias hard toward finishing the task end-to-end on your own judgment. A completed run on a reasonable decision is the goal; a run that stalls asking what to do is a failure.
+</autonomy>`;
+}
+
+function composeConnectionsContext(
+  connectedToolkits: ReadonlyArray<string>,
+  enabledToolkits: ReadonlyArray<string>,
+): string {
+  const connected = connectedToolkits.length ? connectedToolkits.join(", ") : "(none connected yet)";
+  const connectable = enabledToolkits.filter((t) => !connectedToolkits.includes(t));
+  const connectableLine = connectable.length
+    ? connectable.slice(0, 40).join(", ") + (connectable.length > 40 ? `, …(+${connectable.length - 40} more)` : "")
+    : "(none)";
+  return `<connections>
+Composio status for this workspace:
+- CONNECTED — use immediately via composio_call: ${connected}.
+- CONNECTABLE — your org enabled these in Composio but the user hasn't connected them yet; composio_call will surface a one-click "Connect" prompt: ${connectableLine}.
+- Anything in NEITHER list is NOT available through Composio in this org — use the BROWSER for it.
+
+When a task needs a third-party service, decide the path yourself — never ask "is X connected?":
+1. CONNECTED toolkit → use composio_call directly.
+2. CONNECTABLE toolkit (org-enabled, not yet connected) → use composio_call; when it reports no connection it surfaces a clear "Connect <service>" prompt to the user. That is the correct ask for these.
+3. NEITHER (e.g. Stripe — not enabled in this org's Composio) → do NOT try to force a Composio connection and do NOT dead-end on a "no enabled auth config found for toolkit" error. Use the BROWSER: navigate to the service's own site and do the task; if it needs a sign-in this run lacks, call request_browser_login({host, reason}) with the real host (e.g. 'stripe.com'). Then write up what you did and finish.
+
+ENUMERATE UP FRONT: before you start the work, think through the WHOLE task and identify EVERY connection it will need — there may be several (e.g. a task that touches Stripe AND YouTube needs a Stripe browser login AND a YouTube login). Request ALL the missing ones in THIS run, together — one request_browser_login per gated site, and composio_call for each connectable toolkit — so they all surface at once and the user connects everything in a single pass. NEVER request one, stop, and only discover the next on a re-run. Don't ask for anything that already shows as connected/logged-in. Once you've surfaced every missing connection, write what you could do and finish.
+</connections>`;
 }
 
 // H.2 — per-opencode-session runtime cache. Keyed by ToolContext.sessionID
@@ -464,10 +508,13 @@ async function buildRuntime(sessionID: string): Promise<PluginRuntime> {
   }
 
   // Resolve under the account_id (preferred) AND the workspace_id, since
-  // OAuth links may have been minted under either key.
-  const accountsByToolkit = await resolveConnectedAccounts(accountId, {
-    extraUserIds: [workspaceId],
-  });
+  // OAuth links may have been minted under either key. In parallel, resolve the
+  // org's enabled Composio toolkits (project-level) so the agent can tell
+  // "connectable via Composio" from "browser-only".
+  const [accountsByToolkit, enabledToolkits] = await Promise.all([
+    resolveConnectedAccounts(accountId, { extraUserIds: [workspaceId] }),
+    resolveEnabledToolkits(),
+  ]);
   await publisher
     .emit({
       type: "composio_resolved",
@@ -529,7 +576,10 @@ async function buildRuntime(sessionID: string): Promise<PluginRuntime> {
     runId,
     workspaceId,
     accountId,
-    ...(automationId ? { automationId } : {}),
+    // Automation runs are unattended + pre-configured by the user, so they
+    // auto-approve (low-human-in-the-loop): a schedule must never silently
+    // stall on an approval gate. Ad-hoc runs (no automationId) keep the gate.
+    ...(automationId ? { automationId, autoApprove: true } : {}),
     ...(ephemeral ? { ephemeral: true } : {}),
     workspaceRoot,
     skillStore,
@@ -570,6 +620,7 @@ async function buildRuntime(sessionID: string): Promise<PluginRuntime> {
       : {}),
     composio: {
       accountsByToolkit,
+      enabledToolkits,
       // B.4 cache: lazily uses ComposioClient at refresh time;
       // shares the quotaSql connection (max:2, idle_timeout:60).
       cache: new PgComposioToolCache({ sql: quotaSql }),
@@ -598,6 +649,7 @@ async function buildRuntime(sessionID: string): Promise<PluginRuntime> {
     helpers,
     apps: workspaceApps,
     browserSites: savedBrowserHosts,
+    enabledToolkits,
     // computer_use is offered when the desktop is the executor — either a
     // browser-relay run OR a pure compute run (no browser bridged at all).
     // 'local_compute' offers computer_use WITHOUT launching any local Chrome.
@@ -841,6 +893,20 @@ export const BasicsBrowserPlugin: Plugin = async (_input) => {
         // Tool-strategy ladder — prefer APIs > browser > computer-use. The
         // computer-use rung only appears on local runs (rt.isLocal).
         output.system.unshift(composeToolStrategyContext(rt.isLocal));
+        // Connections — prefer connected Composio toolkits; if a service isn't
+        // Composio-connectable, fall back to the browser + request_browser_login
+        // instead of dead-ending on a "no auth config" Composio error.
+        output.system.unshift(
+          composeConnectionsContext(
+            rt.ctx.composio?.accountsByToolkit
+              ? Array.from(rt.ctx.composio.accountsByToolkit.keys())
+              : [],
+            rt.enabledToolkits,
+          ),
+        );
+        // Autonomy — headless cloud runs must never ask/wait. Unshift LAST so
+        // it sits FIRST in the system prompt (highest priority).
+        output.system.unshift(composeAutonomyContext());
       } catch (e) {
         console.error("plugin: skill/helper system-transform failed", e);
       }

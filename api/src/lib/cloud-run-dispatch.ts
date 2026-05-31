@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { getConfig } from '../config.js'
 import { db } from '../db/index.js'
 import type { WorkspaceToken } from './jwt.js'
+import { planLimits, PlanLimitError } from './plan-limits.js'
 
 export const UUID_RE = /^[0-9a-fA-F-]{36}$/
 
@@ -113,6 +114,15 @@ function sqsClient(): SQSClient {
   return _sqs
 }
 
+/**
+ * Where the dispatched run's browser work executes. Persisted to
+ * `cloud_runs.browser_target`; the worker reads it at opencode session boot
+ * (`resolveBinding`) to decide whether to attach to Browserbase ('cloud'),
+ * drive the user's local Chrome through the relay ('local_relay'), or run pure
+ * local computer-use without launching any browser ('local_compute').
+ */
+export type BrowserTarget = 'cloud' | 'local_compute' | 'local_relay'
+
 export type DispatchCloudRunInput = {
   workspace: WorkspaceToken
   goal: string
@@ -120,6 +130,12 @@ export type DispatchCloudRunInput = {
   laneId?: string
   model?: string
   adHocDefinition?: string
+  /** Defaults to 'cloud' (Browserbase). */
+  browserTarget?: BrowserTarget
+  /** Per-run relay session id — paired with browserTarget='local_relay'. */
+  relaySession?: string
+  /** When true, screenshots are not persisted (local runs). */
+  ephemeral?: boolean
 }
 
 export type DispatchCloudRunResult = {
@@ -170,6 +186,25 @@ export async function dispatchCloudRun(
 ): Promise<DispatchCloudRunResult | null> {
   const ws = input.workspace.workspace_id
   const acc = input.workspace.account_id
+
+  // Plan limit: concurrent cloud runs. Counts in-flight runs for the workspace
+  // and blocks (402 at the route) once the plan ceiling is reached. Checked
+  // before creating the ad-hoc agent so a blocked dispatch leaves no rows.
+  // null = unlimited (enterprise).
+  const limits = planLimits(input.workspace.plan)
+  if (limits.maxConcurrentRuns !== null) {
+    const active = (await db.execute(sql`
+      SELECT COUNT(*)::int AS cnt FROM public.cloud_runs
+       WHERE workspace_id = ${ws} AND status IN ('pending','running')
+    `)) as unknown as Array<{ cnt: number }>
+    if ((active[0]?.cnt ?? 0) >= limits.maxConcurrentRuns) {
+      throw new PlanLimitError(
+        'concurrency_limit',
+        `Your plan runs ${limits.maxConcurrentRuns} cloud task${limits.maxConcurrentRuns === 1 ? '' : 's'} at a time. Wait for one to finish or upgrade for more.`,
+      )
+    }
+  }
+
   const cloudAgentId = await resolveCloudAgentId({
     workspace: input.workspace,
     cloudAgentId: input.cloudAgentId,
@@ -179,11 +214,20 @@ export async function dispatchCloudRun(
   if (!cloudAgentId) return null
 
   const runId = randomUUID()
+  // Default to 'cloud' so existing callers (which never set browserTarget) keep
+  // the Browserbase path unchanged. relay_session / ephemeral are only set for
+  // the local-run flows; null/false otherwise. The worker reads these columns
+  // from the run row at session boot (resolveBinding).
+  const browserTarget: BrowserTarget = input.browserTarget ?? 'cloud'
+  const relaySession = input.relaySession ?? null
+  const ephemeral = input.ephemeral ?? false
   await db.execute(sql`
     INSERT INTO public.cloud_runs
-      (id, cloud_agent_id, workspace_id, account_id, status, run_mode)
+      (id, cloud_agent_id, workspace_id, account_id, status, run_mode,
+       browser_target, relay_session, ephemeral)
     VALUES
-      (${runId}, ${cloudAgentId}, ${ws}, ${acc}, 'pending', 'live')
+      (${runId}, ${cloudAgentId}, ${ws}, ${acc}, 'pending', 'live',
+       ${browserTarget}, ${relaySession}, ${ephemeral})
   `)
 
   const queueUrl = getConfig().RUNS_QUEUE_URL

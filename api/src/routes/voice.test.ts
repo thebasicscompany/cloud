@@ -132,6 +132,7 @@ describe('POST /v1/voice/runs', () => {
 
   it('inserts cloud_runs and dispatches a voice prompt to SQS', async () => {
     const { app, calls } = await freshApp([
+      [{ cnt: 0 }], // plan concurrency pre-check (COUNT active cloud_runs)
       [{ id: TEST_CLOUD_AGENT_ID }],
       [],
     ])
@@ -156,9 +157,10 @@ describe('POST /v1/voice/runs', () => {
     expect(body.cloudAgentId).toBe(TEST_CLOUD_AGENT_ID)
     expect(body.eventsUrl).toBe(`/v1/runs/${body.runId}/events`)
 
-    expect(calls).toHaveLength(2)
-    expect(calls[0]!.query).toContain('cloud_agents')
-    expect(calls[1]!.query).toContain('cloud_runs')
+    expect(calls).toHaveLength(3)
+    expect(calls[0]!.query).toContain('cloud_runs') // concurrency pre-check
+    expect(calls[1]!.query).toContain('cloud_agents')
+    expect(calls[2]!.query).toContain('cloud_runs')
     expect(sqsSendMock).toHaveBeenCalledTimes(1)
     const sentInput = sqsSendMock.mock.calls[0]![0] as {
       input: { MessageBody: string; MessageGroupId: string }

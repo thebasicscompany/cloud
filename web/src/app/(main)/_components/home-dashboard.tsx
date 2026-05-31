@@ -8,6 +8,7 @@ import { CheckCircle2, ChevronRight, Wrench } from "@/icons";
 
 import { LocalAgentWorkbench } from "@/app/(main)/_components/local-agent-workbench";
 import { PendingActionsBanner } from "@/app/(main)/_components/pending-actions-banner";
+import { PendingInvitesBanner } from "@/app/(main)/_components/pending-invites-banner";
 import { SuggestionsCard } from "@/app/(main)/_components/suggestions-card";
 import { PendingCard } from "@/app/(main)/approvals/_components/pending-card";
 import { StatusPill } from "@/app/(main)/runs/_components/status-pill";
@@ -74,13 +75,14 @@ export function HomeDashboard() {
   return (
     <div className="mx-auto w-full max-w-5xl space-y-8">
       <header className="space-y-1 pt-2">
-        <h1 className="font-semibold text-2xl tracking-tight">basichome</h1>
+        <h1 className="font-semibold text-2xl tracking-tight">Basics</h1>
         <p className="text-muted-foreground text-sm">
           Talk to your agent, run work locally or in the cloud, and review what it produced.
         </p>
       </header>
 
       <PendingActionsBanner />
+      <PendingInvitesBanner />
 
       {ready.length > 0 ? (
         <section className="space-y-3">
@@ -139,7 +141,7 @@ export function HomeDashboard() {
             ))}
           </div>
         ) : (agents ?? []).length === 0 ? (
-          <EmptyLine text="No agents yet. Ask basichome to do something, then save it as a reusable agent." />
+          <EmptyLine text="No agents yet. Ask Basics to do something, then save it as a reusable agent." />
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {(agents ?? []).slice(0, 6).map((agent) => (

@@ -35,6 +35,19 @@ import { outputsSseRoute } from './routes/outputs-sse.js'
 import { authoringRoute } from './routes/authoring.js'
 import { lensDistillRoute, lensMemoryRoute } from './routes/lens-distill.js'
 import { computerUseRoute } from './routes/computer-use.js'
+import { documentsRoute } from './routes/documents.js'
+import { appsRoute } from './routes/apps.js'
+import { suggestionsRoute } from './routes/suggestions.js'
+import { workspaceSettingsRoute } from './routes/workspace-settings.js'
+import { connectionsRoute } from './routes/connections.js'
+import { pendingApprovalsRoute } from './routes/pending-approvals.js'
+import { runViewsRoute } from './routes/run-views.js'
+import { agentRoute } from './routes/agent.js'
+import { automationViewsRoute } from './routes/automation-views.js'
+import { teamRoute } from './routes/team.js'
+import { billingRoute } from './routes/billing.js'
+import { billingWebhookRoute } from './routes/billing-webhook.js'
+import { invitationsRoute } from './routes/invitations.js'
 import type { WorkspaceToken } from './lib/jwt.js'
 import type { AuthenticatedWorkspaceApiKey } from './lib/workspace-api-keys.js'
 
@@ -65,6 +78,17 @@ export function buildApp() {
     'http://127.0.0.1:5173',
     'http://localhost:1420',
     'http://127.0.0.1:1420',
+    // Landing site (Wispr-style login + the /join accept page) calling the API
+    // cross-origin from the browser.
+    'http://localhost:3100',
+    // Desktop renderer in dev (`pnpm dev:electron` serves the app on :3000) so
+    // the auth bridge can exchange the Supabase session for a workspace JWT
+    // cross-origin. The same-origin `/api/auth/desktop-token` route is the
+    // primary dev path; this keeps the direct cloud/api exchange working too.
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'https://basicsoftware.ai',
+    'https://www.basicsoftware.ai',
   ]
   let allowedOrigins: string[] = baseOrigins
   if (cfg.BASICS_ALLOWED_ORIGINS) {
@@ -106,10 +130,15 @@ export function buildApp() {
 
   app.route('/health', healthRoute)
   app.route('/v1/auth', authRoutes)
+  // Public invite preview (validated by the opaque invite token, no workspace JWT).
+  app.route('/v1/invitations', invitationsRoute)
   app.route('/webhooks', composioWebhookRoute)
   // C.6 — Sendblue inbound webhook for reply-to-approve SMS flow.
   // No JWT — phone-pair auth (from_number ↔ workspace.approval_phone).
   app.route('/webhooks', sendblueInboundRoute)
+  // Stripe billing webhook — keeps subscription rows in sync. No JWT; the
+  // Stripe signature on the raw body is the auth (verified in the route).
+  app.route('/webhooks', billingWebhookRoute)
 
   app.use('/v1/desktop/*', requireWorkspaceJwt)
   app.route('/v1/desktop', desktopRoute)
@@ -159,6 +188,24 @@ export function buildApp() {
   // Computer-use brain (one step per call) for LOCAL runs — the desktop owns
   // eyes + hands; this is the pluggable model/harness. Carries workspace-JWT auth.
   app.route('/v1/computer', computerUseRoute)
+
+  // Renderer data surfaces (per-user, workspace-scoped by the JWT). These power
+  // the web/Electron renderer directly so it never needs the service-role admin
+  // client or a hardcoded workspace. Each route file applies requireWorkspaceJwt
+  // per-handler.
+  app.route('/v1/documents', documentsRoute)
+  app.route('/v1/apps', appsRoute)
+  app.route('/v1/suggestions', suggestionsRoute)
+  app.route('/v1/settings', workspaceSettingsRoute)
+  app.route('/v1/connections', connectionsRoute)
+  app.route('/v1/pending-approvals', pendingApprovalsRoute)
+  app.route('/v1/run-views', runViewsRoute)
+  app.route('/v1/agent', agentRoute)
+  app.route('/v1/automation-views', automationViewsRoute)
+  app.route('/v1/team', teamRoute)
+  // Per-workspace billing (Stripe). Each handler applies requireWorkspaceJwt;
+  // reads are open to members, checkout/portal require admin/owner.
+  app.route('/v1/billing', billingRoute)
 
   // C.5 — /v1/approvals routes carry their OWN auth (workspace JWT OR
   // signed access token via ?token=); intentionally no blanket middleware.

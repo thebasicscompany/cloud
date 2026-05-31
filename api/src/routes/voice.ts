@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { grantDeepgramToken } from '../lib/deepgram.js'
 import { DeepgramUnavailableError } from '../lib/errors.js'
 import { dispatchCloudRun, UUID_RE } from '../lib/cloud-run-dispatch.js'
+import { PlanLimitError } from '../lib/plan-limits.js'
 import { logger } from '../middleware/logger.js'
 import type { WorkspaceToken } from '../lib/jwt.js'
 
@@ -142,6 +143,9 @@ voiceRoute.post(
       if (!result) return c.json({ error: 'not_found' }, 404)
       return c.json(result, 201)
     } catch (err) {
+      if (err instanceof PlanLimitError) {
+        return c.json({ error: 'plan_limit', code: err.code, message: err.message }, 402)
+      }
       if (err instanceof Error && err.message === 'runs_queue_not_configured') {
         return c.json({ error: 'runs_queue_not_configured' }, 503)
       }

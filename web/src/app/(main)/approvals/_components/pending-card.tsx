@@ -86,7 +86,7 @@ export function PendingCard({ approval }: { approval: WorkspaceApproval }) {
             <Button
               size="sm"
               className="h-8 gap-1.5"
-              onClick={() => actions.decide.mutate({ approvalId: approval.id, action: "approve", reason: "Admin approved final rollout; basichome will deploy automatically." })}
+              onClick={() => actions.decide.mutate({ approvalId: approval.id, action: "approve", reason: "Admin approved final rollout; Basics will deploy automatically." })}
               disabled={!approveEnabled}
               data-testid={`approval-card-approve-${approval.id}`}
             >

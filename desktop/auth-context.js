@@ -106,13 +106,13 @@ function hasToken() {
 
 /**
  * Whether to route the computer-use QUEUE + RECIPE to cloud/api
- * (/v1/computer/{next,:id/result,recipe}). OFF by default so behavior is
- * unchanged until that api build is deployed; flip BASICS_USE_CLOUD_QUEUE=1
- * once it is. (step/plan + lens distill already call cloud/api unconditionally —
- * those endpoints are already live.)
+ * (/v1/computer/{next,:id/result,recipe}). ON by default now that those
+ * endpoints are deployed + verified — the desktop talks to cloud/api directly
+ * (the renderer's DesktopAuthBridge supplies the workspace JWT). Set
+ * BASICS_USE_CLOUD_QUEUE=0 to force the legacy web-route path during local dev.
  */
 function cloudEnabled() {
-  return process.env.BASICS_USE_CLOUD_QUEUE === "1";
+  return process.env.BASICS_USE_CLOUD_QUEUE !== "0";
 }
 
 module.exports = { setToken, clearToken, resolveContext, hasToken, apiBase, cloudEnabled };

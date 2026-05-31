@@ -1,7 +1,7 @@
 import "server-only";
 
-import { getConnections, PRIMARY_WORKSPACE_ID } from "@/lib/connections-data";
-import { getAdminClient } from "@/lib/supabase/admin";
+import { cloudGet } from "@/lib/api/cloud";
+import { getConnections } from "@/lib/connections-data";
 import type {
   ApiToken,
   Integration,
@@ -9,14 +9,18 @@ import type {
   TrustGrant,
   WebhookEndpoint,
   WorkspaceMember,
-  WorkspaceRole,
   WorkspaceSummary,
 } from "@/types/settings";
 
 /**
- * Real settings read model — backed by the live `workspaces`, `workspace_members`,
- * and `accounts` tables. There is no billing system, so billing fields carry
- * honest placeholders (the view hides the billing card). Workspace-scoped.
+ * Real settings read model — backed by cloud/api (`/v1/settings/*`), which
+ * derives a per-user workspace JWT from the session and scopes every read to
+ * the caller's own workspace (no service-role admin key, no hardcoded
+ * PRIMARY_WORKSPACE_ID in the renderer). There is no billing system, so billing
+ * fields carry honest placeholders (the view hides the billing card).
+ *
+ * `getIntegrationsSettings` stays on the connections data lib — it is derived
+ * from connections, not a settings table.
  */
 
 export type WorkspaceSettingsPayload = {
@@ -24,53 +28,12 @@ export type WorkspaceSettingsPayload = {
   members: WorkspaceMember[];
 };
 
-function mapRole(role: string | null): WorkspaceRole {
-  return role === "owner" || role === "admin" || role === "member" ? role : "member";
-}
-
-export async function getWorkspaceSettings(workspaceId?: string): Promise<WorkspaceSettingsPayload | null> {
-  const ws = workspaceId ?? PRIMARY_WORKSPACE_ID;
-  const supabase = getAdminClient();
-  if (!supabase) return null;
-
-  const { data: wsRow } = await supabase
-    .from("workspaces")
-    .select("id,name,slug,type,created_at")
-    .eq("id", ws)
-    .maybeSingle();
-  if (!wsRow) return null;
-
-  const { data: memberRows } = await supabase
-    .from("workspace_members")
-    .select("id,role,seat_status,joined_at,account_id,accounts(email,display_name)")
-    .eq("workspace_id", ws)
-    .order("joined_at", { ascending: true });
-
-  const members: WorkspaceMember[] = (memberRows ?? []).map((m) => {
-    const acct = (m as { accounts?: { email?: string; display_name?: string } }).accounts ?? {};
-    return {
-      id: m.id as string,
-      displayName: acct.display_name || acct.email || "Member",
-      email: acct.email || "—",
-      role: mapRole(m.role as string),
-      joinedAt: (m.joined_at as string) ?? (wsRow.created_at as string),
-    };
-  });
-
-  const workspace: WorkspaceSummary = {
-    id: wsRow.id as string,
-    name: (wsRow.name as string) ?? "Workspace",
-    slug: (wsRow.slug as string) ?? "",
-    billing: {
-      // No billing system — honest placeholders; the view hides this card.
-      planName: ((wsRow.type as string) ?? "self_hosted").replaceAll("_", " "),
-      seatsIncluded: members.length,
-      seatsUsed: members.length,
-      renewsAt: "",
-      paymentMethodSummary: "Not billed",
-    },
-  };
-
+export async function getWorkspaceSettings(): Promise<WorkspaceSettingsPayload | null> {
+  const { workspace, members } = await cloudGet<{
+    workspace: WorkspaceSummary | null;
+    members: WorkspaceMember[];
+  }>("/v1/settings/workspace", { workspace: null, members: [] });
+  if (!workspace) return null;
   return { workspace, members };
 }
 
@@ -139,41 +102,17 @@ export async function getIntegrationsSettings(workspaceId?: string): Promise<Int
 export type DeveloperSettingsPayload = { tokens: ApiToken[]; webhooks: WebhookEndpoint[] };
 
 /** Real developer settings — workspace API keys (webhooks not yet a real surface → empty). */
-export async function getDeveloperSettings(workspaceId?: string): Promise<DeveloperSettingsPayload> {
-  const ws = workspaceId ?? PRIMARY_WORKSPACE_ID;
-  const supabase = getAdminClient();
-  if (!supabase) return { tokens: [], webhooks: [] };
-  const { data } = await supabase
-    .from("workspace_api_keys")
-    .select("id,name,prefix,created_at,last_used_at,status,revoked_at")
-    .eq("workspace_id", ws)
-    .is("revoked_at", null)
-    .order("created_at", { ascending: false });
-  const tokens: ApiToken[] = (data ?? []).map((k) => ({
-    id: k.id as string,
-    label: (k.name as string) ?? "API key",
-    prefix: (k.prefix as string) ?? "bk_",
-    createdAt: (k.created_at as string) ?? "",
-    lastUsedAt: (k.last_used_at as string) ?? undefined,
-  }));
-  return { tokens, webhooks: [] };
+export async function getDeveloperSettings(): Promise<DeveloperSettingsPayload> {
+  return cloudGet<DeveloperSettingsPayload>("/v1/settings/developer", {
+    tokens: [],
+    webhooks: [],
+  });
 }
 
 /** Real trust grants — scoped autonomy rules from workspace_rules (empty until any are granted). */
-export async function getTrustSettings(workspaceId?: string): Promise<TrustGrant[]> {
-  const ws = workspaceId ?? PRIMARY_WORKSPACE_ID;
-  const supabase = getAdminClient();
-  if (!supabase) return [];
-  const { data } = await supabase.from("workspace_rules").select("*").eq("workspace_id", ws);
-  return (data ?? []).map((r) => {
-    const row = r as Record<string, unknown>;
-    return {
-      id: String(row.id),
-      actionPattern: String(row.action_pattern ?? row.pattern ?? row.name ?? "—"),
-      paramsConstraint: String(row.params_constraint ?? row.constraint ?? ""),
-      scope: "workspace" as const,
-      grantedByName: "—",
-      grantedAt: String(row.created_at ?? ""),
-    } satisfies TrustGrant;
+export async function getTrustSettings(): Promise<TrustGrant[]> {
+  const { grants } = await cloudGet<{ grants: TrustGrant[] }>("/v1/settings/trust", {
+    grants: [],
   });
+  return grants;
 }

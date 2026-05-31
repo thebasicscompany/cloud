@@ -3,6 +3,8 @@ import Link from "next/link";
 import { LoginForm } from "../../_components/login-form";
 import { GoogleButton } from "../../_components/social-auth/google-button";
 
+import { DesktopBrowserSignIn } from "@/components/desktop-browser-signin";
+
 export const dynamic = "force-dynamic";
 
 export default function LoginV2() {
@@ -13,6 +15,7 @@ export default function LoginV2() {
         <p className="text-sm text-muted-foreground">Please enter your details to login.</p>
       </div>
       <div className="space-y-4">
+        <DesktopBrowserSignIn />
         <GoogleButton className="w-full" />
         <div className="relative text-center text-sm after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t after:border-border">
           <span className="relative z-10 bg-background px-2 text-muted-foreground">Or continue with</span>

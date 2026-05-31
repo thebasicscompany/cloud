@@ -120,7 +120,7 @@ export function setCodexEngineNotInstalled(store: CodexEngineStore): CodexEngine
       authMode: "codex_local_account",
       costBearer: "unknown_unavailable",
       lastCheckedAt: new Date().toISOString(),
-      installHint: "Install Codex locally, then connect it from basichome Engine settings.",
+      installHint: "Install Codex locally, then connect it from Basics Engine settings.",
       reconnectHint: undefined,
     },
   };

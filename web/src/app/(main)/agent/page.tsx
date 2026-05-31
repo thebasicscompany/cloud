@@ -5,7 +5,7 @@ import { getAgentData, getWorkspaces } from "@/lib/agent-data";
 import { AgentConsole } from "./_components/agent-console";
 
 export const metadata: Metadata = {
-  title: "Agent | basichome",
+  title: "Agent | Basics",
   description:
     "A live look at what your agent has learned: saved routines, shortcuts, the sites it stays signed in to, and the apps it can act through.",
 };

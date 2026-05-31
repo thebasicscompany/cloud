@@ -9,9 +9,13 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/s
 import { userProfileFromSupabase } from "@/lib/auth/user-profile";
 import { LOCAL_DEV_PROFILE, shouldUseLocalDevAuth } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
+import { getMyWorkspaces } from "@/lib/workspaces";
+
+import { DesktopAuthBridge } from "@/components/desktop-auth-bridge";
 
 import { AppMainScroll } from "./_components/app-main-scroll";
 import { AgentOverlayPill } from "./_components/agent-overlay-pill";
+import { AutomationNotifications } from "./_components/automation-notifications";
 import { OnboardingGate } from "./_components/onboarding-gate";
 import { SearchDialog } from "./_components/sidebar/search-dialog";
 
@@ -33,6 +37,8 @@ export default async function Layout({ children }: Readonly<{ children: ReactNod
   const cookieStore = await cookies();
   const defaultOpen = cookieStore.get("sidebar_state")?.value !== "false";
 
+  const workspaces = shouldUseLocalDevAuth() ? [] : await getMyWorkspaces();
+
   const navUser = {
     name: profile.displayName,
     email: profile.email,
@@ -50,7 +56,9 @@ export default async function Layout({ children }: Readonly<{ children: ReactNod
       }
     >
       <OnboardingGate />
-      <AppSidebar user={navUser} />
+      <DesktopAuthBridge />
+      <AutomationNotifications />
+      <AppSidebar user={navUser} workspaces={workspaces} />
       <SidebarInset className="peer-data-[variant=inset]:border min-h-0 overflow-hidden">
         <header className="app-drag-region sticky top-0 z-50 flex h-12 shrink-0 items-center gap-2 overflow-hidden rounded-t-[inherit] border-b bg-background/50 backdrop-blur-md transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
           <div className="flex w-full items-center px-4 lg:px-6">

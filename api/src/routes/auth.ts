@@ -3,7 +3,7 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
 import { supabaseAdmin } from '../lib/supabase.js'
-import { signWorkspaceToken, type WorkspacePlan, type WorkspaceToken } from '../lib/jwt.js'
+import { signWorkspaceToken, type WorkspacePlan, type WorkspaceRole, type WorkspaceToken } from '../lib/jwt.js'
 import { logger } from '../middleware/logger.js'
 import { getConfig } from '../config.js'
 import { requireEnv } from '../lib/errors.js'
@@ -119,7 +119,7 @@ async function mintWorkspaceTokenForAccessToken(args: {
   // 4. Verify seat is active on the target workspace.
   const { data: membership, error: membershipError } = await admin
     .from('workspace_members')
-    .select('seat_status')
+    .select('seat_status, role')
     .eq('workspace_id', targetWorkspaceId)
     .eq('account_id', account.id)
     .maybeSingle()
@@ -175,10 +175,12 @@ async function mintWorkspaceTokenForAccessToken(args: {
   const plan = subscription.plan as WorkspacePlan
   const issuedAt = new Date()
   const expiresAt = new Date(issuedAt.getTime() + TOKEN_TTL_SECONDS * 1000)
+  const role = ((membership.role as string) || 'member') as WorkspaceRole
   const payload: WorkspaceToken = {
     workspace_id: workspace.id as string,
     account_id: account.id as string,
     plan,
+    role,
     seat_status: membership.seat_status as string,
     issued_at: issuedAt.toISOString(),
     expires_at: expiresAt.toISOString(),

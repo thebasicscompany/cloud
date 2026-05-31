@@ -53,11 +53,30 @@ function sendKeysEscape(text) {
 
 // ── macOS (osascript / JXA) ───────────────────────────────────────────────
 // Keystrokes via System Events; coordinate clicks via JXA + CoreGraphics.
-function jxaClick(x, y, n) {
+function jxaClick(x, y, n, button = "left") {
+  // Map the logical button to its CGEvent down/up types + CGMouseButton. Left
+  // stays byte-identical to the original behavior; right/middle emit the
+  // matching events so right-click / middle-click actually work.
+  const btn =
+    button === "right"
+      ? { down: "kCGEventRightMouseDown", up: "kCGEventRightMouseUp", code: "kCGMouseButtonRight" }
+      : button === "middle"
+        ? { down: "kCGEventOtherMouseDown", up: "kCGEventOtherMouseUp", code: "kCGMouseButtonCenter" }
+        : { down: "kCGEventLeftMouseDown", up: "kCGEventLeftMouseUp", code: "kCGMouseButtonLeft" };
   return `ObjC.import('CoreGraphics');
 const p = $.CGPointMake(${x}, ${y});
-function ev(t){ const e=$.CGEventCreateMouseEvent($(), t, p, 0); $.CGEventPost(0, e); }
-for (let i=0;i<${n};i++){ ev($.kCGEventLeftMouseDown); delay(0.03); ev($.kCGEventLeftMouseUp); delay(0.05); }`;
+function ev(t){ const e=$.CGEventCreateMouseEvent($(), t, p, $.${btn.code}); $.CGEventPost(0, e); }
+for (let i=0;i<${n};i++){ ev($.${btn.down}); delay(0.03); ev($.${btn.up}); delay(0.05); }`;
+}
+
+// Real scroll-wheel event via CoreGraphics (line unit), mirroring jxaClick.
+// Positive wheel delta scrolls up, matching the win32/linux sign convention
+// (amount > 0 == up). `tell ... to scroll` is not a real System Events command
+// and is a no-op, so we post a CGEvent instead.
+function jxaScroll(amount) {
+  return `ObjC.import('CoreGraphics');
+const e = $.CGEventCreateScrollWheelEvent($(), $.kCGScrollEventUnitLine, 1, ${Math.trunc(amount)});
+$.CGEventPost(0, e);`;
 }
 
 // ── public interface ──────────────────────────────────────────────────────
@@ -70,7 +89,7 @@ async function move(x, y) {
 
 async function click(x, y, button = "left", count = 1) {
   if (PLATFORM === "win32") return psRun(`BHClick ${x} ${y} ${button} ${count}`);
-  if (PLATFORM === "darwin") return run("osascript", ["-l", "JavaScript", "-e", jxaClick(x, y, count)]);
+  if (PLATFORM === "darwin") return run("osascript", ["-l", "JavaScript", "-e", jxaClick(x, y, count, button)]);
   return run("xdotool", ["mousemove", String(x), String(y), "click", "--repeat", String(count), button === "right" ? "3" : "1"]);
 }
 
@@ -99,7 +118,9 @@ async function pasteText(text) {
     return psRun(`[System.Windows.Forms.SendKeys]::SendWait("^v")`);
   }
   if (PLATFORM === "darwin") {
-    await run("bash", ["-c", `printf %s "$(echo ${b64} | base64 --decode)" | pbcopy`]);
+    // Feed the raw UTF-8 text straight to pbcopy via stdin — no base64/echo
+    // round-trip, so long and Unicode strings survive intact.
+    await run("pbcopy", [], text);
     return run("osascript", ["-e", `tell application "System Events" to keystroke "v" using {command down}`]);
   }
   await run("bash", ["-c", `printf %s "$(echo ${b64} | base64 --decode)" | xclip -selection clipboard`]);
@@ -156,7 +177,7 @@ function macKeyCode(k) {
 
 async function scroll(amount) {
   if (PLATFORM === "win32") return psRun(`BHScroll ${amount}`);
-  if (PLATFORM === "darwin") return run("osascript", ["-e", `tell application "System Events" to scroll ${amount > 0 ? "up" : "down"}`]).catch(() => "");
+  if (PLATFORM === "darwin") return run("osascript", ["-l", "JavaScript", "-e", jxaScroll(amount)]).catch(() => "");
   return run("xdotool", ["click", amount > 0 ? "4" : "5"]);
 }
 

@@ -21,6 +21,7 @@ import { getConfig } from '../config.js'
 import { logger } from '../middleware/logger.js'
 import type { WorkspaceToken } from '../lib/jwt.js'
 import { dispatchCloudRun, UUID_RE } from '../lib/cloud-run-dispatch.js'
+import { PlanLimitError } from '../lib/plan-limits.js'
 
 type Vars = { requestId: string; workspace?: WorkspaceToken }
 
@@ -56,6 +57,11 @@ cloudRunsRoute.post(
     cloudAgentId: z.string().regex(UUID_RE).optional(),
     laneId: z.string().regex(UUID_RE).optional(),
     model: z.string().optional(),
+    // Model B — where the browser work runs. Backward compatible: omitted →
+    // 'cloud' (Browserbase), the existing behavior.
+    browserTarget: z.enum(['cloud', 'local_compute', 'local_relay']).optional(),
+    relaySession: z.string().optional(),
+    ephemeral: z.boolean().optional(),
   })),
   async (c) => {
     const body = c.req.valid('json')
@@ -66,6 +72,9 @@ cloudRunsRoute.post(
         cloudAgentId: body.cloudAgentId,
         laneId: body.laneId,
         model: body.model,
+        browserTarget: body.browserTarget,
+        relaySession: body.relaySession,
+        ephemeral: body.ephemeral,
       })
       if (!result) return c.json({ error: 'not_found' }, 404)
       return c.json({
@@ -75,6 +84,9 @@ cloudRunsRoute.post(
         liveViewUrl: result.liveViewUrl,
       }, 201)
     } catch (err) {
+      if (err instanceof PlanLimitError) {
+        return c.json({ error: 'plan_limit', code: err.code, message: err.message }, 402)
+      }
       if (err instanceof Error && err.message === 'runs_queue_not_configured') {
         return c.json({ error: 'runs_queue_not_configured' }, 503)
       }
@@ -331,4 +343,65 @@ cloudRunsRoute.post('/:id/cancel', async (c) => {
     sessionId: binding.session_id,
     poolId: binding.pool_id,
   }, 202)
+})
+
+/**
+ * POST /v1/runs/:id/message — steer a LIVE run by delivering a follow-up
+ * instruction to the running opencode session. If the run is live (an open
+ * binding on a pool), pg_notify the pool channel with
+ * {kind:'continue', runId, sessionId, message}; the worker re-prompts the
+ * session (see worker/src/main.ts continue branch). If it isn't live, return
+ * {steered:false, reason:'not_live'} so the caller can fall back to a follow-up
+ * run. Auth: workspace JWT, scoped by workspace_id (404 if not yours).
+ *
+ * Replaces the web app's `lib/run-steer.ts`, which opened a DIRECT session-mode
+ * Postgres connection (DATABASE_URL_SESSION) from the web layer — keeping that
+ * secret + direct DB access out of the bundled desktop app.
+ */
+cloudRunsRoute.post('/:id/message', async (c) => {
+  const runId = c.req.param('id')
+  if (!UUID_RE.test(runId)) {
+    return c.json({ error: 'invalid_run_id' }, 400)
+  }
+  const ws = c.var.workspace?.workspace_id
+  if (!ws) return c.json({ error: 'unauthorized' }, 401)
+
+  const body = (await c.req.json().catch(() => null)) as { message?: string } | null
+  const message = body?.message?.trim()
+  if (!message) return c.json({ error: 'message_required' }, 400)
+
+  const runRows = (await db.execute(sql`
+    SELECT id, status
+      FROM public.cloud_runs
+     WHERE id = ${runId} AND workspace_id = ${ws}
+     LIMIT 1
+  `)) as unknown as Array<{ id: string; status: string }>
+  if (runRows.length === 0) return c.json({ error: 'not_found' }, 404)
+  if (TERMINAL_RUN_STATUSES.has(runRows[0]!.status)) {
+    return c.json({ steered: false, reason: 'not_live' }, 200)
+  }
+
+  const bindingRows = (await db.execute(sql`
+    SELECT session_id, pool_id
+      FROM public.cloud_session_bindings
+     WHERE run_id = ${runId} AND ended_at IS NULL
+     ORDER BY created_at DESC
+     LIMIT 1
+  `)) as unknown as Array<{ session_id: string; pool_id: string | null }>
+
+  if (bindingRows.length === 0 || !bindingRows[0]!.pool_id) {
+    return c.json({ steered: false, reason: 'not_live' }, 200)
+  }
+
+  const binding = bindingRows[0]!
+  const channel = poolChannelName(binding.pool_id!)
+  const payload = JSON.stringify({
+    kind: 'continue',
+    sessionId: binding.session_id,
+    runId,
+    message,
+  })
+  await db.execute(sql`SELECT pg_notify(${channel}, ${payload})`)
+
+  return c.json({ steered: true, runId, sessionId: binding.session_id }, 202)
 })

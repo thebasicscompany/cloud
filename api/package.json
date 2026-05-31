@@ -18,9 +18,10 @@
     "@aws-crypto/sha256-js": "^5.2.0",
     "@aws-sdk/client-eventbridge": "^3.1044.0",
     "@aws-sdk/client-kms": "3.744.0",
-    "@aws-sdk/client-scheduler": "^3.1044.0",
-    "@aws-sdk/client-sqs": "^3.1044.0",
     "@aws-sdk/client-s3": "^3.1045.0",
+    "@aws-sdk/client-scheduler": "^3.1044.0",
+    "@aws-sdk/client-sesv2": "^3.1045.0",
+    "@aws-sdk/client-sqs": "^3.1044.0",
     "@aws-sdk/s3-request-presigner": "^3.1045.0",
     "@basics/harness": "workspace:*",
     "@basics/shared": "workspace:*",
@@ -42,6 +43,7 @@
     "pino": "10.3.1",
     "postgres": "3.4.9",
     "resend": "4.0.1",
+    "stripe": "^22.2.0",
     "zod": "4.3.6"
   },
   "devDependencies": {

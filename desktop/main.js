@@ -1,4 +1,4 @@
-// Basichome cross-platform desktop shell (Electron) — macOS + Windows.
+// Basics cross-platform desktop shell (Electron) — macOS + Windows.
 //
 // The web app (cloud/web) IS the product: this shell simply wraps that
 // renderer in a native desktop window, plus a tray and a global shortcut.
@@ -13,6 +13,9 @@ const lens = require("./lens-client");
 const computerLoop = require("./computer-loop");
 const computerWatcher = require("./computer-watcher");
 const authContext = require("./auth-context");
+const authExternal = require("./auth-external");
+const authBridge = require("./auth-bridge");
+const { startWebServer, stopWebServer } = require("./web-server");
 
 // Background (always-on) Lens capture is OFF by default — it's a real resource
 // cost, so the user opts in (Settings → Capture) and the choice persists. Lazy
@@ -35,7 +38,11 @@ function setBackgroundCapturePref(on) {
   }
 }
 
-const APP_URL = process.env.BASICS_APP_URL || "http://localhost:3000";
+// Where the renderer lives. In dev, BASICS_APP_URL points at the running Next
+// dev server (localhost:3000). Otherwise it's empty here and filled in at
+// app.whenReady() by spawning the bundled Next standalone server in-process
+// (see web-server.js) — so the shipped app needs no hosted web.
+let appUrl = process.env.BASICS_APP_URL || "";
 
 let mainWindow = null;
 let tray = null;
@@ -79,7 +86,7 @@ function openPill() {
   // Float above normal windows (incl. fullscreen apps where possible).
   pillWindow.setAlwaysOnTop(true, "screen-saver");
   pillWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  pillWindow.loadURL(`${APP_URL}/pill`);
+  pillWindow.loadURL(`${appUrl}/pill`);
   pillWindow.on("closed", () => {
     pillWindow = null;
   });
@@ -104,17 +111,25 @@ function createMainWindow() {
     height: 880,
     minWidth: 960,
     minHeight: 620,
-    title: "Basichome",
+    title: "Basics",
     backgroundColor: "#f3f3f3",
     autoHideMenuBar: true,
     icon: path.join(__dirname, "build", "icon.png"),
-    // Custom title bar: hide the OS chrome and overlay native window controls
-    // (min/maximize/close) so the app's own top bar reads as the title bar.
-    // titleBarOverlay is supported on Windows + macOS; Linux keeps the default.
-    ...(process.platform !== "linux"
+    // Custom title bar: hide the OS chrome so the app's own 44px top bar reads
+    // as the title bar. Windows overlays the native min/maximize/close controls
+    // (titleBarOverlay). macOS keeps its traffic-lights but, since they'd
+    // otherwise overlap the custom bar, we hide the chrome and nudge the lights
+    // down so they sit centered in the 44px bar. Linux keeps the default chrome.
+    ...(process.platform === "win32"
       ? {
           titleBarStyle: "hidden",
           titleBarOverlay: { color: "#f3f3f3", symbolColor: "#52525b", height: 44 },
+        }
+      : {}),
+    ...(process.platform === "darwin"
+      ? {
+          titleBarStyle: "hidden",
+          trafficLightPosition: { x: 14, y: 14 },
         }
       : {}),
     webPreferences: {
@@ -123,7 +138,7 @@ function createMainWindow() {
       nodeIntegration: false,
     },
   });
-  mainWindow.loadURL(APP_URL);
+  mainWindow.loadURL(appUrl);
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
@@ -136,15 +151,51 @@ function trayImage() {
   );
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Bring up the renderer host BEFORE any window loads it. In dev appUrl is
+  // already set (BASICS_APP_URL=localhost:3000); otherwise spawn the bundled
+  // Next standalone server in-process and use its local URL. Guarantees the
+  // server is accepting connections before the first loadURL().
+  if (!appUrl) {
+    try {
+      appUrl = await startWebServer();
+    } catch (e) {
+      console.error("failed to start bundled web server:", e && e.message);
+      app.quit();
+      return;
+    }
+  }
+
   createMainWindow();
 
+  // macOS: install a standard application menu. Without one, the OS provides no
+  // Edit menu, so the system clipboard/undo/select-all accelerators (Cmd+C/V/X/
+  // A/Z) and Cmd+Q are dead. The role-based template wires up all of these for
+  // free. Windows keeps autoHideMenuBar (no app menu) — behavior unchanged.
+  if (process.platform === "darwin") {
+    Menu.setApplicationMenu(
+      Menu.buildFromTemplate([
+        { role: "appMenu" },
+        { role: "editMenu" },
+        { role: "viewMenu" },
+        { role: "windowMenu" },
+      ]),
+    );
+  }
+
   try {
-    tray = new Tray(trayImage());
-    tray.setToolTip("Basichome");
+    const trayImg = trayImage();
+    // macOS menu-bar icons must be flagged as Template images (monochrome with
+    // alpha) so the OS tints them for light/dark menu bars; otherwise they're
+    // invisible. NOTE: the current source is a 1x1 transparent PNG placeholder —
+    // a real ~18x18 monochrome template PNG asset is still needed to actually
+    // show an icon in the menu bar (see report TODO).
+    if (process.platform === "darwin") trayImg.setTemplateImage(true);
+    tray = new Tray(trayImg);
+    tray.setToolTip("Basics");
     tray.setContextMenu(
       Menu.buildFromTemplate([
-        { label: "Open Basichome", click: () => createMainWindow() },
+        { label: "Open Basics", click: () => createMainWindow() },
         { type: "separator" },
         { label: "Quit", click: () => app.quit() },
       ]),
@@ -184,7 +235,7 @@ app.whenReady().then(() => {
 
 ipcMain.on("basichome:open-app", (_e, route) => {
   const w = createMainWindow();
-  if (typeof route === "string" && route) w.loadURL(APP_URL + route);
+  if (typeof route === "string" && route) w.loadURL(appUrl + route);
 });
 
 // Local-run (browser-harness) path: launch / connect to the user's Chrome via
@@ -299,6 +350,30 @@ ipcMain.handle("basichome:auth:clear", () => {
   return { ok: true };
 });
 
+// Sign-in: open the OAuth URL in the user's REAL browser (Google blocks embedded
+// webviews) and capture the redirect via a loopback server; hand the auth code
+// back to the renderer, which exchanges it so the session lands in the app.
+ipcMain.handle("basichome:auth:open-external", (event, url) => {
+  if (typeof url !== "string" || !url) return { ok: false };
+  authExternal.openExternalAuth(url, (result) => {
+    if (!event.sender.isDestroyed()) event.sender.send("basichome:auth:code", result);
+  });
+  return { ok: true };
+});
+
+// "Sign in via browser" (the web-bridge model, like Wispr/Linear): open the
+// landing /desktop-login-bridge in the system browser; after sign-in there it
+// POSTs the Supabase session to our loopback (auth-bridge.js, port 34567). We
+// forward it to the renderer, which calls supabase.auth.setSession so the
+// session lands in-app — no credentials ever typed in the Electron window.
+ipcMain.handle("basichome:auth:browser-sign-in", (event) => {
+  const landing = process.env.BASICS_LANDING_URL || "https://basicsoftware.ai";
+  authBridge.startBrowserSignIn(landing, (result) => {
+    if (!event.sender.isDestroyed()) event.sender.send("basichome:auth:session", result);
+  });
+  return { ok: true };
+});
+
 // Settings → Capture: start/stop the always-on Lens daemon (background pattern
 // capture). Lets the user control capture from the main app's settings.
 ipcMain.handle("basichome:lens:always-on", async () => {
@@ -322,4 +397,5 @@ app.on("will-quit", () => {
   computerWatcher.stopWatcher();
   localBrowser.stopLocalBrowser();
   lens.stopLens();
+  stopWebServer();
 });

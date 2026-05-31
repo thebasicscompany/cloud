@@ -53,6 +53,11 @@ export default function CaptureSettingsPage() {
     const bh = bridge();
     setIsDesktop(Boolean(bh?.isDesktop));
     void refresh();
+    // Re-probe periodically so the indicator reflects the daemon coming up or
+    // down on its own (the bundled engine finishing load, capture stopping, a
+    // crash) without the user having to leave + reopen the page.
+    const id = setInterval(() => void refresh(), 5000);
+    return () => clearInterval(id);
   }, [refresh]);
 
   const toggleAlwaysOn = async (on: boolean) => {
@@ -68,6 +73,21 @@ export default function CaptureSettingsPage() {
     }
   };
 
+  // A single, clear read on the Lens engine — is it loaded + ready, already on,
+  // recording, or absent — so you know its state before flipping anything below.
+  const engine =
+    status === null
+      ? { label: "checking…", dot: "bg-muted-foreground animate-pulse", ready: false }
+      : !status.supported
+        ? { label: "not supported on this platform", dot: "bg-muted-foreground", ready: false }
+        : !status.installed
+          ? { label: "not installed yet", dot: "bg-red-500", ready: false }
+          : status.recording
+            ? { label: "recording a routine", dot: "bg-red-500 animate-pulse", ready: true }
+            : status.running
+              ? { label: "on — capturing in the background", dot: "bg-emerald-500", ready: true }
+              : { label: "loaded · ready to turn on", dot: "bg-amber-500", ready: true };
+
   return (
     <div className="max-w-2xl space-y-6">
       <div className="space-y-1">
@@ -76,14 +96,29 @@ export default function CaptureSettingsPage() {
           Capture
         </h2>
         <p className="text-muted-foreground text-sm">
-          Lens watches your screen <span className="font-medium">on this device</span> so basichome can
+          Lens watches your screen <span className="font-medium">on this device</span> so Basics can
           suggest automations and learn routines you record. Nothing it sees ever leaves your computer.
         </p>
       </div>
 
+      {isDesktop ? (
+        <div className="flex items-center justify-between gap-3 rounded-lg border bg-card px-4 py-3">
+          <div className="flex items-center gap-2.5">
+            <span className={`size-2.5 shrink-0 rounded-full ${engine.dot}`} aria-hidden />
+            <p className="text-sm">
+              <span className="font-medium">Lens engine</span>
+              <span className="text-muted-foreground"> — {engine.label}</span>
+            </p>
+          </div>
+          <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => void refresh()}>
+            Check
+          </Button>
+        </div>
+      ) : null}
+
       {!isDesktop ? (
         <Note icon={Monitor} title="Capture runs in the desktop app">
-          Open basichome on your Mac or Windows desktop to enable on-device capture. The web view manages everything
+          Open Basics on your Mac or Windows desktop to enable on-device capture. The web view manages everything
           else, but capture needs the local Lens engine.
         </Note>
       ) : !status?.supported ? (
@@ -92,7 +127,7 @@ export default function CaptureSettingsPage() {
         </Note>
       ) : !status?.installed ? (
         <Note icon={ShieldCheck} title="Lens engine not detected">
-          Lens ships with basichome but isn&apos;t present on this machine yet. Once the bundled engine is in place,
+          Lens ships with Basics but isn&apos;t present on this machine yet. Once the bundled engine is in place,
           background capture and routine recording turn on here.
         </Note>
       ) : (
@@ -129,7 +164,7 @@ export default function CaptureSettingsPage() {
             <div className="space-y-1">
               <h3 className="font-medium text-sm">Record a routine</h3>
               <p className="text-muted-foreground text-sm">
-                Open the recorder, show basichome a task in your apps while talking it through, and it saves
+                Open the recorder, show Basics a task in your apps while talking it through, and it saves
                 it as a routine your agent can turn into an automation.
               </p>
             </div>

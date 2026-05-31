@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+import { toast } from "sonner";
+
 import { Brain, Clock, FileSearch, Globe, KeyRound, Monitor, Pause, Play, Square } from "@/icons";
 
 import { Badge } from "@/components/ui/badge";
@@ -122,13 +124,20 @@ export function LocalAgentWorkbench() {
       }
       // attach (not managed): drive the user's REAL Chrome on the debug port so
       // their logins/cookies are used, instead of a throwaway isolated profile.
-      const bridged = await bh.localRelayStart({
-        relayUrl: prov.relayUrl,
-        session: prov.session,
-        token: prov.token,
-        mode: "attach",
-        port: 9222,
-      });
+      // Attaching triggers Chrome's "allow debugging" prompt — surface a clear
+      // heads-up so the user knows to go click Allow, kept up until it resolves.
+      const allowToast = toast.loading(
+        'Go to your Chrome window and click "Allow" on the debugging prompt so the agent can drive it.',
+      );
+      const bridged = await bh
+        .localRelayStart({
+          relayUrl: prov.relayUrl,
+          session: prov.session,
+          token: prov.token,
+          mode: "attach",
+          port: 9222,
+        })
+        .finally(() => toast.dismiss(allowToast));
       if (!bridged?.ok) {
         setTriggerError(
           bridged?.error ??
@@ -231,7 +240,7 @@ export function LocalAgentWorkbench() {
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
               <label htmlFor="local-agent-prompt" className="font-medium text-sm">
-                Ask basichome
+                Ask Basics
               </label>
               <VoiceButton onTranscript={handleTranscript} />
             </div>
@@ -241,7 +250,7 @@ export function LocalAgentWorkbench() {
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
               className="min-h-24 resize-none bg-background"
-              placeholder="Tell basichome what to do…"
+              placeholder="Tell Basics what to do…"
             />
           </div>
           <div className="space-y-3">

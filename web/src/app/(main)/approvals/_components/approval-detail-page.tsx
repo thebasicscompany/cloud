@@ -35,7 +35,7 @@ export function ApprovalDetailPage({ approvalId }: { approvalId: string }) {
   return (
     <ApprovalDetailPanel
       approval={approval}
-      onApprove={(id) => actions.decide.mutate({ approvalId: id, action: "approve", reason: "Admin approved final rollout; basichome will deploy automatically." })}
+      onApprove={(id) => actions.decide.mutate({ approvalId: id, action: "approve", reason: "Admin approved final rollout; Basics will deploy automatically." })}
       onReject={(id) => actions.decide.mutate({ approvalId: id, action: "reject", reason: "Rejected from approval detail." })}
       onRequestChanges={(id) => actions.decide.mutate({ approvalId: id, action: "request_changes", reason: "Admin requested changes from approval detail." })}
       onRevokeTrust={(trustGrantId) => actions.revokeTrust.mutate({ trustGrantId, reason: "Revoked from approval detail." })}

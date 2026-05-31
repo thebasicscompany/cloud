@@ -506,14 +506,154 @@ automationsRoute.put('/:id', zValidator('json', UpdateSchema), async (c) => {
   })
 })
 
+// ─── PATCH /v1/automations/:id  (lightweight action mutations) ───────────
+//
+// Ported verbatim from the web mutation route `web/src/app/api/automations/[id]`
+// (which used the service-role admin client + a hardcoded PRIMARY_WORKSPACE_ID),
+// now scoped to the VERIFIED workspace JWT. This is intentionally SEPARATE from
+// PUT: PUT is the full editor (snapshots a version, reconciles Composio /
+// EventBridge triggers, invalidates approval_rules). These action toggles —
+// pause/resume, grant/revoke trust, schedule edit, run-target — are field-level
+// writes the dashboard fires inline; they must NOT bump the version or
+// re-register triggers, and pause uses status='paused' (a value the read model
+// in automation-views.ts recognizes but PUT's StatusEnum does not). Logic is
+// kept identical to the web route so the external contract is unchanged.
+
+const PatchSchema = z.object({
+  action: z.enum(['pause', 'resume', 'grantTrust', 'revokeTrust', 'updateSchedule', 'clearSchedule', 'setRunTarget']),
+  cron: z.string().optional(),
+  timezone: z.string().optional(),
+  target: z.string().optional(),
+})
+
+automationsRoute.patch('/:id', zValidator('json', PatchSchema), async (c) => {
+  const id = c.req.param('id')
+  if (!UUID_RE.test(id)) return c.json({ error: 'invalid_id' }, 400)
+  const ws = c.var.workspace!.workspace_id
+  const body = c.req.valid('json')
+
+  const current = await loadAutomation(ws, id)
+  if (!current) return c.json({ error: 'not found' }, 404)
+
+  // Build the patch the same way the web route did, then issue a single
+  // targeted UPDATE for the touched column(s).
+  let setClause
+  let nextScheduleTriggers: Record<string, unknown>[] | null = null
+  switch (body.action) {
+    case 'pause':
+      setClause = sql`status = 'paused'`
+      break
+    case 'resume':
+      setClause = sql`status = 'active'`
+      break
+    case 'grantTrust': {
+      const policy = {
+        ...((current.approval_policy as Record<string, unknown> | null) ?? {}),
+        mode: 'trusted_autonomous',
+      }
+      setClause = sql`approval_policy = ${JSON.stringify(policy)}::jsonb`
+      break
+    }
+    case 'revokeTrust': {
+      const policy = {
+        ...((current.approval_policy as Record<string, unknown> | null) ?? {}),
+        mode: 'manual_review',
+      }
+      setClause = sql`approval_policy = ${JSON.stringify(policy)}::jsonb`
+      break
+    }
+    case 'updateSchedule': {
+      const triggers = Array.isArray(current.triggers)
+        ? [...(current.triggers as Record<string, unknown>[])]
+        : []
+      const idx = triggers.findIndex((t) => t?.type === 'schedule')
+      const entry = { type: 'schedule', cron: body.cron ?? '', timezone: body.timezone ?? 'UTC' }
+      if (idx >= 0) triggers[idx] = { ...triggers[idx], ...entry }
+      else triggers.push(entry)
+      setClause = sql`triggers = ${JSON.stringify(triggers)}::jsonb`
+      nextScheduleTriggers = triggers
+      break
+    }
+    case 'clearSchedule': {
+      // Drop the schedule trigger → back to manual-only (run when the user
+      // clicks Run now). Keep any non-schedule triggers; ensure at least manual.
+      const triggers = Array.isArray(current.triggers)
+        ? (current.triggers as Record<string, unknown>[]).filter((t) => t?.type !== 'schedule')
+        : []
+      if (triggers.length === 0) triggers.push({ type: 'manual' })
+      setClause = sql`triggers = ${JSON.stringify(triggers)}::jsonb`
+      nextScheduleTriggers = triggers
+      break
+    }
+    case 'setRunTarget':
+      setClause = sql`run_target = ${body.target === 'local' ? 'local' : 'cloud'}`
+      break
+  }
+
+  await db.execute(sql`
+    UPDATE public.automations
+       SET ${setClause}, updated_at = now()
+     WHERE id = ${id} AND workspace_id = ${ws}
+  `)
+
+  // Changing the schedule on an ACTIVE automation must re-register its triggers,
+  // or the EventBridge schedule keeps the old cron (or is never created) and
+  // nothing fires. Drafts register on activate, so they don't need this here.
+  let triggerSync: { added: unknown; removed: unknown; warnings: unknown } | undefined
+  if (
+    (body.action === 'updateSchedule' || body.action === 'clearSchedule') &&
+    current.status === 'active' &&
+    nextScheduleTriggers
+  ) {
+    const acc = c.var.workspace!.account_id
+    const connectedAccounts = await loadConnectedAccountByToolkit(ws, acc)
+    const reg = await reconcileTriggers({
+      workspaceId: ws,
+      accountId: acc,
+      automationId: id,
+      goal: current.goal,
+      priorTriggers: (current.triggers as unknown as AnyTrigger[]) ?? [],
+      nextTriggers: nextScheduleTriggers as unknown as AnyTrigger[],
+      composioUserId: acc,
+      connectedAccountByToolkit: connectedAccounts,
+    })
+    triggerSync = { added: reg.added, removed: reg.removed, warnings: reg.warnings }
+  }
+
+  return c.json({ ok: true, id, action: body.action, ...(triggerSync ? { triggerSync } : {}) })
+})
+
 // ─── DELETE /v1/automations/:id ──────────────────────────────────────────
 
 automationsRoute.delete('/:id', async (c) => {
   const id = c.req.param('id')
   if (!UUID_RE.test(id)) return c.json({ error: 'invalid_id' }, 400)
   const ws = c.var.workspace!.workspace_id
+  // ?purge=true → HARD delete: remove the automation AND every run it produced.
+  // Default (no purge) keeps the reversible soft delete (archived_at).
+  const purge = c.req.query('purge') === 'true' || c.req.query('purge') === '1'
   const prior = await loadAutomation(ws, id)
   if (!prior) return c.json({ error: 'not_found' }, 404)
+
+  // Tear down any live triggers first (EventBridge schedules / Composio) —
+  // only active automations ever registered any.
+  const teardown =
+    prior.status === 'active'
+      ? await teardownAllTriggers(id, (prior.triggers as unknown as AnyTrigger[]) ?? [])
+      : { added: [], removed: [], warnings: [] }
+
+  if (purge) {
+    // Hard delete. Deleting cloud_runs cascades (FK ON DELETE CASCADE) to
+    // cloud_activity / cloud_run_steps / pending_approvals / approvals /
+    // cloud_session_bindings; then drop automation-scoped helpers + the row.
+    await db.execute(sql`DELETE FROM public.cloud_runs WHERE automation_id = ${id} AND workspace_id = ${ws}`)
+    await db.execute(
+      sql`DELETE FROM public.cloud_agent_helpers WHERE automation_id = ${id} AND workspace_id = ${ws}`,
+    )
+    await db.execute(sql`DELETE FROM public.automations WHERE id = ${id} AND workspace_id = ${ws}`)
+    return c.json({ id, purged: true, triggerTeardown: teardown })
+  }
+
   if (prior.archived_at) {
     // Already archived — idempotent.
     return c.json({ id, archived_at: prior.archived_at, idempotent: true })
@@ -524,12 +664,6 @@ automationsRoute.delete('/:id', async (c) => {
      WHERE id = ${id} AND workspace_id = ${ws}
      RETURNING archived_at::text AS archived_at
   `)) as unknown as Array<{ archived_at: string }>
-
-  // D.4 — Tear down all registered triggers (only meaningful when the
-  // automation was active — drafts never registered any).
-  const teardown = prior.status === 'active'
-    ? await teardownAllTriggers(id, (prior.triggers as unknown as AnyTrigger[]) ?? [])
-    : { added: [], removed: [], warnings: [] }
 
   return c.json({ id, archived_at: rows[0]!.archived_at, triggerTeardown: teardown })
 })

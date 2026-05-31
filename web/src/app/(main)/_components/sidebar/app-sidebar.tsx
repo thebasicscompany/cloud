@@ -13,16 +13,19 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { sidebarItems } from "@/navigation/sidebar/sidebar-items";
+import type { MyWorkspace } from "@/lib/workspaces";
 
 import { RecordRoutine } from "../record-routine";
 import { NavMain } from "./nav-main";
 import { NavUser } from "./nav-user";
+import { WorkspaceSwitcher } from "./workspace-switcher";
 
 type AppSidebarProps = {
   user: { name: string; email: string; avatar: string };
+  workspaces: MyWorkspace[];
 };
 
-export function AppSidebar({ user }: AppSidebarProps) {
+export function AppSidebar({ user, workspaces }: AppSidebarProps) {
   return (
     <Sidebar variant="inset" collapsible="icon">
       <SidebarHeader>
@@ -33,10 +36,10 @@ export function AppSidebar({ user }: AppSidebarProps) {
               size="lg"
               className="hover:bg-transparent active:bg-transparent"
             >
-              <Link prefetch={false} href="/" aria-label="basichome" className="flex items-center justify-start">
+              <Link prefetch={false} href="/" aria-label="Basics" className="flex items-center justify-start">
                 <Image
                   src="/basics-logo.png"
-                  alt="basichome"
+                  alt="Basics"
                   width={32}
                   height={32}
                   className="size-8 shrink-0 rounded-md"
@@ -46,6 +49,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
+        {workspaces.length > 0 ? <WorkspaceSwitcher workspaces={workspaces} /> : null}
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={sidebarItems} />

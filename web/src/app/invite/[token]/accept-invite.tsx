@@ -32,7 +32,7 @@ export function AcceptInvite({ token, workspaceName }: { token: string; workspac
   }
 
   if (state === "done") {
-    return <p className="text-sm font-medium text-foreground">{message} You can open basichome now.</p>;
+    return <p className="text-sm font-medium text-foreground">{message} You can open Basics now.</p>;
   }
 
   return (

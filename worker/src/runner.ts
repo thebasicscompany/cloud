@@ -211,6 +211,39 @@ async function runOpencode(args: RunOpencodeArgs): Promise<RunOpencodeResult> {
     let buffer = "";
     let lastErrorMessage: string | undefined;
     let finalText: string | null = null;
+    let killedReason: "stalled_question" | "stalled_idle" | "max_runtime" | null = null;
+    let settled = false;
+
+    // Cloud runs are autonomous + headless (stdin is 'ignore'), so a question
+    // can never be answered and a stalled subprocess would block the worker
+    // forever. Kill the child in those cases so the run surfaces as a clear
+    // failure for a human to review instead of hanging silently.
+    const IDLE_MS = Number(process.env.RUN_IDLE_TIMEOUT_MS) || 10 * 60 * 1000;
+    const MAX_MS = Number(process.env.RUN_MAX_RUNTIME_MS) || 45 * 60 * 1000;
+    const QUESTION_TYPES = new Set([
+      "question.asked",
+      "question.ask",
+      "question",
+      "permission.asked",
+      "permission.ask",
+      "permission.requested",
+    ]);
+    const killWith = (reason: NonNullable<typeof killedReason>) => {
+      if (killedReason || settled) return;
+      killedReason = reason;
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        /* already exited */
+      }
+    };
+    let idleTimer: ReturnType<typeof setTimeout> | undefined;
+    const resetIdle = () => {
+      if (settled) return;
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => killWith("stalled_idle"), IDLE_MS);
+    };
+    const maxTimer = setTimeout(() => killWith("max_runtime"), MAX_MS);
 
     const flushLine = async (line: string) => {
       const trimmed = line.trim();
@@ -223,6 +256,7 @@ async function runOpencode(args: RunOpencodeArgs): Promise<RunOpencodeResult> {
         // operators can debug.
         event = { type: "raw_stdout", line: trimmed };
       }
+      resetIdle(); // any event = progress; restart the idle watchdog
       // Pluck final assistant text + error messages so the runner can
       // populate run_completed accurately.
       if (event.type === "error") {
@@ -239,6 +273,11 @@ async function runOpencode(args: RunOpencodeArgs): Promise<RunOpencodeResult> {
         await args.onEvent(event);
       } catch (e) {
         console.error("worker: onEvent failed", e);
+      }
+      // A question / permission prompt in a headless cloud run can never be
+      // answered — stop now (the user just saw the event) rather than hang.
+      if (typeof event.type === "string" && QUESTION_TYPES.has(event.type)) {
+        killWith("stalled_question");
       }
     };
 
@@ -260,6 +299,9 @@ async function runOpencode(args: RunOpencodeArgs): Promise<RunOpencodeResult> {
     });
 
     child.on("error", (err) => {
+      settled = true;
+      if (idleTimer) clearTimeout(idleTimer);
+      clearTimeout(maxTimer);
       resolve({
         stopReason: "error",
         finalText,
@@ -268,7 +310,16 @@ async function runOpencode(args: RunOpencodeArgs): Promise<RunOpencodeResult> {
     });
 
     child.on("close", async (code, signal) => {
+      settled = true;
+      if (idleTimer) clearTimeout(idleTimer);
+      clearTimeout(maxTimer);
       if (buffer.trim()) await flushLine(buffer);
+      // Watchdog-initiated kill (question / idle / max runtime) → surface a
+      // clear, human-readable failure instead of a bare signal.
+      if (killedReason) {
+        resolve({ stopReason: "error", finalText, errorMessage: killMessage(killedReason) });
+        return;
+      }
       if (signal) {
         resolve({ stopReason: "killed", finalText, errorMessage: `signal=${signal}` });
         return;
@@ -283,7 +334,20 @@ async function runOpencode(args: RunOpencodeArgs): Promise<RunOpencodeResult> {
         errorMessage: lastErrorMessage ?? `opencode exit ${code}`,
       });
     });
+
+    resetIdle(); // arm the idle watchdog from run start
   });
+}
+
+function killMessage(reason: "stalled_question" | "stalled_idle" | "max_runtime"): string {
+  switch (reason) {
+    case "stalled_question":
+      return "The agent paused to ask a question, but cloud runs are autonomous — there's no one to answer, so it was stopped. It should decide on its own or request the login/credential it needs. Refine the automation, or connect what it needs, then re-run.";
+    case "stalled_idle":
+      return "The agent stopped making progress and was stopped after the idle timeout. Re-run, or refine the task.";
+    case "max_runtime":
+      return "The run hit the maximum runtime and was stopped.";
+  }
 }
 
 function prefixOpencodeType(t: string): string {

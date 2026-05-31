@@ -4,7 +4,7 @@ import Link from "next/link";
 import { ApprovalDetailPage } from "../_components/approval-detail-page";
 
 export const metadata: Metadata = {
-  title: "Approval | basichome",
+  title: "Approval | Basics",
   description: "Approval detail with requested data, apps, tools, domains, target, cost, and audit record.",
 };
 

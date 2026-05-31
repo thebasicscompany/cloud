@@ -7,7 +7,8 @@
   "scripts": {
     "start": "electron .",
     "start:dev": "cross-env BASICS_APP_URL=http://localhost:3000 electron .",
-    "dist": "electron-builder"
+    "bundle:web": "doppler run --project electron_app --config dev -- pnpm --filter @basics/web build",
+    "dist": "pnpm run bundle:web && electron-builder"
   },
   "dependencies": {
     "ws": "^8.18.0"
@@ -18,13 +19,33 @@
   },
   "build": {
     "appId": "ai.trybasics.basichome",
-    "productName": "Basichome",
-    "files": ["main.js", "preload.js", "relay-client.js", "local-browser.js", "lens-client.js", "package.json", "build/icon.png"],
+    "productName": "Basics",
+    "files": ["*.js", "!cu-battery*.js", "!cu-smoke.js", "package.json", "build/icon.png"],
     "//icon": "electron-builder auto-generates per-platform app icons (icns/ico) from build/icon.png (1024x1024). The runtime BrowserWindow icon also references build/icon.png.",
     "//extraResources": "Bundles the Lens capture daemon INSIDE the app (one download). Drop the per-platform compiled daemon (lens / lens.exe, built from the lens repo) into desktop/vendor/lens/ before building; it lands at resources/lens/ where lens-client.findLensBinary() looks first.",
-    "extraResources": [{ "from": "vendor/lens", "to": "lens", "filter": ["**/*"] }],
+    "//web": "Bundles the cloud/web renderer as a Next standalone build INSIDE the app (no hosted web). `bundle:web` (run by `dist`, with Doppler so public NEXT_PUBLIC_* inline) produces ../web/.next/standalone. The monorepo nests the entry at standalone/web/server.js with node_modules at the standalone root, so we FLATTEN: ship standalone/web -> resources/web, standalone/node_modules -> resources/web/node_modules, then .next/static + public alongside. Result: resources/web/{server.js, node_modules, .next/static, public} — where web-server.js resolveServerJsPath() expects them. NO service-role key or JWT secret is in this output (the renderer uses cloud/api with a per-user JWT).",
+    "extraResources": [
+      { "from": "vendor/lens", "to": "lens", "filter": ["**/*"] },
+      { "from": "../web/.next/standalone/web", "to": "web", "filter": ["**/*"] },
+      { "from": "../web/.next/standalone/node_modules", "to": "web/node_modules", "filter": ["**/*"] },
+      { "from": "../web/.next/static", "to": "web/.next/static", "filter": ["**/*"] },
+      { "from": "../web/public", "to": "web/public", "filter": ["**/*"] }
+    ],
     "win": { "target": "nsis" },
-    "mac": { "target": "dmg", "category": "public.app-category.productivity" },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.productivity",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSScreenCaptureUsageDescription": "Basics records your screen to capture and learn your routines.",
+        "NSMicrophoneUsageDescription": "Basics records narration while you demonstrate a routine.",
+        "NSCameraUsageDescription": "Basics may capture video while you record a demonstration.",
+        "NSAppleEventsUsageDescription": "Basics controls other apps to run the automations you start."
+      }
+    },
     "linux": { "target": "AppImage" }
   }
 }

@@ -78,7 +78,7 @@ const NavItemExpanded = ({
               isActive={isActive(item.url)}
               tooltip={item.title}
             >
-              <Link prefetch={false} href={item.url} target={item.newTab ? "_blank" : undefined}>
+              <Link href={item.url} target={item.newTab ? "_blank" : undefined}>
                 <SidebarNavIcon item={item} active={isActive(item.url)} />
                 <span>{item.title}</span>
                 {item.comingSoon && <IsComingSoon />}
@@ -92,7 +92,7 @@ const NavItemExpanded = ({
               {item.subItems.map((subItem) => (
                 <SidebarMenuSubItem key={subItem.title}>
                   <SidebarMenuSubButton aria-disabled={subItem.comingSoon} isActive={isSubItemActive(subItem.url)} asChild>
-                    <Link prefetch={false} href={subItem.url} target={subItem.newTab ? "_blank" : undefined}>
+                    <Link href={subItem.url} target={subItem.newTab ? "_blank" : undefined}>
                       <SidebarNavIcon item={subItem} active={isSubItemActive(subItem.url)} />
                       <span>{subItem.title}</span>
                       {subItem.comingSoon && <IsComingSoon />}
@@ -141,7 +141,7 @@ const NavItemCollapsed = ({
                 aria-disabled={subItem.comingSoon}
                 isActive={isSubItemActive(subItem.url)}
               >
-                <Link prefetch={false} href={subItem.url} target={subItem.newTab ? "_blank" : undefined}>
+                <Link href={subItem.url} target={subItem.newTab ? "_blank" : undefined}>
                   <SidebarNavIcon item={subItem} active={isSubItemActive(subItem.url)} />
                   <span>{subItem.title}</span>
                   {subItem.comingSoon && <IsComingSoon />}
@@ -192,7 +192,7 @@ export function NavMain({ items }: NavMainProps) {
                           tooltip={item.title}
                           isActive={isItemActive(item.url)}
                         >
-                          <Link prefetch={false} href={item.url} target={item.newTab ? "_blank" : undefined}>
+                          <Link href={item.url} target={item.newTab ? "_blank" : undefined}>
                             <SidebarNavIcon item={item} active={isItemActive(item.url)} />
                             <span>{item.title}</span>
                           </Link>

@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { cloudFetch } from "@/lib/api/cloud";
 import { getCloudAutomationDetail } from "@/lib/automations-data";
-import { PRIMARY_WORKSPACE_ID } from "@/lib/connections-data";
-import { getAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,63 +15,77 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
 }
 
 /**
- * Real automation mutations against the `automations` table:
+ * Automation mutations — bundle-safe via cloud/api (`PATCH /v1/automations/:id`)
+ * with the caller's per-user workspace JWT (no admin client / hardcoded
+ * workspace). The cloud/api handler ports the same action logic:
  *  - pause/resume → status
  *  - updateSchedule → triggers jsonb (the schedule entry's cron/timezone)
  *  - grantTrust/revokeTrust → approval_policy.mode (autonomy)
+ *  - setRunTarget → run_target
+ * The workspace is derived from the JWT server-side; `workspaceId` is ignored.
  */
+const VALID_ACTIONS = new Set([
+  "pause",
+  "resume",
+  "grantTrust",
+  "revokeTrust",
+  "updateSchedule",
+  "setRunTarget",
+]);
+
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
-  let body: { action?: string; cron?: string; timezone?: string; target?: string; workspaceId?: string } = {};
+  let body: { action?: string; cron?: string; timezone?: string; target?: string } = {};
   try {
     body = (await req.json()) as typeof body;
   } catch {
     /* empty */
   }
-  const ws = body.workspaceId ?? PRIMARY_WORKSPACE_ID;
-  const supabase = getAdminClient();
-  if (!supabase) return NextResponse.json({ error: "unavailable" }, { status: 503 });
-
-  const { data: current } = await supabase
-    .from("automations")
-    .select("id,status,triggers,approval_policy")
-    .eq("id", id)
-    .eq("workspace_id", ws)
-    .maybeSingle();
-  if (!current) return NextResponse.json({ error: "not found" }, { status: 404 });
-
-  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
-
-  switch (body.action) {
-    case "pause":
-      patch.status = "paused";
-      break;
-    case "resume":
-      patch.status = "active";
-      break;
-    case "grantTrust":
-      patch.approval_policy = { ...(current.approval_policy as object), mode: "trusted_autonomous" };
-      break;
-    case "revokeTrust":
-      patch.approval_policy = { ...(current.approval_policy as object), mode: "manual_review" };
-      break;
-    case "updateSchedule": {
-      const triggers = Array.isArray(current.triggers) ? [...(current.triggers as Record<string, unknown>[])] : [];
-      const idx = triggers.findIndex((t) => t?.type === "schedule");
-      const entry = { type: "schedule", cron: body.cron ?? "", timezone: body.timezone ?? "UTC" };
-      if (idx >= 0) triggers[idx] = { ...triggers[idx], ...entry };
-      else triggers.push(entry);
-      patch.triggers = triggers;
-      break;
-    }
-    case "setRunTarget":
-      patch.run_target = body.target === "local" ? "local" : "cloud";
-      break;
-    default:
-      return NextResponse.json({ error: "invalid action" }, { status: 400 });
+  if (!body.action || !VALID_ACTIONS.has(body.action)) {
+    return NextResponse.json({ error: "invalid action" }, { status: 400 });
   }
 
-  const { error } = await supabase.from("automations").update(patch).eq("id", id).eq("workspace_id", ws);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true, id, action: body.action });
+  try {
+    const res = await cloudFetch(`/v1/automations/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        action: body.action,
+        cron: body.cron,
+        timezone: body.timezone,
+        target: body.target,
+      }),
+    });
+    if (res.status === 404) return NextResponse.json({ error: "not found" }, { status: 404 });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => null)) as { error?: string } | null;
+      return NextResponse.json({ error: err?.error ?? "update failed" }, { status: res.status });
+    }
+    return NextResponse.json({ ok: true, id, action: body.action });
+  } catch (e) {
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "update failed" },
+      { status: 500 },
+    );
+  }
+}
+
+/**
+ * DELETE /api/automations/:id — hard delete the automation AND all its runs.
+ * Proxies cloud/api `DELETE /v1/automations/:id?purge=true` with the workspace
+ * JWT. cloud/api tears down any live triggers, then deletes the runs (FK cascade
+ * clears their activity/steps/approvals) + the automation row.
+ */
+export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const { id } = await ctx.params;
+  try {
+    const res = await cloudFetch(`/v1/automations/${id}?purge=true`, { method: "DELETE" });
+    if (res.status === 404) return NextResponse.json({ error: "not found" }, { status: 404 });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => null)) as { error?: string } | null;
+      return NextResponse.json({ error: err?.error ?? "delete failed" }, { status: res.status });
+    }
+    return NextResponse.json({ ok: true, id, purged: true });
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : "delete failed" }, { status: 500 });
+  }
 }

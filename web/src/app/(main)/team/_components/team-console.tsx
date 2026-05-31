@@ -65,7 +65,7 @@ export function TeamConsole({ workspaces, selectedWorkspaceId, members, invitati
           workspaceId: selectedWorkspaceId,
           email: email.trim(),
           role,
-          workspaceName: selected?.name ?? "your basichome workspace",
+          workspaceName: selected?.name ?? "your Basics workspace",
         }),
       });
       const data = await res.json();

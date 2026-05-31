@@ -32,6 +32,7 @@ import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs'
 import { db } from '../db/index.js'
 import { getConfig } from '../config.js'
 import type { WorkspaceToken } from '../lib/jwt.js'
+import { planLimits } from '../lib/plan-limits.js'
 
 type Vars = { requestId: string; workspace: WorkspaceToken }
 
@@ -39,6 +40,39 @@ export const cloudSchedulesRoute = new Hono<{ Variables: Vars }>()
 
 const UUID_RE = /^[0-9a-fA-F-]{36}$/
 const REGION = process.env.AWS_REGION ?? 'us-east-1'
+
+/**
+ * Best-effort minimum interval (minutes) a schedule expression can fire at, for
+ * plan-limit enforcement. Exact for `rate(...)`; for `cron(...)` it inspects the
+ * minute/hour fields to catch the abusive every-minute / stepped cases, and is
+ * permissive (very large) for expressions it can't confidently parse.
+ */
+function scheduleMinIntervalMinutes(expr: string): number {
+  const e = expr.trim()
+  const rate = /^rate\((\d+)\s+(minute|minutes|hour|hours|day|days)\)$/i.exec(e)
+  if (rate) {
+    const n = parseInt(rate[1]!, 10)
+    const unit = rate[2]!.toLowerCase()
+    if (unit.startsWith('minute')) return n
+    if (unit.startsWith('hour')) return n * 60
+    return n * 1440
+  }
+  const cron = /^cron\((.+)\)$/i.exec(e)
+  if (cron) {
+    const fields = cron[1]!.trim().split(/\s+/)
+    const minute = fields[0] ?? '*'
+    const hour = fields[1] ?? '*'
+    if (minute === '*') return 1
+    const mstep = /^\*\/(\d+)$/.exec(minute)
+    if (mstep) return parseInt(mstep[1]!, 10)
+    if (hour === '*' || /^\*\//.test(hour)) {
+      const hstep = /^\*\/(\d+)$/.exec(hour)
+      return hstep ? parseInt(hstep[1]!, 10) * 60 : 60
+    }
+    return 1440
+  }
+  return Number.MAX_SAFE_INTEGER
+}
 
 let _scheduler: SchedulerClient | null = null
 function schedulerClient(): SchedulerClient {
@@ -106,6 +140,30 @@ cloudSchedulesRoute.post(
     const body = c.req.valid('json')
     const agent = await requireCloudAgent(ws, body.cloudAgentId)
     if (!agent) return c.json({ error: 'not_found' }, 404)
+
+    // Plan limit: scheduling availability + minimum interval.
+    const limits = planLimits(c.var.workspace.plan)
+    if (limits.minScheduleIntervalMinutes === null) {
+      return c.json(
+        {
+          error: 'plan_limit',
+          code: 'scheduling_unavailable',
+          message: 'Scheduling isn’t available on your plan. Upgrade to schedule automations.',
+        },
+        402,
+      )
+    }
+    if (scheduleMinIntervalMinutes(body.cron) < limits.minScheduleIntervalMinutes) {
+      return c.json(
+        {
+          error: 'plan_limit',
+          code: 'schedule_too_frequent',
+          message: `Your plan allows schedules no more frequent than every ${limits.minScheduleIntervalMinutes} minutes.`,
+          minIntervalMinutes: limits.minScheduleIntervalMinutes,
+        },
+        402,
+      )
+    }
 
     const cfg = getConfig()
     if (!cfg.CRON_KICKER_LAMBDA_ARN || !cfg.SCHEDULER_INVOKE_ROLE_ARN) {

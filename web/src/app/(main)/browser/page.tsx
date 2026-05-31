@@ -5,7 +5,7 @@ import { getConnections } from "@/lib/connections-data";
 import { BrowserWorkbench } from "./_components/browser-workbench";
 
 export const metadata: Metadata = {
-  title: "Browser | basichome",
+  title: "Browser | Basics",
   description: "Run browser tasks in the cloud and sign in to sites once so agents can reuse the session.",
 };
 

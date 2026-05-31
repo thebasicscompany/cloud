@@ -5,7 +5,7 @@ import { getDocuments } from "@/lib/documents-data";
 import { DocumentsOverview } from "./_components/documents-overview";
 
 export const metadata: Metadata = {
-  title: "Documents | basichome",
+  title: "Documents | Basics",
   description: "Long-form documents your agents and automations write for you to review.",
 };
 

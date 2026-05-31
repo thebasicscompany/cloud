@@ -108,6 +108,88 @@ composioSkillsRoute.post(
   },
 )
 
+/**
+ * POST /composio/connect-toolkit — initiate (or re-initiate) a Composio
+ * connection by TOOLKIT SLUG (e.g. "gmail"), for the app's "connect /
+ * reconnect a toolkit" flow. Unlike `/composio/connect` (which takes a
+ * pre-resolved authConfigId), this resolves the toolkit's enabled
+ * auth_config first, then mints the OAuth link.
+ *
+ * Ported verbatim from web `app/api/connections/connect/route.ts`:
+ *  1. GET /auth_configs → find the toolkit's enabled (non-DISABLED) config.
+ *  2. POST /connected_accounts/link → OAuth redirect URL.
+ *
+ * The connection is filed under the worker's Composio user_id
+ * (`account_id || workspace_id`, same as the rest of this route) so agent
+ * runs can see the connected account.
+ */
+composioSkillsRoute.post(
+  '/composio/connect-toolkit',
+  zValidator(
+    'json',
+    z.object({
+      toolkit: z.string().min(1),
+      callbackUrl: z.string().url().optional(),
+    }),
+  ),
+  async (c) => {
+    try {
+      const body = c.req.valid('json')
+      const toolkit = body.toolkit.trim().toLowerCase()
+      if (!toolkit) return c.json({ ok: false, error: "Missing 'toolkit' in request body." }, 400)
+
+      const client = new ComposioClient()
+
+      // 1) Find the toolkit's enabled auth_config (required to mint a link).
+      const authConfigs = await client.listAuthConfigs()
+      const match = authConfigs.find(
+        (a) =>
+          (a.toolkit?.slug ?? '').toLowerCase() === toolkit &&
+          (a.status ?? '').toUpperCase() !== 'DISABLED',
+      )
+      if (!match) {
+        return c.json(
+          {
+            ok: false,
+            error: `No enabled Composio auth config found for toolkit "${toolkit}".`,
+            hint: 'Create/enable an auth config for this toolkit in the Composio dashboard first.',
+          },
+          404,
+        )
+      }
+
+      // 2) Mint the OAuth connect link under the worker's Composio user_id
+      //    (account_id) so the resulting connection is visible to agent runs.
+      const link = await client.createConnectLink(
+        match.id,
+        composioUserId(c.var.workspace),
+        body.callbackUrl ? { callbackUrl: body.callbackUrl } : undefined,
+      )
+      const normalized = normalizeConnectLink(link)
+      const redirectUrl = normalized.redirectUrl
+      if (!redirectUrl) {
+        return c.json(
+          {
+            ok: false,
+            error: 'Composio returned no redirect_url for the connection.',
+            hint: 'The toolkit may use a non-OAuth auth scheme that cannot be completed via a redirect.',
+          },
+          502,
+        )
+      }
+
+      return c.json({
+        ok: true,
+        toolkit,
+        redirectUrl,
+        connectedAccountId: normalized.connectedAccountId ?? null,
+      })
+    } catch (err) {
+      return errorResponse(c, err)
+    }
+  },
+)
+
 composioSkillsRoute.delete('/composio/connections/:connectedAccountId', async (c) => {
   try {
     const connectedAccountId = c.req.param('connectedAccountId')?.trim()

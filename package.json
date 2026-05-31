@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "doppler run --project backend --config dev -- pnpm -r --parallel dev",
+    "dev:electron": "node scripts/dev-app.mjs",
     "build": "pnpm -r build",
     "basics": "node scripts/basics-app-cli.mjs",
     "typecheck": "pnpm -r typecheck",

@@ -86,7 +86,7 @@ export function BrowserWorkbench({ savedSites }: { savedSites: ConnectionBrowser
     }
     const bh = (window as unknown as { basichome?: { exportLocalCookies?: (h: string) => Promise<{ ok?: boolean; cookies?: unknown[]; error?: string }> } }).basichome;
     if (!bh?.exportLocalCookies) {
-      setSignIn({ phase: "error", message: "This needs the desktop app — open Basichome on your computer." });
+      setSignIn({ phase: "error", message: "This needs the desktop app — open Basics on your computer." });
       return;
     }
     setSignIn({ phase: "finalizing", host });
@@ -216,7 +216,7 @@ export function BrowserWorkbench({ savedSites }: { savedSites: ConnectionBrowser
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
             className="min-h-28 resize-none bg-background"
-            placeholder="Tell basichome what the browser should do..."
+            placeholder="Tell Basics what the browser should do..."
             aria-label="Browser task"
           />
           <div className="space-y-3">
@@ -247,8 +247,8 @@ export function BrowserWorkbench({ savedSites }: { savedSites: ConnectionBrowser
           <div>
             <h2 className="font-semibold text-base">Sign in to a site</h2>
             <p className="mt-1 max-w-2xl text-muted-foreground text-sm">
-              Sign in once in a secure cloud window. basichome saves the session so your agents stay
-              logged in. Your password is never entered into basichome or stored in logs.
+              Sign in once in a secure cloud window. Basics saves the session so your agents stay
+              logged in. Your password is never entered into Basics or stored in logs.
             </p>
           </div>
           <Badge variant="outline" className="gap-1">
@@ -340,7 +340,7 @@ export function BrowserWorkbench({ savedSites }: { savedSites: ConnectionBrowser
           <div className="mt-3 rounded-lg border bg-muted/30 p-3 text-sm">
             <p className="font-medium text-foreground">Turn on remote debugging in Chrome first</p>
             <p className="mt-1 text-muted-foreground">
-              To reuse your local <span className="font-medium">{signIn.host}</span> login, Basichome needs to read it from
+              To reuse your local <span className="font-medium">{signIn.host}</span> login, Basics needs to read it from
               your Chrome — which requires remote debugging to be on (one-time):
             </p>
             <ol className="mt-2 ml-4 list-decimal space-y-1 text-muted-foreground">
