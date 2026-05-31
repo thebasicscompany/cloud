@@ -76,6 +76,11 @@ export function buildApp() {
     'http://127.0.0.1:5173',
     'http://localhost:1420',
     'http://127.0.0.1:1420',
+    // Landing site (Wispr-style login + the /join accept page) calling the API
+    // cross-origin from the browser.
+    'http://localhost:3100',
+    'https://basicsoftware.ai',
+    'https://www.basicsoftware.ai',
   ]
   let allowedOrigins: string[] = baseOrigins
   if (cfg.BASICS_ALLOWED_ORIGINS) {
