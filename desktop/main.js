@@ -14,6 +14,7 @@ const computerLoop = require("./computer-loop");
 const computerWatcher = require("./computer-watcher");
 const authContext = require("./auth-context");
 const authExternal = require("./auth-external");
+const authBridge = require("./auth-bridge");
 const { startWebServer, stopWebServer } = require("./web-server");
 
 // Background (always-on) Lens capture is OFF by default — it's a real resource
@@ -356,6 +357,19 @@ ipcMain.handle("basichome:auth:open-external", (event, url) => {
   if (typeof url !== "string" || !url) return { ok: false };
   authExternal.openExternalAuth(url, (result) => {
     if (!event.sender.isDestroyed()) event.sender.send("basichome:auth:code", result);
+  });
+  return { ok: true };
+});
+
+// "Sign in via browser" (the web-bridge model, like Wispr/Linear): open the
+// landing /desktop-login-bridge in the system browser; after sign-in there it
+// POSTs the Supabase session to our loopback (auth-bridge.js, port 34567). We
+// forward it to the renderer, which calls supabase.auth.setSession so the
+// session lands in-app — no credentials ever typed in the Electron window.
+ipcMain.handle("basichome:auth:browser-sign-in", (event) => {
+  const landing = process.env.BASICS_LANDING_URL || "https://basicsoftware.ai";
+  authBridge.startBrowserSignIn(landing, (result) => {
+    if (!event.sender.isDestroyed()) event.sender.send("basichome:auth:session", result);
   });
   return { ok: true };
 });

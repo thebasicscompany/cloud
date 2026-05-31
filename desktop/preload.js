@@ -52,6 +52,15 @@ contextBridge.exposeInMainWorld("basichome", {
     ipcRenderer.on("basichome:auth:code", h);
     return () => ipcRenderer.removeListener("basichome:auth:code", h);
   },
+  // "Sign in via browser" — open the landing login in the system browser; the
+  // resolved Supabase session ({access_token, refresh_token} | {error}) comes
+  // back via onAuthSession, and the renderer calls supabase.auth.setSession.
+  signInViaBrowser: () => ipcRenderer.invoke("basichome:auth:browser-sign-in"),
+  onAuthSession: (cb) => {
+    const h = (_e, result) => cb(result);
+    ipcRenderer.on("basichome:auth:session", h);
+    return () => ipcRenderer.removeListener("basichome:auth:session", h);
+  },
   // The deployed cloud/api base, owned by the desktop, so the renderer can call
   // /v1/* directly without its own api-base env.
   apiBase: (process.env.BASICS_API_URL || "https://api.trybasics.ai").replace(/\/+$/, ""),
