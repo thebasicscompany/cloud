@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "doppler run --project backend --config dev -- next dev",
+    "dev": "doppler run --project electron_app --config dev -- next dev",
     "dev:no-env": "next dev",
     "build": "next build",
     "start": "next start",

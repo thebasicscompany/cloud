@@ -1,21 +1,22 @@
 import { NextResponse } from "next/server";
 
 import { cloudFetch } from "@/lib/api/cloud";
-import { steerRun } from "@/lib/run-steer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Message / steer a run.
+ * Message / steer a run — entirely through cloud/api (bundle-safe; no direct DB).
  *
- * If the run is LIVE (a worker is currently executing it), the message is
- * delivered as a follow-up turn to the running opencode session via a Postgres
- * NOTIFY on the pool channel ({kind:'continue', ...}). The run keeps going,
- * incorporating the new instruction.
+ * If the run is LIVE, cloud/api's `POST /v1/runs/:id/message` pg_notifies the
+ * pool channel ({kind:'continue'}) and the worker folds the message into the
+ * running opencode session. If it isn't live (or that endpoint isn't reachable
+ * yet — e.g. before an api deploy), we fall back to starting a NEW follow-up run
+ * that references the original.
  *
- * If the run is no longer live (already completed/failed, or no open binding),
- * we fall back to starting a NEW follow-up run that references the original.
+ * Previously this used `lib/run-steer.ts`, which opened a direct session-mode
+ * Postgres connection (DATABASE_URL_SESSION) from the web layer — now removed so
+ * the desktop bundle holds no DB connection string.
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -25,23 +26,31 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ ok: false, error: "message is required." }, { status: 400 });
   }
 
-  const steer = await steerRun(id, message);
-  if (steer.ok) {
-    return NextResponse.json({ ok: true, mode: "steer" });
+  // Try to steer the LIVE run via cloud/api.
+  try {
+    const res = await cloudFetch(`/v1/runs/${id}/message`, {
+      method: "POST",
+      body: JSON.stringify({ message }),
+    });
+    if (res.ok) {
+      const j = (await res.json().catch(() => null)) as { steered?: boolean } | null;
+      if (j?.steered) {
+        return NextResponse.json({ ok: true, mode: "steer" });
+      }
+      // steered:false → run isn't live; fall through to a follow-up run.
+    } else if (res.status !== 404 && res.status !== 409) {
+      // A hard upstream error (not "endpoint missing" / "not live").
+      const err = (await res.json().catch(() => null)) as { error?: string } | null;
+      return NextResponse.json(
+        { ok: false, error: err?.error ?? "Failed to message the run." },
+        { status: 502 },
+      );
+    }
+  } catch {
+    // Network error → fall through to the follow-up run.
   }
 
-  // Hard errors (misconfig / connection) are surfaced; only fall back when the
-  // run simply isn't live anymore.
-  if (steer.reason !== "not_live") {
-    return NextResponse.json(
-      { ok: false, error: steer.error ?? "Failed to message the run." },
-      { status: 500 },
-    );
-  }
-
-  // No live binding to steer — start a NEW follow-up run that references the
-  // original. Dispatched through cloud/api (`POST /v1/runs`) with the caller's
-  // workspace JWT (bundle-safe; no admin client / cron-kicker).
+  // No live run to steer — start a NEW follow-up run that references the original.
   const goal = `Follow-up to a previous run. Previous run id: ${id}. New instruction: ${message}`;
   try {
     const res = await cloudFetch("/v1/runs", {

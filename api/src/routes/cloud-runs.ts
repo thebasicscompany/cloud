@@ -344,3 +344,64 @@ cloudRunsRoute.post('/:id/cancel', async (c) => {
     poolId: binding.pool_id,
   }, 202)
 })
+
+/**
+ * POST /v1/runs/:id/message — steer a LIVE run by delivering a follow-up
+ * instruction to the running opencode session. If the run is live (an open
+ * binding on a pool), pg_notify the pool channel with
+ * {kind:'continue', runId, sessionId, message}; the worker re-prompts the
+ * session (see worker/src/main.ts continue branch). If it isn't live, return
+ * {steered:false, reason:'not_live'} so the caller can fall back to a follow-up
+ * run. Auth: workspace JWT, scoped by workspace_id (404 if not yours).
+ *
+ * Replaces the web app's `lib/run-steer.ts`, which opened a DIRECT session-mode
+ * Postgres connection (DATABASE_URL_SESSION) from the web layer — keeping that
+ * secret + direct DB access out of the bundled desktop app.
+ */
+cloudRunsRoute.post('/:id/message', async (c) => {
+  const runId = c.req.param('id')
+  if (!UUID_RE.test(runId)) {
+    return c.json({ error: 'invalid_run_id' }, 400)
+  }
+  const ws = c.var.workspace?.workspace_id
+  if (!ws) return c.json({ error: 'unauthorized' }, 401)
+
+  const body = (await c.req.json().catch(() => null)) as { message?: string } | null
+  const message = body?.message?.trim()
+  if (!message) return c.json({ error: 'message_required' }, 400)
+
+  const runRows = (await db.execute(sql`
+    SELECT id, status
+      FROM public.cloud_runs
+     WHERE id = ${runId} AND workspace_id = ${ws}
+     LIMIT 1
+  `)) as unknown as Array<{ id: string; status: string }>
+  if (runRows.length === 0) return c.json({ error: 'not_found' }, 404)
+  if (TERMINAL_RUN_STATUSES.has(runRows[0]!.status)) {
+    return c.json({ steered: false, reason: 'not_live' }, 200)
+  }
+
+  const bindingRows = (await db.execute(sql`
+    SELECT session_id, pool_id
+      FROM public.cloud_session_bindings
+     WHERE run_id = ${runId} AND ended_at IS NULL
+     ORDER BY created_at DESC
+     LIMIT 1
+  `)) as unknown as Array<{ session_id: string; pool_id: string | null }>
+
+  if (bindingRows.length === 0 || !bindingRows[0]!.pool_id) {
+    return c.json({ steered: false, reason: 'not_live' }, 200)
+  }
+
+  const binding = bindingRows[0]!
+  const channel = poolChannelName(binding.pool_id!)
+  const payload = JSON.stringify({
+    kind: 'continue',
+    sessionId: binding.session_id,
+    runId,
+    message,
+  })
+  await db.execute(sql`SELECT pg_notify(${channel}, ${payload})`)
+
+  return c.json({ steered: true, runId, sessionId: binding.session_id }, 202)
+})

@@ -51,7 +51,7 @@ process.on('SIGTERM', () => shutdown(0))
 
 // 1) Next dev renderer.
 console.log('[dev:electron] starting web dev server (localhost:3000)…')
-const web = spawn('doppler', ['run', '--project', 'backend', '--config', 'dev', '--', 'pnpm', 'dev'], {
+const web = spawn('doppler', ['run', '--project', 'electron_app', '--config', 'dev', '--', 'pnpm', 'dev'], {
   cwd: webDir,
   stdio: 'inherit',
   shell: true,

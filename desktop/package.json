@@ -7,7 +7,7 @@
   "scripts": {
     "start": "electron .",
     "start:dev": "cross-env BASICS_APP_URL=http://localhost:3000 electron .",
-    "bundle:web": "doppler run --project backend --config dev -- pnpm --filter @basics/web build",
+    "bundle:web": "doppler run --project electron_app --config dev -- pnpm --filter @basics/web build",
     "dist": "pnpm run bundle:web && electron-builder"
   },
   "dependencies": {
