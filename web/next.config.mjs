@@ -6,6 +6,12 @@ const nextConfig = {
   // secret ships in this output (only public NEXT_PUBLIC_* + the cloud/api base).
   output: "standalone",
   reactCompiler: true,
+  // Keep the client router cache warm: revisiting a tab within the window serves
+  // the cached RSC payload instantly (then refetches after it goes stale), so
+  // back-and-forth between tabs feels seamless instead of re-fetching every time.
+  experimental: {
+    staleTimes: { dynamic: 30, static: 180 },
+  },
   devIndicators:
     process.env.BASICHOME_NEXT_DEV_INDICATORS === "1"
       ? {
