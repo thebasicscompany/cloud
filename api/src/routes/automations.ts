@@ -506,6 +506,86 @@ automationsRoute.put('/:id', zValidator('json', UpdateSchema), async (c) => {
   })
 })
 
+// ─── PATCH /v1/automations/:id  (lightweight action mutations) ───────────
+//
+// Ported verbatim from the web mutation route `web/src/app/api/automations/[id]`
+// (which used the service-role admin client + a hardcoded PRIMARY_WORKSPACE_ID),
+// now scoped to the VERIFIED workspace JWT. This is intentionally SEPARATE from
+// PUT: PUT is the full editor (snapshots a version, reconciles Composio /
+// EventBridge triggers, invalidates approval_rules). These action toggles —
+// pause/resume, grant/revoke trust, schedule edit, run-target — are field-level
+// writes the dashboard fires inline; they must NOT bump the version or
+// re-register triggers, and pause uses status='paused' (a value the read model
+// in automation-views.ts recognizes but PUT's StatusEnum does not). Logic is
+// kept identical to the web route so the external contract is unchanged.
+
+const PatchSchema = z.object({
+  action: z.enum(['pause', 'resume', 'grantTrust', 'revokeTrust', 'updateSchedule', 'setRunTarget']),
+  cron: z.string().optional(),
+  timezone: z.string().optional(),
+  target: z.string().optional(),
+})
+
+automationsRoute.patch('/:id', zValidator('json', PatchSchema), async (c) => {
+  const id = c.req.param('id')
+  if (!UUID_RE.test(id)) return c.json({ error: 'invalid_id' }, 400)
+  const ws = c.var.workspace!.workspace_id
+  const body = c.req.valid('json')
+
+  const current = await loadAutomation(ws, id)
+  if (!current) return c.json({ error: 'not found' }, 404)
+
+  // Build the patch the same way the web route did, then issue a single
+  // targeted UPDATE for the touched column(s).
+  let setClause
+  switch (body.action) {
+    case 'pause':
+      setClause = sql`status = 'paused'`
+      break
+    case 'resume':
+      setClause = sql`status = 'active'`
+      break
+    case 'grantTrust': {
+      const policy = {
+        ...((current.approval_policy as Record<string, unknown> | null) ?? {}),
+        mode: 'trusted_autonomous',
+      }
+      setClause = sql`approval_policy = ${JSON.stringify(policy)}::jsonb`
+      break
+    }
+    case 'revokeTrust': {
+      const policy = {
+        ...((current.approval_policy as Record<string, unknown> | null) ?? {}),
+        mode: 'manual_review',
+      }
+      setClause = sql`approval_policy = ${JSON.stringify(policy)}::jsonb`
+      break
+    }
+    case 'updateSchedule': {
+      const triggers = Array.isArray(current.triggers)
+        ? [...(current.triggers as Record<string, unknown>[])]
+        : []
+      const idx = triggers.findIndex((t) => t?.type === 'schedule')
+      const entry = { type: 'schedule', cron: body.cron ?? '', timezone: body.timezone ?? 'UTC' }
+      if (idx >= 0) triggers[idx] = { ...triggers[idx], ...entry }
+      else triggers.push(entry)
+      setClause = sql`triggers = ${JSON.stringify(triggers)}::jsonb`
+      break
+    }
+    case 'setRunTarget':
+      setClause = sql`run_target = ${body.target === 'local' ? 'local' : 'cloud'}`
+      break
+  }
+
+  await db.execute(sql`
+    UPDATE public.automations
+       SET ${setClause}, updated_at = now()
+     WHERE id = ${id} AND workspace_id = ${ws}
+  `)
+
+  return c.json({ ok: true, id, action: body.action })
+})
+
 // ─── DELETE /v1/automations/:id ──────────────────────────────────────────
 
 automationsRoute.delete('/:id', async (c) => {

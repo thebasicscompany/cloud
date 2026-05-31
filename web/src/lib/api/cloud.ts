@@ -2,6 +2,8 @@ import "server-only";
 
 import { cache } from "react";
 
+import { decodeJwt } from "jose";
+
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -60,6 +62,24 @@ export const getWorkspaceToken = cache(async (): Promise<string> => {
 /** True once the runtime API base is configured and the user has a session. */
 export async function hasWorkspaceSession(): Promise<boolean> {
   return Boolean(await getWorkspaceToken());
+}
+
+/**
+ * The `workspace_id` claim from the current request's workspace JWT, or "" when
+ * signed out. Used only to build `:workspaceId`-path runtime endpoints (e.g.
+ * `/v1/workspaces/:ws/browser-sites/...`); the backend STILL re-verifies the
+ * token and cross-checks the path against the verified claim, so decoding here
+ * (no signature check) is safe — a tampered id can't address another workspace.
+ */
+export async function getWorkspaceId(): Promise<string> {
+  const token = await getWorkspaceToken();
+  if (!token) return "";
+  try {
+    const claims = decodeJwt(token) as { workspace_id?: unknown };
+    return typeof claims.workspace_id === "string" ? claims.workspace_id : "";
+  } catch {
+    return "";
+  }
 }
 
 /**

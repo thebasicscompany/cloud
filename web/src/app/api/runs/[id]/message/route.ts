@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { cloudFetch } from "@/lib/api/cloud";
 import { steerRun } from "@/lib/run-steer";
-import { triggerCloudRun } from "@/lib/trigger-run";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,13 +39,28 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     );
   }
 
+  // No live binding to steer — start a NEW follow-up run that references the
+  // original. Dispatched through cloud/api (`POST /v1/runs`) with the caller's
+  // workspace JWT (bundle-safe; no admin client / cron-kicker).
   const goal = `Follow-up to a previous run. Previous run id: ${id}. New instruction: ${message}`;
-  const followup = await triggerCloudRun({ goal });
-  if (!followup.ok) {
+  try {
+    const res = await cloudFetch("/v1/runs", {
+      method: "POST",
+      body: JSON.stringify({ goal }),
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => null)) as { error?: string } | null;
+      return NextResponse.json(
+        { ok: false, error: err?.error ?? "Failed to start follow-up run." },
+        { status: 500 },
+      );
+    }
+    const json = (await res.json()) as { runId?: string };
+    return NextResponse.json({ ok: true, mode: "followup", runId: json.runId });
+  } catch (e) {
     return NextResponse.json(
-      { ok: false, error: followup.error ?? "Failed to start follow-up run." },
+      { ok: false, error: e instanceof Error ? e.message : "Failed to start follow-up run." },
       { status: 500 },
     );
   }
-  return NextResponse.json({ ok: true, mode: "followup", runId: followup.runId });
 }

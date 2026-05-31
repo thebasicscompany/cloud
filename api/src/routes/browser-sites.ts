@@ -251,6 +251,96 @@ browserSitesRoute.post(
   },
 )
 
+// ─── POST local-cookies ──────────────────────────────────────────────────
+
+/**
+ * Save a `storageState` blob (cookies + localStorage origins) exported from the
+ * user's LOCAL Chrome so the cloud agent's browser can reuse that login — the
+ * "use my local login in the cloud" path. The desktop captures cookies via CDP
+ * for a single host the user picks (explicit, opt-in) and POSTs them here.
+ *
+ * Ported verbatim from web `api/browser-sites/local-cookies/route.ts`, swapping
+ * the hardcoded PRIMARY_WORKSPACE_ID for the JWT's workspace. Unlike the
+ * connect/finalize flow (which stores a Browserbase Context POINTER), this row
+ * stores the RAW storageState the worker applies via Network.setCookies.
+ *
+ * The host comes in the BODY (not the path) to keep the web route's contract
+ * identical; it's still validated against HOST_RE.
+ */
+const LocalCookiesBody = z.object({
+  cookies: z.array(z.record(z.string(), z.unknown())).min(1),
+  origins: z.array(z.unknown()).optional(),
+})
+
+interface IncomingCookie {
+  name?: unknown
+  value?: unknown
+  domain?: unknown
+  path?: unknown
+  expires?: unknown
+  httpOnly?: unknown
+  secure?: unknown
+  sameSite?: unknown
+}
+
+browserSitesRoute.post(
+  '/:workspaceId/browser-sites/:host/local-cookies',
+  zValidator('json', LocalCookiesBody),
+  async (c) => {
+    const pathWs = c.req.param('workspaceId')
+    const host = (c.req.param('host') ?? '').toLowerCase().replace(/^www\./, '')
+    if (!HOST_RE.test(host)) return badHost(c)
+    const scope = guardWorkspace(c, pathWs)
+    if (!scope) return UUID_RE.test(pathWs) ? forbidden(c) : badWorkspaceId(c)
+
+    const body = c.req.valid('json')
+
+    // Normalize to the Playwright storageState cookie shape the worker expects.
+    const cookies = (body.cookies as IncomingCookie[])
+      .filter((ck) => typeof ck?.name === 'string' && typeof ck?.value === 'string')
+      .map((ck) => ({
+        name: String(ck.name),
+        value: String(ck.value),
+        domain: typeof ck.domain === 'string' ? ck.domain : undefined,
+        path: typeof ck.path === 'string' ? ck.path : '/',
+        expires: typeof ck.expires === 'number' ? ck.expires : -1,
+        httpOnly: Boolean(ck.httpOnly),
+        secure: Boolean(ck.secure),
+        sameSite: typeof ck.sameSite === 'string' ? ck.sameSite : undefined,
+      }))
+    if (cookies.length === 0) {
+      return c.json({ error: 'No cookies provided for this host.' }, 400)
+    }
+    const origins = Array.isArray(body.origins) ? body.origins : []
+
+    const storageState = { kind: 'storageState', cookies, origins }
+    const expiresIso = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+
+    await db.execute(sql`
+      INSERT INTO public.workspace_browser_sites
+        (workspace_id, host, display_name, storage_state_json,
+         captured_via, last_verified_at, expires_at, created_by)
+      VALUES
+        (${scope.workspaceId}, ${host}, ${host},
+         ${JSON.stringify(storageState)}::jsonb,
+         'sync_local_profile',
+         now(),
+         ${expiresIso}::timestamptz,
+         ${scope.accountId})
+      ON CONFLICT (workspace_id, host) DO UPDATE
+        SET display_name        = EXCLUDED.display_name,
+            storage_state_json  = EXCLUDED.storage_state_json,
+            captured_via        = EXCLUDED.captured_via,
+            last_verified_at    = EXCLUDED.last_verified_at,
+            expires_at          = EXCLUDED.expires_at,
+            created_by          = EXCLUDED.created_by,
+            updated_at          = now()
+    `)
+
+    return c.json({ ok: true, host, cookieCount: cookies.length, expires_at: expiresIso })
+  },
+)
+
 // ─── GET list ────────────────────────────────────────────────────────────
 
 browserSitesRoute.get('/:workspaceId/browser-sites', async (c) => {

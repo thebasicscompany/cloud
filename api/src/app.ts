@@ -44,6 +44,7 @@ import { pendingApprovalsRoute } from './routes/pending-approvals.js'
 import { runViewsRoute } from './routes/run-views.js'
 import { agentRoute } from './routes/agent.js'
 import { automationViewsRoute } from './routes/automation-views.js'
+import { teamRoute } from './routes/team.js'
 import type { WorkspaceToken } from './lib/jwt.js'
 import type { AuthenticatedWorkspaceApiKey } from './lib/workspace-api-keys.js'
 
@@ -182,6 +183,7 @@ export function buildApp() {
   app.route('/v1/run-views', runViewsRoute)
   app.route('/v1/agent', agentRoute)
   app.route('/v1/automation-views', automationViewsRoute)
+  app.route('/v1/team', teamRoute)
 
   // C.5 — /v1/approvals routes carry their OWN auth (workspace JWT OR
   // signed access token via ?token=); intentionally no blanket middleware.

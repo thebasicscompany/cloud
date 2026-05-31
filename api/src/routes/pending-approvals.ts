@@ -1,4 +1,6 @@
 import { Hono } from 'hono'
+import { zValidator } from '@hono/zod-validator'
+import { z } from 'zod'
 
 import { supabaseAdmin } from '../lib/supabase.js'
 import type { WorkspaceToken } from '../lib/jwt.js'
@@ -92,4 +94,51 @@ pendingApprovalsRoute.get('/', requireWorkspaceJwt, async (c) => {
     .limit(100)
   const approvals = ((data ?? []) as PendingRow[]).map((r) => mapRow(r))
   return c.json({ approvals, trustGrants: [] })
+})
+
+/**
+ * POST /v1/pending-approvals/:id — decide a pending approval.
+ *
+ * Ported verbatim from the web mutation route `web/src/app/api/approvals/[id]`
+ * (which used the service-role admin client + a hardcoded PRIMARY_WORKSPACE_ID),
+ * now scoped to the VERIFIED workspace JWT (`c.var.workspace.workspace_id`).
+ *
+ * Writes `decision` + `decision_payload` + `resolved_at`/`decided_at` on the
+ * `pending_approvals` row. The worker's approval gate polls that row and resumes
+ * (approve) or aborts (anything else) the paused tool call within its poll
+ * interval (~2s). The `.is('resolved_at', null)` guard keeps the decision
+ * idempotent — a second POST for an already-resolved row returns 404.
+ *
+ * Body: `{ decision }` — the already-mapped DB value (the web route maps its
+ * `action` → decision before calling; the API stores it as-is so the external
+ * contract is identical).
+ */
+const DecideSchema = z.object({
+  decision: z.enum(['approved', 'rejected', 'changes_requested']),
+  reason: z.string().max(4000).nullable().optional(),
+})
+
+pendingApprovalsRoute.post('/:id', requireWorkspaceJwt, zValidator('json', DecideSchema), async (c) => {
+  const ws = c.var.workspace.workspace_id
+  const id = c.req.param('id')
+  const { decision, reason } = c.req.valid('json')
+  const now = new Date().toISOString()
+
+  const { data, error } = await supabaseAdmin()
+    .from('pending_approvals')
+    .update({
+      decision,
+      decision_payload: reason ? { reason } : null,
+      resolved_at: now,
+      decided_at: now,
+    })
+    .eq('id', id)
+    .eq('workspace_id', ws)
+    .is('resolved_at', null)
+    .select('id')
+    .maybeSingle()
+
+  if (error) return c.json({ error: error.message }, 500)
+  if (!data) return c.json({ error: 'not_found_or_already_resolved' }, 404)
+  return c.json({ ok: true, id, decision })
 })

@@ -1,53 +1,54 @@
 import { NextResponse } from "next/server";
 
-import { PRIMARY_WORKSPACE_ID } from "@/lib/connections-data";
-import { getAdminClient } from "@/lib/supabase/admin";
+import { cloudFetch, CloudApiError } from "@/lib/api/cloud";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Edit a record's data/status (user interaction). */
+/**
+ * Edit a record's data/status (user interaction). Repointed to cloud/api
+ * `PATCH /v1/apps/:slug/records/:recordId` (workspace-scoped by the JWT) — no
+ * service-role admin client, no hardcoded workspace.
+ */
 export async function PATCH(req: Request, { params }: { params: Promise<{ slug: string; recordId: string }> }) {
-  const { recordId } = await params;
-  let body: { data?: unknown; status?: unknown; workspaceId?: unknown } = {};
+  const { slug, recordId } = await params;
+  let body: unknown = {};
   try {
-    body = (await req.json()) as typeof body;
+    body = await req.json();
   } catch {
     // tolerate empty body
   }
-  const workspaceId =
-    typeof body.workspaceId === "string" && body.workspaceId ? body.workspaceId : PRIMARY_WORKSPACE_ID;
 
-  const supabase = getAdminClient();
-  if (!supabase) return NextResponse.json({ error: "Backend not connected." }, { status: 503 });
-
-  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
-  if (body.data && typeof body.data === "object") patch.data = body.data;
-  if (typeof body.status === "string") patch.status = body.status;
-
-  const { error } = await supabase
-    .from("workspace_app_records")
-    .update(patch)
-    .eq("id", recordId)
-    .eq("workspace_id", workspaceId);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true });
+  try {
+    const res = await cloudFetch(
+      `/v1/apps/${encodeURIComponent(slug)}/records/${encodeURIComponent(recordId)}`,
+      { method: "PATCH", body: JSON.stringify(body ?? {}) },
+    );
+    const json = await res.json().catch(() => ({}));
+    return NextResponse.json(json, { status: res.status });
+  } catch (err) {
+    const status = err instanceof CloudApiError ? err.status : 503;
+    return NextResponse.json({ error: "Backend not connected." }, { status });
+  }
 }
 
-/** Delete a record (user interaction). */
+/**
+ * Delete a record (user interaction). Repointed to cloud/api
+ * `DELETE /v1/apps/:slug/records/:recordId` (workspace-scoped by the JWT) — no
+ * service-role admin client, no hardcoded workspace.
+ */
 export async function DELETE(req: Request, { params }: { params: Promise<{ slug: string; recordId: string }> }) {
-  const { recordId } = await params;
-  const url = new URL(req.url);
-  const workspaceId = url.searchParams.get("workspaceId") || PRIMARY_WORKSPACE_ID;
+  const { slug, recordId } = await params;
 
-  const supabase = getAdminClient();
-  if (!supabase) return NextResponse.json({ error: "Backend not connected." }, { status: 503 });
-
-  const { error } = await supabase
-    .from("workspace_app_records")
-    .delete()
-    .eq("id", recordId)
-    .eq("workspace_id", workspaceId);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true });
+  try {
+    const res = await cloudFetch(
+      `/v1/apps/${encodeURIComponent(slug)}/records/${encodeURIComponent(recordId)}`,
+      { method: "DELETE" },
+    );
+    const json = await res.json().catch(() => ({}));
+    return NextResponse.json(json, { status: res.status });
+  } catch (err) {
+    const status = err instanceof CloudApiError ? err.status : 503;
+    return NextResponse.json({ error: "Backend not connected." }, { status });
+  }
 }

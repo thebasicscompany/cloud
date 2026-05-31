@@ -100,6 +100,11 @@ const EnvSchema = z.object({
   AWS_REGION: z.string().optional(),
   AWS_ACCESS_KEY_ID: z.string().optional(),
   AWS_SECRET_ACCESS_KEY: z.string().optional(),
+  /** Verified SES sender for transactional email (team invites). Optional —
+   *  invite endpoints return the accept link with emailed:false when unset. */
+  SES_FROM_EMAIL: z.string().optional(),
+  /** Public app origin used to build invite accept links (…/invite/:token). */
+  APP_BASE_URL: z.string().url().optional(),
   /** S3 bucket for routine artifacts (Basics Cloud M1/M2). */
   ARTIFACTS_S3_BUCKET: z.string().optional(),
   /** Root for editable assistant workspace files mounted from EFS. */
