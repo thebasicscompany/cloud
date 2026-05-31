@@ -8,6 +8,7 @@ import { CheckCircle2, ChevronRight, Wrench } from "@/icons";
 
 import { LocalAgentWorkbench } from "@/app/(main)/_components/local-agent-workbench";
 import { PendingActionsBanner } from "@/app/(main)/_components/pending-actions-banner";
+import { PendingInvitesBanner } from "@/app/(main)/_components/pending-invites-banner";
 import { SuggestionsCard } from "@/app/(main)/_components/suggestions-card";
 import { PendingCard } from "@/app/(main)/approvals/_components/pending-card";
 import { StatusPill } from "@/app/(main)/runs/_components/status-pill";
@@ -81,6 +82,7 @@ export function HomeDashboard() {
       </header>
 
       <PendingActionsBanner />
+      <PendingInvitesBanner />
 
       {ready.length > 0 ? (
         <section className="space-y-3">

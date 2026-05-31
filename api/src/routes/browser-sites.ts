@@ -42,6 +42,7 @@ import {
   createSession,
   stopSession,
 } from '../lib/browserbase.js'
+import { autoRerunAfterBrowserLogin } from '../lib/connection-rerun.js'
 import type { WorkspaceToken } from '../lib/jwt.js'
 
 type Vars = { requestId: string; workspace?: WorkspaceToken }
@@ -242,6 +243,10 @@ browserSitesRoute.post(
          AND host         = ${host}
     `)
 
+    // Auto-re-run on connect: if an automation run was blocked waiting on this
+    // login, re-dispatch it now that it's available. Fire-and-forget.
+    void autoRerunAfterBrowserLogin(scope.workspaceId, host)
+
     return c.json({
       ok: true,
       host,
@@ -336,6 +341,9 @@ browserSitesRoute.post(
             created_by          = EXCLUDED.created_by,
             updated_at          = now()
     `)
+
+    // Auto-re-run on connect: a synced local login can also unblock a waiting run.
+    void autoRerunAfterBrowserLogin(scope.workspaceId, host)
 
     return c.json({ ok: true, host, cookieCount: cookies.length, expires_at: expiresIso })
   },

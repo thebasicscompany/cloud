@@ -21,6 +21,7 @@ import { getConfig } from '../config.js'
 import { logger } from '../middleware/logger.js'
 import type { WorkspaceToken } from '../lib/jwt.js'
 import { dispatchCloudRun, UUID_RE } from '../lib/cloud-run-dispatch.js'
+import { PlanLimitError } from '../lib/plan-limits.js'
 
 type Vars = { requestId: string; workspace?: WorkspaceToken }
 
@@ -83,6 +84,9 @@ cloudRunsRoute.post(
         liveViewUrl: result.liveViewUrl,
       }, 201)
     } catch (err) {
+      if (err instanceof PlanLimitError) {
+        return c.json({ error: 'plan_limit', code: err.code, message: err.message }, 402)
+      }
       if (err instanceof Error && err.message === 'runs_queue_not_configured') {
         return c.json({ error: 'runs_queue_not_configured' }, 503)
       }

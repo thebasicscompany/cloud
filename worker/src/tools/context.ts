@@ -35,6 +35,14 @@ export interface WorkerToolContext {
    * (D.3 manual / D.5 webhook / D.6 schedule). When undefined, only
    * workspace-wide rules apply. */
   automationId?: string;
+  /** Low-human-in-the-loop: when true, the approval gate auto-approves
+   * (skips the human pause) and records an `approval_auto_approved` event
+   * instead of blocking. Set true for unattended automation runs at session
+   * boot — a scheduled run should never silently stall waiting for a human.
+   * Ad-hoc runs (the user is watching live) leave this unset and keep the
+   * gate. A per-automation approval_policy.mode='manual_review' can opt an
+   * automation back into gating in the future. */
+  autoApprove?: boolean;
   /** Filesystem sandbox root — defaults to /workspace in production, tmp dir in tests. */
   workspaceRoot: string;
   /** Model B local-relay run: when true, screenshots are NOT persisted to S3
@@ -98,6 +106,14 @@ export interface WorkerToolContext {
    */
   composio?: {
     accountsByToolkit: Map<string, ComposioConnectedAccount>;
+    /** Toolkit slugs the ORG has enabled a Composio auth config for (i.e. what
+     *  is connectable via Composio at all). Resolved live each run from
+     *  listAuthConfigs(), so enabling a toolkit in Composio makes it connectable
+     *  automatically — no code change. Lets composio_call tell "connectable but
+     *  not connected" (→ surface a Connect prompt) from "not a Composio toolkit
+     *  here" (→ use the browser, no bogus Connect-X banner). Undefined when not
+     *  resolved (then composio_call behaves as before). */
+    enabledToolkits?: ReadonlyArray<string>;
     /** B.4 cache for /tools schema discovery, attached when the plugin instantiates one. */
     cache?: import("../composio/cache.js").PgComposioToolCache;
     /**

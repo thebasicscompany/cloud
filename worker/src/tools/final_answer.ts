@@ -16,6 +16,17 @@ export const final_answer = defineTool({
       type: "final_answer",
       payload: { text },
     });
+    // Authoritative run summary — write the agent's ACTUAL answer straight to
+    // the run row, so result_summary is the answer (not whatever stray
+    // reasoning text happened to be the last assistant message). The worker's
+    // terminal handler COALESCEs result_summary and won't overwrite this.
+    if (ctx.sql && ctx.runId) {
+      await ctx.sql`
+        UPDATE public.cloud_runs
+           SET result_summary = ${text.slice(0, 4000)}
+         WHERE id = ${ctx.runId}
+      `.catch(() => undefined);
+    }
     return { kind: "text", text: "ok" };
   },
 });

@@ -8,6 +8,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, ChevronRight } from "@/icons";
 
 import { Button } from "@/components/ui/button";
+import { MarkdownLite } from "@/components/markdown-lite";
 import { resolveAppIcon } from "@/lib/app-icons";
 import type { DocSummary } from "@/lib/documents-data";
 import type { Run } from "@/types/runs";
@@ -103,8 +104,8 @@ export function RunOutputs({ run }: { run: Run }) {
             This run returned a result but didn&apos;t save it anywhere you&apos;d find later. Save it to
             Documents to keep it.
           </p>
-          <div className="max-h-60 overflow-auto whitespace-pre-wrap rounded-lg border bg-muted/30 p-3 text-sm leading-relaxed">
-            {summary}
+          <div className="max-h-[32rem] overflow-auto rounded-lg border bg-muted/20 p-4">
+            <MarkdownLite text={summary} />
           </div>
           <div className="flex items-center gap-2">
             <Button size="sm" onClick={() => void saveToDocuments()} disabled={saving}>

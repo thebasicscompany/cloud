@@ -884,7 +884,9 @@ async function handleOpencodeEvent(
            SET status = ${status},
                completed_at = now(),
                duration_seconds = ${durationMs ? Math.round(durationMs / 1000) : null},
-               result_summary = ${resultSummary}
+               -- Prefer the final_answer the tool already wrote; only fall back
+               -- to the captured assistant text when no final_answer was given.
+               result_summary = COALESCE(result_summary, ${resultSummary})
          WHERE id = ${msg.runId}
       `.catch((e) => console.error("worker: failed to mark cloud_runs terminal", e));
     }

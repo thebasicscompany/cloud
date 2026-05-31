@@ -13,6 +13,7 @@
 import {
   ComposioClient,
   ComposioUnavailableError,
+  isComposioAuthConfigEnabled,
   type ComposioConnectedAccount,
 } from "@basics/shared";
 
@@ -77,4 +78,38 @@ export async function resolveConnectedAccounts(
     if (!result.has(slug)) result.set(slug, acc);
   }
   return result;
+}
+
+/**
+ * The toolkit slugs the ORG has enabled an auth config for — i.e. what is
+ * connectable via Composio at all (project-level, NOT per-user). Lets the agent
+ * tell "connectable via Composio" (→ surface a Connect prompt) apart from "not a
+ * Composio toolkit in this org" (→ use the browser). Empty on any Composio error
+ * so the run degrades to browser-only rather than crashing.
+ */
+export async function resolveEnabledToolkits(
+  deps: { client?: Pick<ComposioClient, "listAuthConfigs"> } = {},
+): Promise<string[]> {
+  let client: Pick<ComposioClient, "listAuthConfigs">;
+  try {
+    client = deps.client ?? new ComposioClient();
+  } catch (err) {
+    if (err instanceof ComposioUnavailableError) return [];
+    throw err;
+  }
+  try {
+    const authConfigs = await client.listAuthConfigs();
+    const slugs = new Set<string>();
+    for (const ac of authConfigs) {
+      const slug = ac.toolkit?.slug;
+      if (slug && isComposioAuthConfigEnabled(ac)) slugs.add(slug);
+    }
+    return Array.from(slugs).sort();
+  } catch (err) {
+    const status = (err as { status?: number }).status;
+    console.error(
+      `composio.resolveEnabledToolkits: listAuthConfigs failed${status ? ` (status=${status})` : ""}`,
+    );
+    return [];
+  }
 }

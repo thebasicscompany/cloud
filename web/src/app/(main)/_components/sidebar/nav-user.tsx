@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { useRouter } from "next/navigation";
 
 import { CircleUser, CreditCard, EllipsisVertical, LogOut, MessageSquareDot } from "@/icons";
@@ -81,9 +83,11 @@ export function NavUser({
                 <CircleUser />
                 Account
               </DropdownMenuItem>
-              <DropdownMenuItem>
-                <CreditCard />
-                Billing
+              <DropdownMenuItem asChild>
+                <Link href="/settings/billing">
+                  <CreditCard />
+                  Billing
+                </Link>
               </DropdownMenuItem>
               <DropdownMenuItem>
                 <MessageSquareDot />

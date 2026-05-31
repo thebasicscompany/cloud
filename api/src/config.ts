@@ -119,6 +119,17 @@ const EnvSchema = z.object({
   ANTHROPIC_PLATFORM_KEY: z.string().optional(),
   /** Shown in 402 responses when BYOK POST is blocked on lower tiers */
   BYOK_UPGRADE_URL: z.string().url().optional(),
+
+  // === Stripe billing (per-workspace subscriptions) ===
+  /** Stripe secret key (sk_live_… / sk_test_…). Billing endpoints 503 if unset. */
+  STRIPE_SECRET_KEY: z.string().optional(),
+  /** Stripe webhook signing secret (whsec_…) for POST /webhooks/stripe. */
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  /** Stripe Price IDs for each paid plan's per-seat monthly price. */
+  STRIPE_PRICE_PRO: z.string().optional(),
+  STRIPE_PRICE_TEAM: z.string().optional(),
+  /** Where Stripe Checkout / Billing Portal returns the user (billing page). */
+  BILLING_RETURN_URL: z.string().url().optional(),
 })
 
 export type Env = z.infer<typeof EnvSchema>

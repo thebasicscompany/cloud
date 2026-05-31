@@ -26,14 +26,14 @@ function slugify(input: string): string {
 export const app_emit = defineTool({
   name: "app_emit",
   description:
-    "Append a record (an output) to a workspace App — a typed surface (table/board/list) where outputs accumulate and the user can read/edit them. Use this to durably persist a structured result (a lead, a digest entry, a row) instead of only returning text. `appSlug` selects the app; if it doesn't exist and `appName` is given, it is created. `data` is the record object. For board apps set `status` to the column. Pass a stable `dedupKey` to avoid duplicates on re-runs.",
+    "Append a record (an output) to a workspace App — a typed surface (table/board/list) where outputs accumulate and the user can read/edit them. Use this to durably persist a structured result (a lead, a digest entry, a row) instead of only returning text. `appSlug` selects the app; if it doesn't exist and `appName` is given, it is created. `data` is the record object. For board apps set `status` to the column. Pass a stable `dedupKey` to avoid duplicates on re-runs. To create an app that has NO rows yet (e.g. a sync that found nothing this run), call with appName + appKind + `fields` (the columns) and OMIT `data` — the app is created empty and ready to populate later.",
   params: z.object({
     appSlug: z
       .string()
       .min(1)
       .max(48)
       .regex(/^[a-z0-9-]+$/, "appSlug must be kebab-case"),
-    data: z.record(z.string(), z.unknown()),
+    data: z.record(z.string(), z.unknown()).optional(),
     status: z.string().max(80).optional(),
     dedupKey: z.string().max(200).optional(),
     // Create-if-missing metadata.
@@ -41,23 +41,28 @@ export const app_emit = defineTool({
     appKind: z.enum(["table", "board", "list"]).optional(),
     appIcon: z.string().max(8).optional(),
     appDescription: z.string().max(500).optional(),
+    // Explicit column schema. Use when creating an app with no rows yet so it
+    // still has its proper columns; if omitted, columns derive from `data`.
+    fields: z
+      .array(
+        z.object({
+          key: z.string().min(1).max(80),
+          label: z.string().max(120).optional(),
+          type: z.string().max(40).optional(),
+        }),
+      )
+      .max(50)
+      .optional(),
   }),
   mutating: true,
-  // "Ask the user before MAKING a new app." Creating a new surface (signalled
-  // by passing appName for a slug that may not exist) pauses for approval;
-  // appending to an existing app flows freely. The user can "remember this"
-  // to skip future prompts (approval_rules).
-  approval: (args) =>
-    args.appName
-      ? {
-          required: true,
-          reason: `Create a new app "${args.appName}" (slug: ${args.appSlug})`,
-          expiresInSeconds: 4 * 60 * 60,
-        }
-      : { required: false },
+  // Creating an app is benign — it's just a data surface the user can rename or
+  // delete — and blocking an autonomous cloud run on it for approval defeats the
+  // low-human-in-the-loop goal (especially now that the agent is asked to create
+  // the output app up front, even empty). So app_emit never requires approval.
+  approval: () => ({ required: false }),
   cost: "low",
   execute: async (
-    { appSlug, data, status, dedupKey, appName, appKind, appIcon, appDescription },
+    { appSlug, data, status, dedupKey, appName, appKind, appIcon, appDescription, fields },
     ctx: WorkerToolContext,
   ) => {
     const sql = ctx.sql;
@@ -77,6 +82,7 @@ export const app_emit = defineTool({
          LIMIT 1
       `
     )[0];
+    const appExisted = Boolean(app);
 
     if (!app) {
       if (!appName) {
@@ -86,28 +92,49 @@ export const app_emit = defineTool({
             ok: false,
             error: {
               code: "app_not_found",
-              message: `No app "${slug}" in this workspace. Pass appName (and optionally appKind/appIcon) to create it on first emit.`,
+              message: `No app "${slug}" in this workspace. Pass appName (and optionally appKind/fields) to create it.`,
             },
           },
         };
       }
+      // Column schema: explicit `fields` wins; else derive from `data` keys;
+      // else empty (an app created with no rows yet — still has its columns).
+      const schemaCols =
+        fields && fields.length > 0
+          ? fields.map((f) => ({ key: f.key, label: f.label ?? f.key, type: f.type ?? "text" }))
+          : data
+            ? Object.keys(data).map((k) => ({ key: k, label: k, type: "text" }))
+            : [];
+      const k0 = schemaCols[0]?.key;
+      const k1 = schemaCols[1]?.key;
       const created = await sql<Array<{ id: string }>>`
         INSERT INTO public.workspace_apps
           (workspace_id, slug, name, description, icon, kind, fields, view, source_run_id)
         VALUES
           (${ctx.workspaceId}::uuid, ${slug}, ${appName}, ${appDescription ?? ""},
            ${appIcon ?? null}, ${appKind ?? "table"},
-           ${sql.json(Object.keys(data).map((k) => ({ key: k, label: k, type: "text" })) as unknown as Parameters<typeof sql.json>[0])},
+           ${sql.json(schemaCols as unknown as Parameters<typeof sql.json>[0])},
            ${sql.json((appKind === "board"
-             ? { groupBy: "status", titleField: Object.keys(data)[0], stages: ["New", "In progress", "Done"] }
+             ? { groupBy: "status", titleField: k0, stages: ["New", "In progress", "Done"] }
              : appKind === "list"
-               ? { titleField: Object.keys(data)[0], bodyField: Object.keys(data)[1] }
+               ? { titleField: k0, bodyField: k1 }
                : {}) as unknown as Parameters<typeof sql.json>[0])},
            ${ctx.runId ?? null}::uuid)
         ON CONFLICT (workspace_id, slug) DO UPDATE SET updated_at = now()
         RETURNING id::text AS id
       `;
       app = created[0]!;
+    }
+
+    // No data → an app-create-only call (e.g. a sync that found nothing this
+    // run). The app now exists and is ready to populate; don't insert a record.
+    if (!data || Object.keys(data).length === 0) {
+      await sql`UPDATE public.workspace_apps SET updated_at = now() WHERE id = ${app.id}::uuid`;
+      await ctx.publish({
+        type: "app_created",
+        payload: { kind: "app_created", appSlug: slug, empty: true },
+      });
+      return { kind: "json" as const, json: { ok: true, appSlug: slug, created: !appExisted, empty: true } };
     }
 
     const automationId = (ctx as { automationId?: string }).automationId ?? null;

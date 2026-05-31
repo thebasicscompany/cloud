@@ -2,6 +2,8 @@ import "server-only";
 
 import { cache } from "react";
 
+import { cookies } from "next/headers";
+
 import { decodeJwt } from "jose";
 
 import { createClient } from "@/lib/supabase/server";
@@ -19,6 +21,13 @@ import { createClient } from "@/lib/supabase/server";
  */
 
 const API_BASE = (process.env.API_BASE_URL ?? "").trim().replace(/\/+$/, "");
+
+/**
+ * Cookie holding the user's currently-selected workspace_id, written by the
+ * in-app workspace switcher (`/api/workspace/switch`). Read here to scope the
+ * minted JWT to that workspace.
+ */
+export const WORKSPACE_COOKIE = "basics-workspace";
 
 export class CloudApiError extends Error {
   constructor(
@@ -44,19 +53,39 @@ export const getWorkspaceToken = cache(async (): Promise<string> => {
   } = await supabase.auth.getSession();
   const accessToken = session?.access_token;
   if (!accessToken) return "";
-  try {
-    const res = await fetch(`${API_BASE}/v1/auth/token`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ supabase_access_token: accessToken }),
-      cache: "no-store",
-    });
-    if (!res.ok) return "";
-    const json = (await res.json()) as { token?: string };
-    return json.token ?? "";
-  } catch {
-    return "";
+
+  // The user's selected workspace (the in-app switcher writes this cookie). Try
+  // it first, then fall back to the default (personal) workspace if it fails —
+  // so a stale cookie (e.g. a workspace the user has since left) can never lock
+  // them out of the app.
+  const cookieStore = await cookies();
+  const selected = cookieStore.get(WORKSPACE_COOKIE)?.value;
+
+  const mint = async (workspaceId?: string): Promise<string> => {
+    try {
+      const res = await fetch(`${API_BASE}/v1/auth/token`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(
+          workspaceId
+            ? { supabase_access_token: accessToken, workspace_id: workspaceId }
+            : { supabase_access_token: accessToken },
+        ),
+        cache: "no-store",
+      });
+      if (!res.ok) return "";
+      const json = (await res.json()) as { token?: string };
+      return json.token ?? "";
+    } catch {
+      return "";
+    }
+  };
+
+  if (selected) {
+    const scoped = await mint(selected);
+    if (scoped) return scoped;
   }
+  return mint();
 });
 
 /** True once the runtime API base is configured and the user has a session. */

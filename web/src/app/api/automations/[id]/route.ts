@@ -68,3 +68,24 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     );
   }
 }
+
+/**
+ * DELETE /api/automations/:id — hard delete the automation AND all its runs.
+ * Proxies cloud/api `DELETE /v1/automations/:id?purge=true` with the workspace
+ * JWT. cloud/api tears down any live triggers, then deletes the runs (FK cascade
+ * clears their activity/steps/approvals) + the automation row.
+ */
+export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const { id } = await ctx.params;
+  try {
+    const res = await cloudFetch(`/v1/automations/${id}?purge=true`, { method: "DELETE" });
+    if (res.status === 404) return NextResponse.json({ error: "not found" }, { status: 404 });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => null)) as { error?: string } | null;
+      return NextResponse.json({ error: err?.error ?? "delete failed" }, { status: res.status });
+    }
+    return NextResponse.json({ ok: true, id, purged: true });
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : "delete failed" }, { status: 500 });
+  }
+}

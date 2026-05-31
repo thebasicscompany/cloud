@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 import { Hono } from 'hono'
 
 import { supabaseAdmin } from '../lib/supabase.js'
@@ -5,6 +7,8 @@ import { getConfig } from '../config.js'
 import { sendInviteEmail } from '../lib/email-invite.js'
 import { hasRole, type WorkspaceToken } from '../lib/jwt.js'
 import { requireWorkspaceJwt } from '../middleware/jwt.js'
+import { planLimits } from '../lib/plan-limits.js'
+import { syncSubscriptionSeats } from '../lib/billing.js'
 
 /**
  * Team — workspace invitations + membership (multi-seat).
@@ -67,6 +71,11 @@ function mapInvitation(r: Record<string, unknown>): Invitation {
 
 const INVITE_COLS = 'id,workspace_id,email,role,token,status,created_at,expires_at,accepted_at'
 
+/** Short random slug suffix so workspace slugs stay unique. */
+function randomSuffix(): string {
+  return randomUUID().replace(/-/g, '').slice(0, 6)
+}
+
 // ─── GET / — members + invitations for the JWT workspace ──────────────────
 
 teamRoute.get('/', requireWorkspaceJwt, async (c) => {
@@ -126,6 +135,34 @@ teamRoute.post('/invite', requireWorkspaceJwt, async (c) => {
   const role = typeof body.role === 'string' ? body.role : 'member'
 
   const supabase = supabaseAdmin()
+
+  // Plan limit: seats. Block inviting beyond the plan's seat allowance (active
+  // members + outstanding pending invites). null = unlimited (per-seat billed).
+  const limits = planLimits(c.var.workspace.plan)
+  if (limits.seatLimit !== null) {
+    const [memberRes, pendingRes] = await Promise.all([
+      supabase
+        .from('workspace_members')
+        .select('id', { count: 'exact', head: true })
+        .eq('workspace_id', ws)
+        .eq('seat_status', 'active'),
+      supabase
+        .from('workspace_invitations')
+        .select('id', { count: 'exact', head: true })
+        .eq('workspace_id', ws)
+        .eq('status', 'pending'),
+    ])
+    if ((memberRes.count ?? 0) + (pendingRes.count ?? 0) >= limits.seatLimit) {
+      return c.json(
+        {
+          ok: false,
+          code: 'seat_limit',
+          error: `Your plan includes ${limits.seatLimit} seat${limits.seatLimit === 1 ? '' : 's'}. Upgrade to invite more people.`,
+        },
+        402,
+      )
+    }
+  }
 
   // Reuse an existing pending invite for the same (workspace, email).
   let invitation: Invitation | null = null
@@ -278,6 +315,9 @@ teamRoute.post('/accept', requireWorkspaceJwt, async (c) => {
     if (added.error) return c.json({ ok: false, error: added.error.message }, 400)
   }
 
+  // Per-seat billing: reflect the new member on the Stripe subscription quantity.
+  await syncSubscriptionSeats(inv.data.workspace_id as string)
+
   await supabase
     .from('workspace_invitations')
     .update({ status: 'accepted', accepted_at: new Date().toISOString(), accepted_by: accountId })
@@ -386,5 +426,60 @@ teamRoute.post('/leave', requireWorkspaceJwt, async (c) => {
     .eq('workspace_id', ws)
     .eq('account_id', accountId)
   if (error) return c.json({ ok: false, error: error.message }, 400)
+
+  // Per-seat billing: reflect the freed seat on the Stripe subscription quantity.
+  await syncSubscriptionSeats(ws)
   return c.json({ ok: true })
+})
+
+// ─── POST /create-workspace — create a new TEAM workspace (caller = owner) ──
+//
+// Teams are the billable, multi-seat entity (personal workspaces stay solo).
+// Creates the workspace, the caller's owner membership, and a free subscription
+// row. The caller switches into it from the sidebar, then can invite + upgrade.
+teamRoute.post('/create-workspace', requireWorkspaceJwt, async (c) => {
+  let body: { name?: unknown } = {}
+  try {
+    body = (await c.req.json()) as typeof body
+  } catch {
+    /* tolerate */
+  }
+  const name = typeof body.name === 'string' ? body.name.trim() : ''
+  if (!name) return c.json({ ok: false, error: 'Workspace name is required.' }, 400)
+  if (name.length > 60) return c.json({ ok: false, error: 'Workspace name is too long.' }, 400)
+
+  const supabase = supabaseAdmin()
+  const accountId = c.var.workspace.account_id
+  const base =
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 32) || 'team'
+  const slug = `${base}-${randomSuffix()}`
+
+  const wsIns = await supabase
+    .from('workspaces')
+    .insert({ name, type: 'team', slug })
+    .select('id, name, type, slug')
+    .single()
+  if (wsIns.error || !wsIns.data) {
+    return c.json({ ok: false, error: wsIns.error?.message ?? 'Could not create workspace.' }, 400)
+  }
+  const wsId = wsIns.data.id as string
+
+  const memberIns = await supabase
+    .from('workspace_members')
+    .insert({ workspace_id: wsId, account_id: accountId, role: 'owner', seat_status: 'active' })
+  if (memberIns.error) {
+    // Roll back the orphaned workspace so a failed create leaves no junk.
+    await supabase.from('workspaces').delete().eq('id', wsId)
+    return c.json({ ok: false, error: memberIns.error.message }, 400)
+  }
+
+  await supabase
+    .from('subscriptions')
+    .insert({ workspace_id: wsId, plan: 'free', seat_count: 1, price_per_seat_cents: 0, status: 'active' })
+
+  return c.json({ ok: true, workspace: { id: wsId, name, type: 'team', slug } })
 })

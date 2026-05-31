@@ -17,6 +17,7 @@ import {
   Play,
   RefreshCcw,
   ShieldCheck,
+  Trash2,
   Wrench,
 } from "@/icons";
 
@@ -31,6 +32,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useCloudAutomation, useCloudAutomationActions, useCloudAutomations } from "@/hooks/queries/use-cloud-automations";
@@ -94,10 +102,6 @@ export function CloudAutomationDetail({ id }: { id: string }) {
   const runs = data?.runs ?? [];
   const latestRun = runs[0];
   const schedule = automation?.triggers.find((trigger): trigger is Extract<CloudAutomationTrigger, { type: "schedule" }> => trigger.type === "schedule");
-  const [cronDraft, setCron] = useState<string | null>(null);
-  const [timezoneDraft, setTimezone] = useState<string | null>(null);
-  const cron = cronDraft ?? schedule?.cron ?? "0 18 * * 1-5";
-  const timezone = timezoneDraft ?? schedule?.timezone ?? "America/New_York";
 
   if (isLoading) {
     return (
@@ -141,6 +145,12 @@ export function CloudAutomationDetail({ id }: { id: string }) {
           </div>
           <ActionStrip automation={automation} latestRun={latestRun} />
         </div>
+        {automation.status === "draft" ? (
+          <div className="rounded-lg border border-amber-300/50 bg-amber-50 px-3 py-2 text-amber-800 text-sm dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-300">
+            This automation is a <strong>draft</strong> — it won&apos;t run on its schedule until you <strong>Activate</strong> it.
+            Use <em>Test run</em> to try it once first.
+          </div>
+        ) : null}
       </header>
 
       <section className="grid gap-3 md:grid-cols-4">
@@ -173,25 +183,7 @@ export function CloudAutomationDetail({ id }: { id: string }) {
 
         <aside className="space-y-6">
           <Panel title="Schedule" description="When this automation runs on its own.">
-            <div className="space-y-3">
-              <label htmlFor="automation-schedule-cron" className="space-y-1.5 text-sm">
-                <span className="text-muted-foreground text-xs uppercase tracking-wide">Cron</span>
-                <Input id="automation-schedule-cron" value={cron} onChange={(event) => setCron(event.target.value)} />
-              </label>
-              <label htmlFor="automation-schedule-timezone" className="space-y-1.5 text-sm">
-                <span className="text-muted-foreground text-xs uppercase tracking-wide">Timezone</span>
-                <Input id="automation-schedule-timezone" value={timezone} onChange={(event) => setTimezone(event.target.value)} />
-              </label>
-              <Button
-                variant="outline"
-                className="w-full gap-1.5"
-                onClick={() => actions.updateSchedule.mutate({ automationId: automation.id, cron, timezone })}
-                disabled={actions.updateSchedule.isPending}
-              >
-                <CalendarClock className="size-4" />
-                Save schedule
-              </Button>
-            </div>
+            <ScheduleEditor automationId={automation.id} schedule={schedule} />
           </Panel>
 
           <Panel title="Where it runs" description="Cloud runs anytime. Local drives your computer — only when your desktop is online.">
@@ -257,6 +249,7 @@ export function CloudAutomationDetail({ id }: { id: string }) {
 
 function AutomationCard({ automation }: { automation: CloudAutomationSummary }) {
   const actions = useCloudAutomationActions();
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const successPct = automation.successRate == null ? null : Math.round(automation.successRate * 100);
 
   return (
@@ -287,22 +280,34 @@ function AutomationCard({ automation }: { automation: CloudAutomationSummary }) 
       </div>
 
       <div className="mt-4 flex items-center gap-2">
-        <Button size="sm" className="gap-1.5" onClick={() => actions.runNow.mutate(automation.id)} disabled={actions.runNow.isPending}>
-          <Play className="size-3.5" />
-          Run now
-        </Button>
-        {automation.status === "paused" ? (
-          <Button size="sm" variant="outline" className="gap-1.5" onClick={() => actions.resume.mutate(automation.id)} disabled={actions.resume.isPending}>
+        {automation.status === "draft" ? (
+          <Button size="sm" className="gap-1.5" onClick={() => actions.activate.mutate(automation.id)} disabled={actions.activate.isPending}>
             <Play className="size-3.5" />
-            Resume
+            {actions.activate.isPending ? "Activating…" : "Activate"}
           </Button>
-        ) : (
+        ) : null}
+        <Button
+          size="sm"
+          variant={automation.status === "draft" ? "outline" : "default"}
+          className="gap-1.5"
+          onClick={() => actions.runNow.mutate(automation.id)}
+          disabled={actions.runNow.isPending}
+        >
+          <Play className="size-3.5" />
+          {automation.status === "draft" ? "Test run" : "Run now"}
+        </Button>
+        {automation.status === "active" ? (
           <Button size="sm" variant="outline" className="gap-1.5" onClick={() => actions.pause.mutate(automation.id)} disabled={actions.pause.isPending}>
             <Pause className="size-3.5" />
             Pause
           </Button>
-        )}
-        <DropdownMenu>
+        ) : automation.status === "paused" ? (
+          <Button size="sm" variant="outline" className="gap-1.5" onClick={() => actions.resume.mutate(automation.id)} disabled={actions.resume.isPending}>
+            <Play className="size-3.5" />
+            Resume
+          </Button>
+        ) : null}
+        <DropdownMenu onOpenChange={(open) => !open && setConfirmDelete(false)}>
           <DropdownMenuTrigger asChild>
             <Button size="icon-sm" variant="ghost" className="ml-auto" aria-label={`More actions for ${automation.name}`}>
               <Ellipsis className="size-4" />
@@ -325,6 +330,22 @@ function AutomationCard({ automation }: { automation: CloudAutomationSummary }) 
                 Approve actions automatically
               </DropdownMenuItem>
             )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="gap-2 text-destructive focus:text-destructive"
+              disabled={actions.deleteAutomation.isPending}
+              onSelect={(e) => {
+                e.preventDefault();
+                if (!confirmDelete) {
+                  setConfirmDelete(true);
+                  return;
+                }
+                actions.deleteAutomation.mutate(automation.id);
+              }}
+            >
+              <Trash2 className="size-4" />
+              {confirmDelete ? "Click again — deletes it + all runs" : "Delete automation"}
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -336,22 +357,34 @@ function ActionStrip({ automation, latestRun }: { automation: CloudAutomation; l
   const actions = useCloudAutomationActions();
 
   return (
-    <div className="flex flex-wrap gap-2">
-      <Button className="gap-1.5" onClick={() => actions.runNow.mutate(automation.id)} disabled={actions.runNow.isPending}>
-        <Play className="size-4" />
-        Run now
-      </Button>
-      {automation.status === "paused" ? (
-        <Button variant="outline" className="gap-1.5" onClick={() => actions.resume.mutate(automation.id)} disabled={actions.resume.isPending}>
+    <div className="flex flex-col items-end gap-1">
+      <div className="flex flex-wrap gap-2">
+        {automation.status === "draft" ? (
+          <Button className="gap-1.5" onClick={() => actions.activate.mutate(automation.id)} disabled={actions.activate.isPending}>
+            <Play className="size-4" />
+            {actions.activate.isPending ? "Activating…" : "Activate"}
+          </Button>
+        ) : null}
+        <Button
+          variant={automation.status === "draft" ? "outline" : "default"}
+          className="gap-1.5"
+          onClick={() => actions.runNow.mutate(automation.id)}
+          disabled={actions.runNow.isPending}
+        >
           <Play className="size-4" />
-          Resume
+          {automation.status === "draft" ? "Test run" : "Run now"}
         </Button>
-      ) : (
-        <Button variant="outline" className="gap-1.5" onClick={() => actions.pause.mutate(automation.id)} disabled={actions.pause.isPending}>
-          <Pause className="size-4" />
-          Pause
-        </Button>
-      )}
+        {automation.status === "active" ? (
+          <Button variant="outline" className="gap-1.5" onClick={() => actions.pause.mutate(automation.id)} disabled={actions.pause.isPending}>
+            <Pause className="size-4" />
+            Pause
+          </Button>
+        ) : automation.status === "paused" ? (
+          <Button variant="outline" className="gap-1.5" onClick={() => actions.resume.mutate(automation.id)} disabled={actions.resume.isPending}>
+            <Play className="size-4" />
+            Resume
+          </Button>
+        ) : null}
       {automation.trustGrants.some((grant) => grant.status === "active") ? (
         <Button variant="outline" className="gap-1.5" onClick={() => actions.revokeTrust.mutate(automation.id)} disabled={actions.revokeTrust.isPending}>
           <ShieldCheck className="size-4" />
@@ -369,6 +402,199 @@ function ActionStrip({ automation, latestRun }: { automation: CloudAutomation; l
           Run again
         </Button>
       ) : null}
+      </div>
+      {actions.activate.isError ? (
+        <p className="max-w-xs text-right text-destructive text-xs">{actions.activate.error?.message}</p>
+      ) : null}
+    </div>
+  );
+}
+
+const COMMON_TIMEZONES = [
+  "UTC",
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Los_Angeles",
+  "America/Sao_Paulo",
+  "Europe/London",
+  "Europe/Paris",
+  "Europe/Berlin",
+  "Asia/Kolkata",
+  "Asia/Singapore",
+  "Asia/Tokyo",
+  "Australia/Sydney",
+];
+
+const WEEKDAYS = [
+  { value: "1", label: "Monday" },
+  { value: "2", label: "Tuesday" },
+  { value: "3", label: "Wednesday" },
+  { value: "4", label: "Thursday" },
+  { value: "5", label: "Friday" },
+  { value: "6", label: "Saturday" },
+  { value: "0", label: "Sunday" },
+];
+
+type ScheduleFrequency = "manual" | "hourly" | "daily" | "weekdays" | "weekly" | "custom";
+
+function hourLabel(h: number): string {
+  const period = h < 12 ? "AM" : "PM";
+  const display = h % 12 === 0 ? 12 : h % 12;
+  return `${display}:00 ${period}`;
+}
+
+/** Best-effort parse of a 5-field cron into the friendly picker model. */
+function cronToScheduleModel(cron: string | undefined): { freq: ScheduleFrequency; hour: number; dow: string } {
+  if (!cron) return { freq: "manual", hour: 9, dow: "1" };
+  const parts = cron.trim().split(/\s+/);
+  if (parts.length !== 5) return { freq: "custom", hour: 9, dow: "1" };
+  const [min, hr, dom, mon, dowF] = parts;
+  if (min === "0" && hr === "*" && dom === "*" && mon === "*" && dowF === "*") return { freq: "hourly", hour: 9, dow: "1" };
+  const h = /^\d{1,2}$/.test(hr ?? "") ? Math.min(23, parseInt(hr!, 10)) : 9;
+  if (min === "0" && /^\d{1,2}$/.test(hr ?? "") && dom === "*" && mon === "*") {
+    if (dowF === "*") return { freq: "daily", hour: h, dow: "1" };
+    if (dowF === "1-5") return { freq: "weekdays", hour: h, dow: "1" };
+    if (/^[0-6]$/.test(dowF ?? "")) return { freq: "weekly", hour: h, dow: dowF! };
+  }
+  return { freq: "custom", hour: h, dow: "1" };
+}
+
+function scheduleModelToCron(freq: ScheduleFrequency, hour: number, dow: string, custom: string): string | null {
+  switch (freq) {
+    case "manual":
+      return null;
+    case "hourly":
+      return "0 * * * *";
+    case "daily":
+      return `0 ${hour} * * *`;
+    case "weekdays":
+      return `0 ${hour} * * 1-5`;
+    case "weekly":
+      return `0 ${hour} * * ${dow}`;
+    case "custom":
+      return custom.trim() || "0 9 * * *";
+  }
+}
+
+function SchedField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="space-y-1.5 text-sm">
+      <span className="text-muted-foreground text-xs uppercase tracking-wide">{label}</span>
+      {children}
+    </div>
+  );
+}
+
+/** Friendly schedule picker — frequency + time/day + timezone dropdowns, plus a
+ *  Manual option that drops the schedule trigger (no raw cron unless "Custom"). */
+function ScheduleEditor({
+  automationId,
+  schedule,
+}: {
+  automationId: string;
+  schedule?: Extract<CloudAutomationTrigger, { type: "schedule" }>;
+}) {
+  const actions = useCloudAutomationActions();
+  const initial = cronToScheduleModel(schedule?.cron);
+  const [freq, setFreq] = useState<ScheduleFrequency>(initial.freq);
+  const [hour, setHour] = useState(initial.hour);
+  const [dow, setDow] = useState(initial.dow);
+  const [custom, setCustom] = useState(schedule?.cron ?? "0 9 * * 1-5");
+  const [tz, setTz] = useState(schedule?.timezone ?? "America/New_York");
+
+  const busy = actions.updateSchedule.isPending || actions.clearSchedule.isPending;
+  const showTime = freq === "daily" || freq === "weekly" || freq === "weekdays";
+
+  const save = () => {
+    if (freq === "manual") {
+      actions.clearSchedule.mutate(automationId);
+      return;
+    }
+    const cron = scheduleModelToCron(freq, hour, dow, custom);
+    if (!cron) return;
+    actions.updateSchedule.mutate({ automationId, cron, timezone: tz });
+  };
+
+  return (
+    <div className="space-y-3">
+      <SchedField label="Runs">
+        <Select value={freq} onValueChange={(v) => setFreq(v as ScheduleFrequency)}>
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="manual">Only when I run it</SelectItem>
+            <SelectItem value="hourly">Every hour</SelectItem>
+            <SelectItem value="daily">Every day</SelectItem>
+            <SelectItem value="weekdays">Every weekday (Mon–Fri)</SelectItem>
+            <SelectItem value="weekly">Every week</SelectItem>
+            <SelectItem value="custom">Custom…</SelectItem>
+          </SelectContent>
+        </Select>
+      </SchedField>
+
+      {freq === "weekly" ? (
+        <SchedField label="On">
+          <Select value={dow} onValueChange={setDow}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {WEEKDAYS.map((d) => (
+                <SelectItem key={d.value} value={d.value}>
+                  {d.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </SchedField>
+      ) : null}
+
+      {showTime ? (
+        <SchedField label="At">
+          <Select value={String(hour)} onValueChange={(v) => setHour(parseInt(v, 10))}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {Array.from({ length: 24 }, (_, h) => (
+                <SelectItem key={h} value={String(h)}>
+                  {hourLabel(h)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </SchedField>
+      ) : null}
+
+      {freq === "custom" ? (
+        <SchedField label="Cron expression">
+          <Input value={custom} onChange={(e) => setCustom(e.target.value)} placeholder="0 9 * * 1-5" />
+        </SchedField>
+      ) : null}
+
+      {freq !== "manual" ? (
+        <SchedField label="Timezone">
+          <Select value={tz} onValueChange={setTz}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {COMMON_TIMEZONES.map((z) => (
+                <SelectItem key={z} value={z}>
+                  {z.replace(/_/g, " ")}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </SchedField>
+      ) : null}
+
+      <Button variant="outline" className="w-full gap-1.5" onClick={save} disabled={busy}>
+        <CalendarClock className="size-4" />
+        {freq === "manual" ? "Set to manual" : "Save schedule"}
+      </Button>
     </div>
   );
 }

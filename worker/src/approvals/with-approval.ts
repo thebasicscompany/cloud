@@ -64,6 +64,29 @@ export async function executeWithApproval<P extends ZodTypeAny, R extends ToolRe
     return def.execute(args, ctx);
   }
 
+  // Low-human-in-the-loop bypass — skip the human gate (recording an
+  // `approval_auto_approved` event for the run timeline) when:
+  //   - ctx.autoApprove: unattended automation runs are autonomous, so a
+  //     scheduled run never silently stalls waiting for a human.
+  //   - ctx.dryRun: a dry run is a safe preview. Outbound side-effects are
+  //     already intercepted upstream (isDryRunMutating); a non-outbound
+  //     mutating tool that still carries an approval inspector (e.g. app_emit
+  //     creating an output surface) must not pause the preview for approval.
+  // Ad-hoc live runs (neither flag) fall through to the real gate, which
+  // surfaces in the in-app approvals view for the watching user to decide.
+  if (ctx.autoApprove || ctx.dryRun) {
+    await ctx.publish({
+      type: "approval_auto_approved",
+      payload: {
+        kind: "approval_auto_approved",
+        tool_name: def.name,
+        reason: decision.reason ?? null,
+        mode: ctx.dryRun ? "dry_run" : "automation",
+      },
+    });
+    return def.execute(args, ctx);
+  }
+
   // (3) approval_rules short-circuit.
   let ruleMatched = false;
   try {

@@ -309,6 +309,30 @@ export const composio_call = defineTool({
 
     // (a) no connection
     if (!connectedAccount) {
+      // If the org has no enabled Composio auth config for this toolkit, a
+      // "connect via Composio" prompt is unfulfillable (e.g. Stripe) — surfacing
+      // it just dead-ends the user. Return toolkit_not_available (and DON'T emit
+      // connection_expired, so no bogus "Connect X" banner) and steer the agent
+      // to the browser. Only emit a connect-request for toolkits the org can
+      // actually connect. Fail open: if the enabled list is unknown, behave as
+      // before. (enabledToolkits is resolved live, so enabling the toolkit in
+      // Composio flips it back to connectable automatically.)
+      const enabled = ctx.composio?.enabledToolkits;
+      const orgEnabled =
+        !enabled || enabled.some((t) => t.toLowerCase() === toolkitSlug.toLowerCase());
+      if (!orgEnabled) {
+        return {
+          kind: "json" as const,
+          json: {
+            ok: false,
+            error: {
+              code: "toolkit_not_available",
+              toolkitSlug,
+              message: `"${toolkitSlug}" isn't available via Composio in this workspace. Use the browser instead: navigate to the service's site and do the task; call request_browser_login({host}) with the exact host (e.g. dashboard.stripe.com) if it needs a sign-in.`,
+            },
+          },
+        };
+      }
       await ctx.publish({
         type: "connection_expired",
         payload: {

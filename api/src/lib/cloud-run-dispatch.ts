@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { getConfig } from '../config.js'
 import { db } from '../db/index.js'
 import type { WorkspaceToken } from './jwt.js'
+import { planLimits, PlanLimitError } from './plan-limits.js'
 
 export const UUID_RE = /^[0-9a-fA-F-]{36}$/
 
@@ -185,6 +186,25 @@ export async function dispatchCloudRun(
 ): Promise<DispatchCloudRunResult | null> {
   const ws = input.workspace.workspace_id
   const acc = input.workspace.account_id
+
+  // Plan limit: concurrent cloud runs. Counts in-flight runs for the workspace
+  // and blocks (402 at the route) once the plan ceiling is reached. Checked
+  // before creating the ad-hoc agent so a blocked dispatch leaves no rows.
+  // null = unlimited (enterprise).
+  const limits = planLimits(input.workspace.plan)
+  if (limits.maxConcurrentRuns !== null) {
+    const active = (await db.execute(sql`
+      SELECT COUNT(*)::int AS cnt FROM public.cloud_runs
+       WHERE workspace_id = ${ws} AND status IN ('pending','running')
+    `)) as unknown as Array<{ cnt: number }>
+    if ((active[0]?.cnt ?? 0) >= limits.maxConcurrentRuns) {
+      throw new PlanLimitError(
+        'concurrency_limit',
+        `Your plan runs ${limits.maxConcurrentRuns} cloud task${limits.maxConcurrentRuns === 1 ? '' : 's'} at a time. Wait for one to finish or upgrade for more.`,
+      )
+    }
+  }
+
   const cloudAgentId = await resolveCloudAgentId({
     workspace: input.workspace,
     cloudAgentId: input.cloudAgentId,

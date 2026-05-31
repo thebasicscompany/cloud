@@ -45,6 +45,8 @@ import { runViewsRoute } from './routes/run-views.js'
 import { agentRoute } from './routes/agent.js'
 import { automationViewsRoute } from './routes/automation-views.js'
 import { teamRoute } from './routes/team.js'
+import { billingRoute } from './routes/billing.js'
+import { billingWebhookRoute } from './routes/billing-webhook.js'
 import { invitationsRoute } from './routes/invitations.js'
 import type { WorkspaceToken } from './lib/jwt.js'
 import type { AuthenticatedWorkspaceApiKey } from './lib/workspace-api-keys.js'
@@ -79,6 +81,12 @@ export function buildApp() {
     // Landing site (Wispr-style login + the /join accept page) calling the API
     // cross-origin from the browser.
     'http://localhost:3100',
+    // Desktop renderer in dev (`pnpm dev:electron` serves the app on :3000) so
+    // the auth bridge can exchange the Supabase session for a workspace JWT
+    // cross-origin. The same-origin `/api/auth/desktop-token` route is the
+    // primary dev path; this keeps the direct cloud/api exchange working too.
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
     'https://basicsoftware.ai',
     'https://www.basicsoftware.ai',
   ]
@@ -128,6 +136,9 @@ export function buildApp() {
   // C.6 — Sendblue inbound webhook for reply-to-approve SMS flow.
   // No JWT — phone-pair auth (from_number ↔ workspace.approval_phone).
   app.route('/webhooks', sendblueInboundRoute)
+  // Stripe billing webhook — keeps subscription rows in sync. No JWT; the
+  // Stripe signature on the raw body is the auth (verified in the route).
+  app.route('/webhooks', billingWebhookRoute)
 
   app.use('/v1/desktop/*', requireWorkspaceJwt)
   app.route('/v1/desktop', desktopRoute)
@@ -192,6 +203,9 @@ export function buildApp() {
   app.route('/v1/agent', agentRoute)
   app.route('/v1/automation-views', automationViewsRoute)
   app.route('/v1/team', teamRoute)
+  // Per-workspace billing (Stripe). Each handler applies requireWorkspaceJwt;
+  // reads are open to members, checkout/portal require admin/owner.
+  app.route('/v1/billing', billingRoute)
 
   // C.5 — /v1/approvals routes carry their OWN auth (workspace JWT OR
   // signed access token via ?token=); intentionally no blanket middleware.
