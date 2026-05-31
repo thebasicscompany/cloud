@@ -111,3 +111,20 @@ export async function cloudGet<T>(path: string, fallback: T): Promise<T> {
     return fallback;
   }
 }
+
+/**
+ * GET a PUBLIC `cloud/api` endpoint (no workspace JWT) and parse JSON, returning
+ * `fallback` on any failure. For unauthenticated surfaces where the caller has
+ * no session yet — e.g. the invite-accept page, where the opaque invite token in
+ * the path/query is the credential, not a workspace JWT.
+ */
+export async function cloudGetPublic<T>(path: string, fallback: T): Promise<T> {
+  if (!API_BASE) return fallback;
+  try {
+    const res = await fetch(`${API_BASE}${path}`, { cache: "no-store" });
+    if (!res.ok) return fallback;
+    return (await res.json()) as T;
+  } catch {
+    return fallback;
+  }
+}

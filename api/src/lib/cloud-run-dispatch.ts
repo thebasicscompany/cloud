@@ -113,6 +113,15 @@ function sqsClient(): SQSClient {
   return _sqs
 }
 
+/**
+ * Where the dispatched run's browser work executes. Persisted to
+ * `cloud_runs.browser_target`; the worker reads it at opencode session boot
+ * (`resolveBinding`) to decide whether to attach to Browserbase ('cloud'),
+ * drive the user's local Chrome through the relay ('local_relay'), or run pure
+ * local computer-use without launching any browser ('local_compute').
+ */
+export type BrowserTarget = 'cloud' | 'local_compute' | 'local_relay'
+
 export type DispatchCloudRunInput = {
   workspace: WorkspaceToken
   goal: string
@@ -120,6 +129,12 @@ export type DispatchCloudRunInput = {
   laneId?: string
   model?: string
   adHocDefinition?: string
+  /** Defaults to 'cloud' (Browserbase). */
+  browserTarget?: BrowserTarget
+  /** Per-run relay session id — paired with browserTarget='local_relay'. */
+  relaySession?: string
+  /** When true, screenshots are not persisted (local runs). */
+  ephemeral?: boolean
 }
 
 export type DispatchCloudRunResult = {
@@ -179,11 +194,20 @@ export async function dispatchCloudRun(
   if (!cloudAgentId) return null
 
   const runId = randomUUID()
+  // Default to 'cloud' so existing callers (which never set browserTarget) keep
+  // the Browserbase path unchanged. relay_session / ephemeral are only set for
+  // the local-run flows; null/false otherwise. The worker reads these columns
+  // from the run row at session boot (resolveBinding).
+  const browserTarget: BrowserTarget = input.browserTarget ?? 'cloud'
+  const relaySession = input.relaySession ?? null
+  const ephemeral = input.ephemeral ?? false
   await db.execute(sql`
     INSERT INTO public.cloud_runs
-      (id, cloud_agent_id, workspace_id, account_id, status, run_mode)
+      (id, cloud_agent_id, workspace_id, account_id, status, run_mode,
+       browser_target, relay_session, ephemeral)
     VALUES
-      (${runId}, ${cloudAgentId}, ${ws}, ${acc}, 'pending', 'live')
+      (${runId}, ${cloudAgentId}, ${ws}, ${acc}, 'pending', 'live',
+       ${browserTarget}, ${relaySession}, ${ephemeral})
   `)
 
   const queueUrl = getConfig().RUNS_QUEUE_URL

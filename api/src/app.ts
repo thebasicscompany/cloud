@@ -45,6 +45,7 @@ import { runViewsRoute } from './routes/run-views.js'
 import { agentRoute } from './routes/agent.js'
 import { automationViewsRoute } from './routes/automation-views.js'
 import { teamRoute } from './routes/team.js'
+import { invitationsRoute } from './routes/invitations.js'
 import type { WorkspaceToken } from './lib/jwt.js'
 import type { AuthenticatedWorkspaceApiKey } from './lib/workspace-api-keys.js'
 
@@ -116,6 +117,8 @@ export function buildApp() {
 
   app.route('/health', healthRoute)
   app.route('/v1/auth', authRoutes)
+  // Public invite preview (validated by the opaque invite token, no workspace JWT).
+  app.route('/v1/invitations', invitationsRoute)
   app.route('/webhooks', composioWebhookRoute)
   // C.6 — Sendblue inbound webhook for reply-to-approve SMS flow.
   // No JWT — phone-pair auth (from_number ↔ workspace.approval_phone).

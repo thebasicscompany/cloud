@@ -56,6 +56,11 @@ cloudRunsRoute.post(
     cloudAgentId: z.string().regex(UUID_RE).optional(),
     laneId: z.string().regex(UUID_RE).optional(),
     model: z.string().optional(),
+    // Model B — where the browser work runs. Backward compatible: omitted →
+    // 'cloud' (Browserbase), the existing behavior.
+    browserTarget: z.enum(['cloud', 'local_compute', 'local_relay']).optional(),
+    relaySession: z.string().optional(),
+    ephemeral: z.boolean().optional(),
   })),
   async (c) => {
     const body = c.req.valid('json')
@@ -66,6 +71,9 @@ cloudRunsRoute.post(
         cloudAgentId: body.cloudAgentId,
         laneId: body.laneId,
         model: body.model,
+        browserTarget: body.browserTarget,
+        relaySession: body.relaySession,
+        ephemeral: body.ephemeral,
       })
       if (!result) return c.json({ error: 'not_found' }, 404)
       return c.json({

@@ -10,6 +10,8 @@ import { userProfileFromSupabase } from "@/lib/auth/user-profile";
 import { LOCAL_DEV_PROFILE, shouldUseLocalDevAuth } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 
+import { DesktopAuthBridge } from "@/components/desktop-auth-bridge";
+
 import { AppMainScroll } from "./_components/app-main-scroll";
 import { AgentOverlayPill } from "./_components/agent-overlay-pill";
 import { OnboardingGate } from "./_components/onboarding-gate";
@@ -50,6 +52,7 @@ export default async function Layout({ children }: Readonly<{ children: ReactNod
       }
     >
       <OnboardingGate />
+      <DesktopAuthBridge />
       <AppSidebar user={navUser} />
       <SidebarInset className="peer-data-[variant=inset]:border min-h-0 overflow-hidden">
         <header className="app-drag-region sticky top-0 z-50 flex h-12 shrink-0 items-center gap-2 overflow-hidden rounded-t-[inherit] border-b bg-background/50 backdrop-blur-md transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
