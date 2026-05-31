@@ -114,13 +114,21 @@ function createMainWindow() {
     backgroundColor: "#f3f3f3",
     autoHideMenuBar: true,
     icon: path.join(__dirname, "build", "icon.png"),
-    // Custom title bar: hide the OS chrome and overlay native window controls
-    // (min/maximize/close) so the app's own top bar reads as the title bar.
-    // titleBarOverlay is supported on Windows + macOS; Linux keeps the default.
-    ...(process.platform !== "linux"
+    // Custom title bar: hide the OS chrome so the app's own 44px top bar reads
+    // as the title bar. Windows overlays the native min/maximize/close controls
+    // (titleBarOverlay). macOS keeps its traffic-lights but, since they'd
+    // otherwise overlap the custom bar, we hide the chrome and nudge the lights
+    // down so they sit centered in the 44px bar. Linux keeps the default chrome.
+    ...(process.platform === "win32"
       ? {
           titleBarStyle: "hidden",
           titleBarOverlay: { color: "#f3f3f3", symbolColor: "#52525b", height: 44 },
+        }
+      : {}),
+    ...(process.platform === "darwin"
+      ? {
+          titleBarStyle: "hidden",
+          trafficLightPosition: { x: 14, y: 14 },
         }
       : {}),
     webPreferences: {
@@ -159,8 +167,30 @@ app.whenReady().then(async () => {
 
   createMainWindow();
 
+  // macOS: install a standard application menu. Without one, the OS provides no
+  // Edit menu, so the system clipboard/undo/select-all accelerators (Cmd+C/V/X/
+  // A/Z) and Cmd+Q are dead. The role-based template wires up all of these for
+  // free. Windows keeps autoHideMenuBar (no app menu) — behavior unchanged.
+  if (process.platform === "darwin") {
+    Menu.setApplicationMenu(
+      Menu.buildFromTemplate([
+        { role: "appMenu" },
+        { role: "editMenu" },
+        { role: "viewMenu" },
+        { role: "windowMenu" },
+      ]),
+    );
+  }
+
   try {
-    tray = new Tray(trayImage());
+    const trayImg = trayImage();
+    // macOS menu-bar icons must be flagged as Template images (monochrome with
+    // alpha) so the OS tints them for light/dark menu bars; otherwise they're
+    // invisible. NOTE: the current source is a 1x1 transparent PNG placeholder —
+    // a real ~18x18 monochrome template PNG asset is still needed to actually
+    // show an icon in the menu bar (see report TODO).
+    if (process.platform === "darwin") trayImg.setTemplateImage(true);
+    tray = new Tray(trayImg);
     tray.setToolTip("Basics");
     tray.setContextMenu(
       Menu.buildFromTemplate([
