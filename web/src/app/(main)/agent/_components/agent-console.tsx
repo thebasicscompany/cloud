@@ -112,11 +112,10 @@ export function AgentConsole({
       {!data.configured ? (
         <Card>
           <CardHeader>
-            <CardTitle>Backend not connected</CardTitle>
+            <CardTitle>Not connected</CardTitle>
             <CardDescription>
-              Set <code className="font-mono text-xs">SUPABASE_URL</code> and{" "}
-              <code className="font-mono text-xs">SUPABASE_SERVICE_ROLE_KEY</code> so basichome can
-              read the live agent data from the Basics project.
+              We couldn&apos;t load your agent data from Basics cloud. Make sure you&apos;re signed in,
+              then refresh — your workspace data is fetched securely per-user (no keys live in the app).
             </CardDescription>
           </CardHeader>
         </Card>
