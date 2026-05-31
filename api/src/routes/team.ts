@@ -3,7 +3,7 @@ import { Hono } from 'hono'
 import { supabaseAdmin } from '../lib/supabase.js'
 import { getConfig } from '../config.js'
 import { sendInviteEmail } from '../lib/email-invite.js'
-import type { WorkspaceToken } from '../lib/jwt.js'
+import { hasRole, type WorkspaceToken } from '../lib/jwt.js'
 import { requireWorkspaceJwt } from '../middleware/jwt.js'
 
 /**
@@ -15,15 +15,16 @@ import { requireWorkspaceJwt } from '../middleware/jwt.js'
  * service-role admin client + the client-supplied `workspaceId`. The inviter is
  * the JWT's `account_id`.
  *
- *   GET    /v1/team            → { members: WorkspaceMember[], invitations: Invitation[] }
- *   POST   /v1/team/invite     → create invite (+ SES email) for the JWT workspace
- *   POST   /v1/team/accept     → accept an invite by token (find-or-create account, add member)
- *   POST   /v1/team/revoke     → revoke a pending invite (scoped to the JWT workspace)
+ *   GET    /v1/team                → { members: WorkspaceMember[], invitations: Invitation[] }
+ *   GET    /v1/team/invites-for-me → pending invites addressed to the caller's email
+ *   POST   /v1/team/invite         → create invite (+ SES email) for the JWT workspace
+ *   POST   /v1/team/accept         → accept an invite (EMAIL-MATCH: caller must be the invited email)
+ *   POST   /v1/team/revoke         → revoke a pending invite (scoped to the JWT workspace)
  *
  * The invite email is sent SERVER-SIDE here (cloud/api owns the SES creds — the
- * renderer must not). `accept` is authenticated by ANY valid workspace JWT but
- * operates on the invite's OWN workspace (the accepting user typically isn't a
- * member of it yet), so it is NOT cross-checked against the JWT workspace.
+ * renderer must not). `accept` is authenticated by ANY valid workspace JWT and
+ * operates on the invite's OWN workspace (the accepter usually isn't a member of
+ * it yet), gated by an email match between the caller's account and the invite.
  */
 
 type Vars = { requestId: string; workspace: WorkspaceToken }
@@ -108,6 +109,9 @@ teamRoute.get('/', requireWorkspaceJwt, async (c) => {
 
 teamRoute.post('/invite', requireWorkspaceJwt, async (c) => {
   const ws = c.var.workspace.workspace_id
+  if (!hasRole(c.var.workspace.role ?? 'member', 'admin')) {
+    return c.json({ ok: false, error: 'Only admins and owners can invite members.', code: 'insufficient_role' }, 403)
+  }
   let body: { email?: unknown; role?: unknown; workspaceName?: unknown } = {}
   try {
     body = (await c.req.json()) as typeof body
@@ -137,7 +141,7 @@ teamRoute.post('/invite', requireWorkspaceJwt, async (c) => {
   } else {
     const { data, error } = await supabase
       .from('workspace_invitations')
-      .insert({ workspace_id: ws, email: rawEmail, role })
+      .insert({ workspace_id: ws, email: rawEmail, role, invited_by: c.var.workspace.account_id })
       .select(INVITE_COLS)
       .single()
     if (error || !data) {
@@ -169,8 +173,53 @@ teamRoute.post('/invite', requireWorkspaceJwt, async (c) => {
   })
 })
 
-// ─── POST /accept — accept an invite by token ─────────────────────────────
+// ─── GET /invites-for-me — pending invites addressed to the caller's email ──
+//
+// Surfaced in-app right after sign-in so the invitee accepts without hunting for
+// the email link. Scoped to the caller's OWN verified email (from their account),
+// across whichever workspaces invited them — never the JWT's workspace.
+teamRoute.get('/invites-for-me', requireWorkspaceJwt, async (c) => {
+  const supabase = supabaseAdmin()
+  const acct = await supabase
+    .from('accounts')
+    .select('email')
+    .eq('id', c.var.workspace.account_id)
+    .maybeSingle()
+  const email = (acct.data?.email as string | undefined)?.toLowerCase()
+  if (!email) return c.json({ invites: [] })
 
+  const { data } = await supabase
+    .from('workspace_invitations')
+    .select('id,token,role,workspace_id,expires_at,workspaces(name)')
+    .eq('email', email)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false })
+    .limit(20)
+
+  const now = Date.now()
+  const invites = ((data ?? []) as Array<Record<string, unknown>>)
+    .filter((r) => !(r.expires_at && new Date(r.expires_at as string).getTime() < now))
+    .map((r) => {
+      const ws = (Array.isArray(r.workspaces) ? r.workspaces[0] : r.workspaces) as { name?: string } | null
+      return {
+        id: r.id as string,
+        token: r.token as string,
+        role: r.role as string,
+        workspaceId: r.workspace_id as string,
+        workspaceName: ws?.name ?? 'workspace',
+      }
+    })
+  return c.json({ invites })
+})
+
+// ─── POST /accept — accept an invite (caller must BE the invited email) ────
+//
+// Authenticated by ANY valid workspace JWT (the accepter usually isn't a member
+// of the inviting workspace yet — they're signed into their OWN). The security
+// gate is an EMAIL MATCH: we add the caller's real account (with their
+// supabase_auth_id) only if their account email equals the invite email. We
+// never conjure a placeholder account from the invite email, so a leaked token
+// alone can't join — you must control that mailbox to sign in as it.
 teamRoute.post('/accept', requireWorkspaceJwt, async (c) => {
   let body: { token?: unknown } = {}
   try {
@@ -182,6 +231,7 @@ teamRoute.post('/accept', requireWorkspaceJwt, async (c) => {
   if (!token) return c.json({ ok: false, error: 'token is required.' }, 400)
 
   const supabase = supabaseAdmin()
+  const accountId = c.var.workspace.account_id
 
   const inv = await supabase
     .from('workspace_invitations')
@@ -200,24 +250,18 @@ teamRoute.post('/accept', requireWorkspaceJwt, async (c) => {
     return c.json({ ok: false, error: 'Invitation has expired.' }, 400)
   }
 
-  const email = (inv.data.email as string).toLowerCase()
-
-  // Find-or-create the account for this email (accounts is a standalone table).
-  const acct = await supabase.from('accounts').select('id').eq('email', email).maybeSingle()
-  let accountId = acct.data?.id as string | undefined
-  if (!accountId) {
-    const created = await supabase
-      .from('accounts')
-      .insert({ email, display_name: email.split('@')[0] })
-      .select('id')
-      .single()
-    if (created.error || !created.data) {
-      return c.json({ ok: false, error: created.error?.message ?? 'Could not create account.' }, 400)
-    }
-    accountId = created.data.id as string
+  // SECURITY: the accepter must be signed in AS the invited email.
+  const acct = await supabase.from('accounts').select('email').eq('id', accountId).maybeSingle()
+  const callerEmail = (acct.data?.email as string | undefined)?.toLowerCase()
+  const inviteEmail = (inv.data.email as string).toLowerCase()
+  if (!callerEmail || callerEmail !== inviteEmail) {
+    return c.json(
+      { ok: false, error: `This invitation is for ${inv.data.email}. Sign in with that email to accept it.` },
+      403,
+    )
   }
 
-  // Add the member if not already on the workspace (idempotent → multi-seat).
+  // Add the caller to the inviting workspace (idempotent → multi-seat).
   const member = await supabase
     .from('workspace_members')
     .select('id')
@@ -256,6 +300,9 @@ teamRoute.post('/accept', requireWorkspaceJwt, async (c) => {
 
 teamRoute.post('/revoke', requireWorkspaceJwt, async (c) => {
   const ws = c.var.workspace.workspace_id
+  if (!hasRole(c.var.workspace.role ?? 'member', 'admin')) {
+    return c.json({ ok: false, error: 'Only admins and owners can revoke invites.', code: 'insufficient_role' }, 403)
+  }
   let body: { id?: unknown } = {}
   try {
     body = (await c.req.json()) as typeof body

@@ -11,6 +11,25 @@ const EXPIRY_SECONDS = 24 * 60 * 60
 export type WorkspacePlan = 'free' | 'pro' | 'team' | 'enterprise'
 
 /**
+ * Workspace member roles, ordered by privilege (owner > admin > member > viewer).
+ * Carried in the JWT so the API can gate privileged actions without a DB hop.
+ */
+export type WorkspaceRole = 'owner' | 'admin' | 'member' | 'viewer'
+
+/** Numeric privilege rank for comparisons (higher = more privilege). */
+export const ROLE_RANK: Record<WorkspaceRole, number> = {
+  viewer: 0,
+  member: 1,
+  admin: 2,
+  owner: 3,
+}
+
+/** True if `role` meets or exceeds the privilege of `min`. */
+export function hasRole(role: WorkspaceRole, min: WorkspaceRole): boolean {
+  return ROLE_RANK[role] >= ROLE_RANK[min]
+}
+
+/**
  * Workspace JWT payload — a 24h HS256 token issued by /v1/auth/token and
  * verified by `requireWorkspaceJwt`. All fields are strings (ISO 8601 for
  * timestamps) for JWT-safety.
@@ -19,6 +38,9 @@ export interface WorkspaceToken {
   workspace_id: string
   account_id: string
   plan: WorkspacePlan
+  /** Optional on the type (older tokens + service constructors omit it); the
+   *  mint + verify always populate it, defaulting to 'member'. */
+  role?: WorkspaceRole
   seat_status: string
   issued_at: string
   expires_at: string
@@ -74,6 +96,8 @@ export async function verifyWorkspaceToken(token: string): Promise<WorkspaceToke
       workspace_id: payload.workspace_id as string,
       account_id: payload.account_id as string,
       plan: payload.plan as WorkspacePlan,
+      // `role` was added in the RBAC phase — tolerate older tokens (default member).
+      role: (typeof payload.role === 'string' ? payload.role : 'member') as WorkspaceRole,
       seat_status: payload.seat_status as string,
       issued_at: payload.issued_at as string,
       expires_at: payload.expires_at as string,
