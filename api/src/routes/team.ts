@@ -321,3 +321,70 @@ teamRoute.post('/revoke', requireWorkspaceJwt, async (c) => {
   if (error) return c.json({ ok: false, error: error.message }, 400)
   return c.json({ ok: true })
 })
+
+// ─── GET /my-workspaces — the caller's active workspaces (for the switcher) ──
+//
+// Scoped to the caller's account across every workspace they hold an active seat
+// in (personal + teams). Powers the in-app workspace switcher; the renderer
+// re-mints a JWT (POST /v1/auth/token with workspace_id) to switch.
+teamRoute.get('/my-workspaces', requireWorkspaceJwt, async (c) => {
+  const supabase = supabaseAdmin()
+  const { data } = await supabase
+    .from('workspace_members')
+    .select('role, workspaces!inner(id, name, type, slug)')
+    .eq('account_id', c.var.workspace.account_id)
+    .eq('seat_status', 'active')
+
+  const workspaces = ((data ?? []) as Array<Record<string, unknown>>).map((r) => {
+    const w = (Array.isArray(r.workspaces) ? r.workspaces[0] : r.workspaces) as
+      | { id?: string; name?: string; type?: string; slug?: string }
+      | null
+    return {
+      id: (w?.id as string) ?? '',
+      name: (w?.name as string) ?? 'workspace',
+      type: ((w?.type as string) ?? 'team') as 'personal' | 'team',
+      slug: (w?.slug as string) ?? '',
+      role: (r.role as string) ?? 'member',
+      current: w?.id === c.var.workspace.workspace_id,
+    }
+  })
+  return c.json({ workspaces })
+})
+
+// ─── POST /leave — leave the JWT's current workspace (self-serve) ───────────
+//
+// You can't leave your personal workspace, and a SOLE owner must transfer
+// ownership or delete the workspace first (so a team is never orphaned).
+teamRoute.post('/leave', requireWorkspaceJwt, async (c) => {
+  const ws = c.var.workspace.workspace_id
+  const accountId = c.var.workspace.account_id
+  const supabase = supabaseAdmin()
+
+  const { data: workspace } = await supabase.from('workspaces').select('type').eq('id', ws).maybeSingle()
+  if (workspace?.type === 'personal') {
+    return c.json({ ok: false, error: "You can't leave your personal workspace." }, 400)
+  }
+
+  if (hasRole(c.var.workspace.role ?? 'member', 'owner')) {
+    const { count } = await supabase
+      .from('workspace_members')
+      .select('id', { count: 'exact', head: true })
+      .eq('workspace_id', ws)
+      .eq('role', 'owner')
+      .eq('seat_status', 'active')
+    if ((count ?? 0) <= 1) {
+      return c.json(
+        { ok: false, error: 'Transfer ownership or delete the workspace before leaving — you are the only owner.' },
+        400,
+      )
+    }
+  }
+
+  const { error } = await supabase
+    .from('workspace_members')
+    .delete()
+    .eq('workspace_id', ws)
+    .eq('account_id', accountId)
+  if (error) return c.json({ ok: false, error: error.message }, 400)
+  return c.json({ ok: true })
+})
