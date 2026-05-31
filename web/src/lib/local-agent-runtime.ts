@@ -145,7 +145,7 @@ export function pauseLocalAgentRun(store: LocalAgentStore, runId: string): Local
       toolCalls,
       updatedAt: now,
     };
-    return appendRunEvent(next, "run.paused", "Paused by the user from basichome.", "client", now);
+    return appendRunEvent(next, "run.paused", "Paused by the user from Basics.", "client", now);
   });
 }
 

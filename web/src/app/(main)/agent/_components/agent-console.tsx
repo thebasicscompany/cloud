@@ -280,7 +280,7 @@ export function AgentConsole({
                   <CardDescription>
                     Sites your agent stays signed in to, so it can pick up where you left off
                     without asking for a password each time. The saved login is encrypted —
-                    basichome only shows which sites and when they were last checked.
+                    Basics only shows which sites and when they were last checked.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>

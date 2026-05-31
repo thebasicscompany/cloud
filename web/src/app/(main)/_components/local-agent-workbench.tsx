@@ -231,7 +231,7 @@ export function LocalAgentWorkbench() {
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
               <label htmlFor="local-agent-prompt" className="font-medium text-sm">
-                Ask basichome
+                Ask Basics
               </label>
               <VoiceButton onTranscript={handleTranscript} />
             </div>
@@ -241,7 +241,7 @@ export function LocalAgentWorkbench() {
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
               className="min-h-24 resize-none bg-background"
-              placeholder="Tell basichome what to do…"
+              placeholder="Tell Basics what to do…"
             />
           </div>
           <div className="space-y-3">

@@ -128,7 +128,7 @@ export function ApprovalDetailPanel({
         <Card>
           <CardHeader className="border-b">
             <CardTitle>Runtime units</CardTitle>
-            <CardDescription>What basichome will run or install after approval.</CardDescription>
+            <CardDescription>What Basics will run or install after approval.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
             {approval.runtimeUnits.map((unit) => (

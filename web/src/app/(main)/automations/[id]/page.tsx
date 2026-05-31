@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { CloudAutomationDetail } from "../_components/cloud-automations-workbench";
 
 export const metadata: Metadata = {
-  title: "Automation | basichome",
+  title: "Automation | Basics",
   description: "Cloud automation detail with runs, replay, schedule, triggers, credentials, and trust grants.",
 };
 

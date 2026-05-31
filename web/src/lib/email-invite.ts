@@ -21,9 +21,9 @@ export async function sendInviteEmail(input: {
   const from = process.env.SES_FROM_EMAIL;
   if (!from) return { ok: false, error: "SES_FROM_EMAIL not configured." };
 
-  const subject = `You're invited to ${input.workspaceName} on basichome`;
+  const subject = `You're invited to ${input.workspaceName} on Basics`;
   const text = [
-    `You've been invited to join "${input.workspaceName}" on basichome as ${input.role}.`,
+    `You've been invited to join "${input.workspaceName}" on Basics as ${input.role}.`,
     ``,
     `Accept your invite:`,
     input.acceptUrl,
@@ -33,7 +33,7 @@ export async function sendInviteEmail(input: {
   const html = `<!doctype html><html><body style="font-family:ui-sans-serif,system-ui,sans-serif;color:#050505;background:#f3f3f3;padding:24px">
     <div style="max-width:520px;margin:0 auto;background:#fff;border:1px solid #e5e5e5;border-radius:10px;padding:28px">
       <h1 style="font-size:18px;margin:0 0 8px">You're invited to ${input.workspaceName}</h1>
-      <p style="font-size:14px;color:#444;margin:0 0 20px">You've been invited to join <b>${input.workspaceName}</b> on basichome as <b>${input.role}</b>.</p>
+      <p style="font-size:14px;color:#444;margin:0 0 20px">You've been invited to join <b>${input.workspaceName}</b> on Basics as <b>${input.role}</b>.</p>
       <a href="${input.acceptUrl}" style="display:inline-block;background:#0a0a0a;color:#fff;text-decoration:none;font-size:14px;padding:10px 18px;border-radius:8px">Accept invite</a>
       <p style="font-size:12px;color:#888;margin:20px 0 0">This link expires in 7 days. If you didn't expect this, you can ignore it.</p>
     </div></body></html>`;

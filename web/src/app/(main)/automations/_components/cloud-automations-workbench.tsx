@@ -54,7 +54,7 @@ export function CloudAutomationsWorkbench() {
           <h1 className="text-2xl font-semibold tracking-tight">Automations</h1>
           <p className="mt-1 max-w-3xl text-muted-foreground text-sm">
             Tasks your agent runs for you on a set schedule or when something happens, all in the
-            cloud. Every run shows up in Runs and Logs. Ask basichome to set one up.
+            cloud. Every run shows up in Runs and Logs. Ask Basics to set one up.
           </p>
         </div>
       </header>
@@ -74,7 +74,7 @@ export function CloudAutomationsWorkbench() {
         </div>
       ) : (automations ?? []).length === 0 ? (
         <div className="rounded-lg border border-dashed bg-card p-8 text-center text-muted-foreground text-sm">
-          No automations yet. Ask basichome to do something repeatable, then save it as an automation.
+          No automations yet. Ask Basics to do something repeatable, then save it as an automation.
         </div>
       ) : (
         <div className="grid gap-3 lg:grid-cols-2">

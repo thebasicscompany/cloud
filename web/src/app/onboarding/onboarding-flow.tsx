@@ -51,7 +51,7 @@ const STEP_DEFS = [
   {
     id: "welcome",
     title: "Welcome",
-    description: "How basichome works, and where to find things.",
+    description: "How Basics works, and where to find things.",
   },
   {
     id: "workspace",
@@ -81,7 +81,7 @@ const STEP_DEFS = [
   {
     id: "review",
     title: "Review",
-    description: "Save local setup and enter basichome.",
+    description: "Save local setup and enter Basics.",
   },
 ] as const;
 
@@ -116,14 +116,14 @@ const MAC_PERMISSIONS: readonly PermissionDef[] = [
     id: "accessibility",
     title: "Accessibility",
     icon: MousePointerClick,
-    detail: "Lets basichome read UI structure without relying only on screenshots.",
+    detail: "Lets Basics read UI structure without relying only on screenshots.",
     why: "Needed for efficient local context and precise app understanding.",
   },
   {
     id: "input_control",
     title: "Input Monitoring",
     icon: KeyRound,
-    detail: "Lets basichome send keyboard and pointer actions only after user approval.",
+    detail: "Lets Basics send keyboard and pointer actions only after user approval.",
     why: "Needed for trusted automations that can complete work across desktop apps.",
   },
   {
@@ -154,7 +154,7 @@ const WINDOWS_PERMISSIONS: readonly PermissionDef[] = [
     id: "input_control",
     title: "Input monitoring",
     icon: KeyRound,
-    detail: "Lets basichome read and send keyboard and pointer actions only after your approval. Windows grants this at use-time, not as a separate setting.",
+    detail: "Lets Basics read and send keyboard and pointer actions only after your approval. Windows grants this at use-time, not as a separate setting.",
     why: "Used for trusted automations that can complete work across desktop apps.",
   },
   {
@@ -378,7 +378,7 @@ export function OnboardingFlow() {
               <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                 <span className="font-semibold text-sm">b</span>
               </div>
-              <span className="font-semibold text-lg tracking-tight">basichome setup</span>
+              <span className="font-semibold text-lg tracking-tight">Basics setup</span>
             </div>
             <p className="mt-1 max-w-2xl text-muted-foreground text-sm">
               Set up the local device, workspace owner role, Lens capture boundary, engine mode, and approval defaults before the cockpit opens.
@@ -498,7 +498,7 @@ function WelcomeStep({ os }: { os: ClientOS }) {
               <kbd className="rounded border bg-background px-1.5 py-0.5 font-mono text-xs">{chord}</kbd>{" "}
               to summon the pill and tell the agent what to do, by voice or text, no matter what app you&apos;re in.
               While it works, the pill rides along showing progress; the main window is where you review.
-              basichome is review-first, so chat stays minimal.
+              Basics is review-first, so chat stays minimal.
             </p>
           </div>
         </div>
@@ -620,7 +620,7 @@ function PermissionsStep({
                       <p className="rounded-md bg-amber-50 px-2 py-1 text-amber-900 text-xs dark:bg-amber-950/40 dark:text-amber-200">
                         {isWindows
                           ? "Skipped for now. Windows will still prompt for this when a feature first needs it, and you can review it in settings."
-                          : "Skipped for now. basichome will keep setup recoverable and show where to grant this later."}
+                          : "Skipped for now. Basics will keep setup recoverable and show where to grant this later."}
                       </p>
                     ) : null}
                   </div>
@@ -881,7 +881,7 @@ function ReviewStep({ state, os }: { state: OnboardingState; os: ClientOS }) {
         <div className="flex items-start gap-3">
           <CheckCircle2 className="mt-0.5 size-5 text-primary" />
           <div className="space-y-1">
-            <h3 className="font-medium text-sm">Ready for local-first basichome</h3>
+            <h3 className="font-medium text-sm">Ready for local-first Basics</h3>
             <p className="text-muted-foreground text-sm">
               Finishing writes local setup state only. No raw screenshots, OCR, audio, browser profile data, or input timeline is uploaded.
             </p>

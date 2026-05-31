@@ -96,7 +96,7 @@ export default function CaptureSettingsPage() {
           Capture
         </h2>
         <p className="text-muted-foreground text-sm">
-          Lens watches your screen <span className="font-medium">on this device</span> so basichome can
+          Lens watches your screen <span className="font-medium">on this device</span> so Basics can
           suggest automations and learn routines you record. Nothing it sees ever leaves your computer.
         </p>
       </div>
@@ -118,7 +118,7 @@ export default function CaptureSettingsPage() {
 
       {!isDesktop ? (
         <Note icon={Monitor} title="Capture runs in the desktop app">
-          Open basichome on your Mac or Windows desktop to enable on-device capture. The web view manages everything
+          Open Basics on your Mac or Windows desktop to enable on-device capture. The web view manages everything
           else, but capture needs the local Lens engine.
         </Note>
       ) : !status?.supported ? (
@@ -127,7 +127,7 @@ export default function CaptureSettingsPage() {
         </Note>
       ) : !status?.installed ? (
         <Note icon={ShieldCheck} title="Lens engine not detected">
-          Lens ships with basichome but isn&apos;t present on this machine yet. Once the bundled engine is in place,
+          Lens ships with Basics but isn&apos;t present on this machine yet. Once the bundled engine is in place,
           background capture and routine recording turn on here.
         </Note>
       ) : (
@@ -164,7 +164,7 @@ export default function CaptureSettingsPage() {
             <div className="space-y-1">
               <h3 className="font-medium text-sm">Record a routine</h3>
               <p className="text-muted-foreground text-sm">
-                Open the recorder, show basichome a task in your apps while talking it through, and it saves
+                Open the recorder, show Basics a task in your apps while talking it through, and it saves
                 it as a routine your agent can turn into an automation.
               </p>
             </div>

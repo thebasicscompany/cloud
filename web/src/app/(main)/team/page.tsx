@@ -6,7 +6,7 @@ import { listInvitations, listMembers } from "@/lib/invitations";
 import { TeamConsole } from "./_components/team-console";
 
 export const metadata: Metadata = {
-  title: "Team | basichome",
+  title: "Team | Basics",
   description:
     "Invite teammates to a workspace, manage seats and roles, and let people belong to multiple workspaces.",
 };

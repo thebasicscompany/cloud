@@ -180,7 +180,7 @@ function Header() {
       <div>
         <h1 className="font-semibold text-2xl tracking-tight">Context</h1>
         <p className="mt-1 max-w-3xl text-muted-foreground text-sm">
-          What basichome remembers from your activity on this device, the summaries your agent is
+          What Basics remembers from your activity on this device, the summaries your agent is
           allowed to use, and the privacy rules that keep the raw data on your computer.
         </p>
       </div>

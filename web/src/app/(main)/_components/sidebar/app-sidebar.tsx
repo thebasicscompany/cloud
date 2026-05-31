@@ -33,10 +33,10 @@ export function AppSidebar({ user }: AppSidebarProps) {
               size="lg"
               className="hover:bg-transparent active:bg-transparent"
             >
-              <Link prefetch={false} href="/" aria-label="basichome" className="flex items-center justify-start">
+              <Link prefetch={false} href="/" aria-label="Basics" className="flex items-center justify-start">
                 <Image
                   src="/basics-logo.png"
-                  alt="basichome"
+                  alt="Basics"
                   width={32}
                   height={32}
                   className="size-8 shrink-0 rounded-md"

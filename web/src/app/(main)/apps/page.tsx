@@ -5,7 +5,7 @@ import { getApps } from "@/lib/apps-data";
 import { AppsOverview } from "./_components/apps-overview";
 
 export const metadata: Metadata = {
-  title: "Apps | basichome",
+  title: "Apps | Basics",
   description: "Simple databases your runs and automations fill in, that you can add to and read from too.",
 };
 

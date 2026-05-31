@@ -5,7 +5,7 @@ import { getConnections } from "@/lib/connections-data";
 import { ConnectionsConsole } from "./_components/connections-console";
 
 export const metadata: Metadata = {
-  title: "Connections | basichome",
+  title: "Connections | Basics",
   description:
     "Connect your apps and save browser logins so your agent can act for you.",
 };
