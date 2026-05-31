@@ -13,6 +13,7 @@ const lens = require("./lens-client");
 const computerLoop = require("./computer-loop");
 const computerWatcher = require("./computer-watcher");
 const authContext = require("./auth-context");
+const { startWebServer, stopWebServer } = require("./web-server");
 
 // Background (always-on) Lens capture is OFF by default — it's a real resource
 // cost, so the user opts in (Settings → Capture) and the choice persists. Lazy
@@ -35,7 +36,11 @@ function setBackgroundCapturePref(on) {
   }
 }
 
-const APP_URL = process.env.BASICS_APP_URL || "http://localhost:3000";
+// Where the renderer lives. In dev, BASICS_APP_URL points at the running Next
+// dev server (localhost:3000). Otherwise it's empty here and filled in at
+// app.whenReady() by spawning the bundled Next standalone server in-process
+// (see web-server.js) — so the shipped app needs no hosted web.
+let appUrl = process.env.BASICS_APP_URL || "";
 
 let mainWindow = null;
 let tray = null;
@@ -79,7 +84,7 @@ function openPill() {
   // Float above normal windows (incl. fullscreen apps where possible).
   pillWindow.setAlwaysOnTop(true, "screen-saver");
   pillWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  pillWindow.loadURL(`${APP_URL}/pill`);
+  pillWindow.loadURL(`${appUrl}/pill`);
   pillWindow.on("closed", () => {
     pillWindow = null;
   });
@@ -123,7 +128,7 @@ function createMainWindow() {
       nodeIntegration: false,
     },
   });
-  mainWindow.loadURL(APP_URL);
+  mainWindow.loadURL(appUrl);
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
@@ -136,7 +141,21 @@ function trayImage() {
   );
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Bring up the renderer host BEFORE any window loads it. In dev appUrl is
+  // already set (BASICS_APP_URL=localhost:3000); otherwise spawn the bundled
+  // Next standalone server in-process and use its local URL. Guarantees the
+  // server is accepting connections before the first loadURL().
+  if (!appUrl) {
+    try {
+      appUrl = await startWebServer();
+    } catch (e) {
+      console.error("failed to start bundled web server:", e && e.message);
+      app.quit();
+      return;
+    }
+  }
+
   createMainWindow();
 
   try {
@@ -184,7 +203,7 @@ app.whenReady().then(() => {
 
 ipcMain.on("basichome:open-app", (_e, route) => {
   const w = createMainWindow();
-  if (typeof route === "string" && route) w.loadURL(APP_URL + route);
+  if (typeof route === "string" && route) w.loadURL(appUrl + route);
 });
 
 // Local-run (browser-harness) path: launch / connect to the user's Chrome via
@@ -322,4 +341,5 @@ app.on("will-quit", () => {
   computerWatcher.stopWatcher();
   localBrowser.stopLocalBrowser();
   lens.stopLens();
+  stopWebServer();
 });
