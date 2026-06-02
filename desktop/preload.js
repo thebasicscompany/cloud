@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld("basichome", {
   // Computer-use (local): drive the real machine to do a task. Streams steps.
   computerUseStart: (goal) => ipcRenderer.invoke("basichome:computer-use:start", { goal }),
   computerUseStop: () => ipcRenderer.send("basichome:computer-use:stop"),
+  computerUseContinue: () => ipcRenderer.invoke("basichome:computer-use:continue"),
   onComputerUseStep: (cb) => {
     const h = (_e, s) => cb(s);
     ipcRenderer.on("basichome:computer-use:step", h);

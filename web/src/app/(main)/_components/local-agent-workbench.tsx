@@ -38,8 +38,9 @@ interface BasichomeBridge {
   isDesktop?: boolean;
   platform?: string;
   localRelayStart?: (opts: { relayUrl: string; session: string; token: string; mode?: string; port?: number }) => Promise<{ ok?: boolean; error?: string }>;
-  computerUseStart?: (goal: string) => Promise<{ done?: boolean; text?: string; steps?: number; error?: string; stopped?: boolean }>;
+  computerUseStart?: (goal: string) => Promise<{ done?: boolean; text?: string; steps?: number; error?: string; stopped?: boolean; canContinue?: boolean }>;
   computerUseStop?: () => void;
+  computerUseContinue?: () => Promise<{ done?: boolean; text?: string; steps?: number; error?: string; stopped?: boolean; canContinue?: boolean }>;
   onComputerUseStep?: (cb: (s: CuStep) => void) => () => void;
   openExternal?: (url: string) => Promise<{ ok?: boolean; error?: string }>;
 }
@@ -69,6 +70,7 @@ export function LocalAgentWorkbench() {
   const [cuSteps, setCuSteps] = useState<CuStep[]>([]);
   const [cuRunning, setCuRunning] = useState(false);
   const [cuResult, setCuResult] = useState<string | null>(null);
+  const [cuCanContinue, setCuCanContinue] = useState(false);
   const [triggering, setTriggering] = useState(false);
   const [triggerError, setTriggerError] = useState<string | null>(null);
   const [isDesktop, setIsDesktop] = useState(false);
@@ -205,6 +207,7 @@ export function LocalAgentWorkbench() {
     const task = prompt.trim() || STARTER_PROMPT;
     setCuSteps([]);
     setCuResult(null);
+    setCuCanContinue(false);
     setCuRunning(true);
     setTriggerError(null);
     const off = bh.onComputerUseStep?.((s) => setCuSteps((prev) => [...prev, s].slice(-12)));
@@ -212,6 +215,30 @@ export function LocalAgentWorkbench() {
       const res = await bh.computerUseStart(task);
       if (res?.error) setTriggerError(res.error);
       else setCuResult(res?.stopped ? "Stopped." : res?.text || "Done.");
+      setCuCanContinue(Boolean(res?.canContinue));
+    } catch (e) {
+      setTriggerError(e instanceof Error ? e.message : String(e));
+    } finally {
+      off?.();
+      setCuRunning(false);
+    }
+  };
+
+  // Resume after a step-cap stop. Same conversation on the desktop side; we just
+  // stream a fresh batch of steps and update the result/continue affordance.
+  const continueFullComputerControl = async () => {
+    const bh = desktopBridge();
+    if (!bh?.computerUseContinue) return;
+    setCuResult(null);
+    setCuCanContinue(false);
+    setCuRunning(true);
+    setTriggerError(null);
+    const off = bh.onComputerUseStep?.((s) => setCuSteps((prev) => [...prev, s].slice(-12)));
+    try {
+      const res = await bh.computerUseContinue();
+      if (res?.error) setTriggerError(res.error);
+      else setCuResult(res?.stopped ? "Stopped." : res?.text || "Done.");
+      setCuCanContinue(Boolean(res?.canContinue));
     } catch (e) {
       setTriggerError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -350,6 +377,12 @@ export function LocalAgentWorkbench() {
             ))}
           </ol>
           {cuResult ? <p className="mt-3 font-medium text-sm">{cuResult}</p> : null}
+          {cuCanContinue && !cuRunning ? (
+            <Button type="button" size="sm" className="mt-3" onClick={() => void continueFullComputerControl()}>
+              <Play className="size-4" />
+              Continue
+            </Button>
+          ) : null}
         </div>
       ) : null}
 

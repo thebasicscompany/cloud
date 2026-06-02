@@ -444,6 +444,19 @@ ipcMain.handle("basichome:computer-use:start", async (event, opts) => {
   });
 });
 ipcMain.on("basichome:computer-use:stop", () => computerLoop.stopComputerUse());
+// Resume a run that hit the step cap. Same conversation, fresh screenshot — the
+// loop file owns the stashed state and refuses if there's nothing to continue.
+ipcMain.handle("basichome:computer-use:continue", async (event) => {
+  return computerLoop.continueComputerUse({
+    onStep: (s) => {
+      try {
+        if (!event.sender.isDestroyed()) event.sender.send("basichome:computer-use:step", s);
+      } catch {
+        /* renderer gone */
+      }
+    },
+  });
+});
 
 // Workspace auth: the renderer holds the Supabase session, exchanges it for a
 // short-lived workspace JWT (cloud/api POST /v1/auth/token), and pushes it here.

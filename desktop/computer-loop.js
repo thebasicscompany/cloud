@@ -14,11 +14,15 @@ const authContext = require("./auth-context");
 
 const APP_URL = process.env.BASICS_APP_URL || "http://localhost:3000";
 const SEND_WIDTH = 1456; // within Anthropic's <=1568 bound; more legible small UI text
-const MAX_STEPS = 24;
+const MAX_STEPS = 60;
 const STEP_PAUSE_MS = 250; // settle time between actions (app launchers need a beat)
 
 let _stop = false;
 let _running = false;
+// When a run hits the step cap we stash its in-flight conversation here so the
+// user can Continue without restarting. Cleared on new run, stop, completion,
+// or error. Lives only in memory — gone if the app is restarted.
+let _pending = null;
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
@@ -154,9 +158,68 @@ async function saveRecipe(ctx, goal, actionLog, summary) {
   }
 }
 
+// The step loop itself — extracted so both a fresh run AND a Continue can drive
+// it. Closes over the conversation state; on cap-out, stashes that state into
+// _pending so continueComputerUse can pick up the same conversation.
+async function runStepLoop({ ctx, goal, shot, messages, actionLog, maxSteps, onStep, stepOffset = 0, replayed = false }) {
+  let currentShot = shot;
+  for (let i = 0; i < maxSteps; i++) {
+    const stepIdx = stepOffset + i;
+    if (_stop) return { done: false, stopped: true, text: "Stopped.", steps: stepIdx };
+
+    const res = await postStep(ctx, { goal, width: currentShot.sentW, height: currentShot.sentH, platform: process.platform, messages });
+    messages.push({ role: "assistant", content: res.assistant.content });
+    if (typeof onStep === "function") onStep({ step: stepIdx + 1, text: res.text, actions: res.actions });
+
+    if (res.done) {
+      try {
+        await saveRecipe(ctx, goal, actionLog, res.text);
+      } catch {
+        /* best-effort */
+      }
+      return { done: true, text: res.text || "Done.", steps: stepIdx + 1, replayed };
+    }
+
+    // Execute each action on the real screen.
+    for (const a of res.actions) {
+      if (_stop) break;
+      if (a.type === "screenshot" || a.type === "noop" || a.type === "unknown") continue;
+      try {
+        await hands.act(scaleAction(a, currentShot));
+        actionLog.push(compactAction(a));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const hint = macPermissionHint(msg);
+        if (hint) return { error: hint }; // permission gap — stop with guidance, don't thrash
+        if (typeof onStep === "function") onStep({ step: stepIdx + 1, error: msg });
+      }
+      await sleep(STEP_PAUSE_MS);
+    }
+
+    // Fresh screenshot → one tool_result per tool_use so the brain sees the outcome.
+    currentShot = await captureScreen();
+    messages.push({
+      role: "user",
+      content: res.actions.map((a) => ({ type: "tool_result", tool_use_id: a.tool_use_id, content: [imageBlock(currentShot.base64)] })),
+    });
+  }
+  // Step cap hit. Stash everything so the renderer can offer Continue and the
+  // resume picks up the same conversation (just with a fresh screenshot).
+  const stepsSoFar = stepOffset + maxSteps;
+  _pending = { ctx, goal, shot: currentShot, messages, actionLog, replayed, stepsSoFar };
+  return {
+    done: false,
+    cappedAt: stepsSoFar,
+    canContinue: true,
+    text: `Hit the ${stepsSoFar}-step limit without finishing — tap Continue to keep going.`,
+    steps: stepsSoFar,
+  };
+}
+
 /**
  * Run a local computer-use task. onStep({step, text, actions}) streams progress.
- * Returns { done, text, steps } or { error }. Bounded + stoppable.
+ * Returns { done, text, steps } on completion, { canContinue: true, ... } if it
+ * hits the step cap (resumable via continueComputerUse), or { error }.
  */
 async function runComputerUse({ goal, maxSteps = MAX_STEPS, onStep } = {}) {
   if (_running) return { error: "A computer-use run is already in progress." };
@@ -168,6 +231,7 @@ async function runComputerUse({ goal, maxSteps = MAX_STEPS, onStep } = {}) {
 
   _running = true;
   _stop = false;
+  _pending = null; // any prior pending state is from a different (now abandoned) task
   try {
     let shot = await captureScreen();
     const actionLog = [];
@@ -211,47 +275,56 @@ async function runComputerUse({ goal, maxSteps = MAX_STEPS, onStep } = {}) {
       : String(goal);
     const messages = [{ role: "user", content: [{ type: "text", text: firstText }, imageBlock(shot.base64)] }];
 
-    for (let step = 0; step < maxSteps; step++) {
-      if (_stop) return { done: false, stopped: true, text: "Stopped.", steps: step };
+    return await runStepLoop({ ctx, goal: String(goal), shot, messages, actionLog, maxSteps, onStep, replayed });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { error: macPermissionHint(msg) || msg };
+  } finally {
+    _running = false;
+    _stop = false;
+  }
+}
 
-      const res = await postStep(ctx, { goal: String(goal), width: shot.sentW, height: shot.sentH, platform: process.platform, messages });
-      messages.push({ role: "assistant", content: res.assistant.content });
-      if (typeof onStep === "function") onStep({ step: step + 1, text: res.text, actions: res.actions });
+/**
+ * Resume a run that hit the step cap. Re-captures the screen first (time has
+ * passed since the cap, so the cached image is likely stale), splices the fresh
+ * shot into the last tool_result, then drives the same conversation forward.
+ */
+async function continueComputerUse({ extraSteps = MAX_STEPS, onStep } = {}) {
+  if (_running) return { error: "A computer-use run is already in progress." };
+  if (!_pending) return { error: "Nothing to continue — start a new task." };
 
-      if (res.done) {
-        // Learn: save the approach that worked so the next similar task is faster.
-        try {
-          await saveRecipe(ctx, String(goal), actionLog, res.text);
-        } catch {
-          /* best-effort */
+  const pending = _pending;
+  _pending = null;
+  _running = true;
+  _stop = false;
+  try {
+    const shot = await captureScreen();
+    // Replace the last tool_result image(s) with the fresh capture so the brain
+    // resumes against current screen state, not what it looked like at cap time.
+    const last = pending.messages[pending.messages.length - 1];
+    if (last && last.role === "user" && Array.isArray(last.content)) {
+      for (const block of last.content) {
+        if (block && block.type === "tool_result" && Array.isArray(block.content)) {
+          for (const inner of block.content) {
+            if (inner && inner.type === "image" && inner.source) {
+              inner.source = { type: "base64", media_type: "image/jpeg", data: shot.base64 };
+            }
+          }
         }
-        return { done: true, text: res.text || "Done.", steps: step + 1, replayed };
       }
-
-      // Execute each action on the real screen.
-      for (const a of res.actions) {
-        if (_stop) break;
-        if (a.type === "screenshot" || a.type === "noop" || a.type === "unknown") continue;
-        try {
-          await hands.act(scaleAction(a, shot));
-          actionLog.push(compactAction(a));
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          const hint = macPermissionHint(msg);
-          if (hint) return { error: hint }; // permission gap — stop with guidance, don't thrash
-          if (typeof onStep === "function") onStep({ step: step + 1, error: msg });
-        }
-        await sleep(STEP_PAUSE_MS);
-      }
-
-      // Fresh screenshot → one tool_result per tool_use so the brain sees the outcome.
-      shot = await captureScreen();
-      messages.push({
-        role: "user",
-        content: res.actions.map((a) => ({ type: "tool_result", tool_use_id: a.tool_use_id, content: [imageBlock(shot.base64)] })),
-      });
     }
-    return { done: false, text: "Reached the step limit without finishing.", steps: maxSteps };
+    return await runStepLoop({
+      ctx: pending.ctx,
+      goal: pending.goal,
+      shot,
+      messages: pending.messages,
+      actionLog: pending.actionLog,
+      maxSteps: extraSteps,
+      onStep,
+      stepOffset: pending.stepsSoFar,
+      replayed: pending.replayed,
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return { error: macPermissionHint(msg) || msg };
@@ -263,6 +336,12 @@ async function runComputerUse({ goal, maxSteps = MAX_STEPS, onStep } = {}) {
 
 function stopComputerUse() {
   _stop = true;
+  // Explicit stop means the user is abandoning this task — don't offer Continue.
+  _pending = null;
 }
 
-module.exports = { runComputerUse, stopComputerUse, isRunning: () => _running };
+function canContinue() {
+  return _pending !== null;
+}
+
+module.exports = { runComputerUse, continueComputerUse, stopComputerUse, isRunning: () => _running, canContinue };
