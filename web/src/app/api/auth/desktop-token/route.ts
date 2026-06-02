@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getWorkspaceToken } from "@/lib/api/cloud";
+import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,6 +22,34 @@ export const dynamic = "force-dynamic";
 export async function POST() {
   const token = await getWorkspaceToken();
   if (!token) {
+    // Diagnostic: getWorkspaceToken silently returns "" for several distinct
+    // failure modes. Probe each so the dev console shows which one actually hit.
+    const supabase = await createClient();
+    const { data: sessionData, error: sErr } = await supabase.auth.getSession();
+    const session = sessionData.session;
+    const apiBase = (process.env.API_BASE_URL ?? "").trim();
+    let mintStatus = "skipped (no api base or no session)";
+    if (apiBase && session?.access_token) {
+      try {
+        const r = await fetch(`${apiBase.replace(/\/+$/, "")}/v1/auth/token`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ supabase_access_token: session.access_token }),
+          cache: "no-store",
+        });
+        const body = await r.text();
+        mintStatus = `${r.status} ${body.slice(0, 200)}`;
+      } catch (e) {
+        mintStatus = `threw: ${e instanceof Error ? e.message : String(e)}`;
+      }
+    }
+    console.warn("[desktop-token] 401 diagnostic", {
+      apiBaseSet: Boolean(apiBase),
+      hasSession: Boolean(session),
+      sessionErr: sErr?.message,
+      accessTokenLen: session?.access_token?.length ?? 0,
+      mintStatus,
+    });
     return NextResponse.json({ error: "no_session" }, { status: 401 });
   }
   return NextResponse.json({ token });

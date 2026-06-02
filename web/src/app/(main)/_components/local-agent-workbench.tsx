@@ -10,6 +10,14 @@ import { Brain, Clock, FileSearch, Globe, KeyRound, Monitor, Pause, Play, Square
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { useActiveLocalAgentRun, useLocalAgentActions } from "@/hooks/queries/use-local-agent-runtime";
@@ -28,10 +36,24 @@ interface CuStep {
 }
 interface BasichomeBridge {
   isDesktop?: boolean;
+  platform?: string;
   localRelayStart?: (opts: { relayUrl: string; session: string; token: string; mode?: string; port?: number }) => Promise<{ ok?: boolean; error?: string }>;
   computerUseStart?: (goal: string) => Promise<{ done?: boolean; text?: string; steps?: number; error?: string; stopped?: boolean }>;
   computerUseStop?: () => void;
   onComputerUseStep?: (cb: (s: CuStep) => void) => () => void;
+  openExternal?: (url: string) => Promise<{ ok?: boolean; error?: string }>;
+}
+
+// The shell command that turns on Chrome remote debugging, per platform. Shown
+// verbatim in the setup dialog (option 2) so the user can copy & paste.
+function chromeDebugCommand(platform: string | undefined): string {
+  if (platform === "win32") {
+    return `"%ProgramFiles%\\Google\\Chrome\\Application\\chrome.exe" --remote-debugging-port=9222 --remote-allow-origins=*`;
+  }
+  if (platform === "linux") {
+    return `google-chrome --remote-debugging-port=9222 --remote-allow-origins=*`;
+  }
+  return `/Applications/Google\\ Chrome.app/Contents/MacOS/Google\\ Chrome --remote-debugging-port=9222 --remote-allow-origins=*`;
 }
 function desktopBridge(): BasichomeBridge | undefined {
   if (typeof window === "undefined") return undefined;
@@ -50,6 +72,7 @@ export function LocalAgentWorkbench() {
   const [triggering, setTriggering] = useState(false);
   const [triggerError, setTriggerError] = useState<string | null>(null);
   const [isDesktop, setIsDesktop] = useState(false);
+  const [chromeSetupOpen, setChromeSetupOpen] = useState(false);
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const activeTool = activeRun?.toolCalls.find((tool) => tool.id === activeRun.activeToolCallId);
 
@@ -139,9 +162,17 @@ export function LocalAgentWorkbench() {
         })
         .finally(() => toast.dismiss(allowToast));
       if (!bridged?.ok) {
+        const msg = bridged?.error ?? "";
+        // Specific case: user's Chrome isn't running with remote debugging.
+        // Pop the setup helper instead of dumping a wall of CLI flags into a
+        // toast; the helper opens chrome://inspect#remote-debugging in their
+        // Chrome and lets them retry with one click.
+        if (/debug port|remote-debugging|CDP/i.test(msg)) {
+          setChromeSetupOpen(true);
+          return;
+        }
         setTriggerError(
-          bridged?.error ??
-            "Couldn't reach your Chrome. Open Chrome with remote debugging on (chrome --remote-debugging-port=9222 --remote-allow-origins=*), then try again.",
+          msg || "Couldn't reach your Chrome. Open Chrome with remote debugging on, then try again.",
         );
         return;
       }
@@ -391,6 +422,60 @@ export function LocalAgentWorkbench() {
           Nothing running yet. Describe a task above and hit Start — you&apos;ll see its status, controls, and results here.
         </div>
       )}
+
+      <Dialog open={chromeSetupOpen} onOpenChange={setChromeSetupOpen}>
+        <DialogContent className="max-w-[520px] sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle>Turn on Chrome remote debugging</DialogTitle>
+            <DialogDescription>
+              We need Chrome listening on port 9222 so the agent can drive your real
+              browser (with your logins). Two ways to do it.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="min-w-0 space-y-4 text-sm">
+            <div className="min-w-0">
+              <p className="font-medium">1. Open the inspect page in Chrome</p>
+              <p className="text-muted-foreground">
+                If Chrome shows targets at <code className="break-all">chrome://inspect#remote-debugging</code>,
+                you&apos;re already good. If it&apos;s empty, you need to relaunch
+                Chrome with the flag below.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-2"
+                onClick={() =>
+                  desktopBridge()?.openExternal?.("chrome://inspect/#remote-debugging")
+                }
+              >
+                Open chrome://inspect in Chrome
+              </Button>
+            </div>
+            <div className="min-w-0">
+              <p className="font-medium">2. Relaunch Chrome with debugging on</p>
+              <p className="text-muted-foreground">
+                Quit Chrome completely, then run this in Terminal:
+              </p>
+              <pre className="mt-2 max-w-full overflow-x-auto whitespace-pre-wrap break-all rounded-md bg-muted px-3 py-2 text-xs">
+                {chromeDebugCommand(desktopBridge()?.platform)}
+              </pre>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setChromeSetupOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                setChromeSetupOpen(false);
+                void runOnMyComputer();
+              }}
+            >
+              Done, try again
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

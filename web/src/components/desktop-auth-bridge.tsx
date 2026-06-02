@@ -21,6 +21,10 @@ type DesktopBridge = {
   apiBase?: string;
   setWorkspaceToken?: (p: { token: string; userRole?: string }) => void;
   clearWorkspaceToken?: () => void;
+  exchangeSupabaseSession?: (p: {
+    access_token: string;
+    workspace_id?: string;
+  }) => Promise<{ ok: boolean; token?: string; expires_at?: string; error?: string }>;
 };
 
 export function DesktopAuthBridge() {
@@ -39,33 +43,43 @@ export function DesktopAuthBridge() {
         let token: string | undefined;
         let expiresAt: string | undefined;
 
-        // Prefer a SAME-ORIGIN mint. The dev renderer (http://localhost:3000)
-        // can't call the cross-origin cloud/api `/v1/auth/token` directly — CORS
-        // blocks it — so a Next route mints the workspace JWT server-side from
-        // the session cookie. In a packaged build (null origin) this 404s and we
-        // fall back to the direct exchange below.
-        try {
-          const same = await fetch("/api/auth/desktop-token", { method: "POST" });
-          if (same.ok) {
-            const j = (await same.json()) as { token?: string; expires_at?: string };
-            token = j.token;
-            expiresAt = j.expires_at;
-          }
-        } catch {
-          /* fall through to the direct cloud/api exchange */
+        // Need a Supabase session either way (it's what cloud/api validates).
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        const accessToken = session?.access_token;
+        if (!accessToken) {
+          bh?.clearWorkspaceToken?.();
+          return;
         }
 
-        // Fallback: direct cloud/api exchange (origins the api CORS-allows, e.g.
-        // the packaged app's `null` origin).
-        if (!token) {
-          const {
-            data: { session },
-          } = await supabase.auth.getSession();
-          const accessToken = session?.access_token;
-          if (!accessToken) {
-            bh?.clearWorkspaceToken?.();
-            return;
+        // Preferred: have the MAIN process exchange the supabase token for a
+        // workspace JWT. No CORS, no Supabase-cookie-sync race that makes
+        // /api/auth/desktop-token flap with 401s in dev.
+        if (typeof bh.exchangeSupabaseSession === "function") {
+          const r = await bh.exchangeSupabaseSession({ access_token: accessToken });
+          if (cancelled) return;
+          if (r?.ok && r.token) {
+            token = r.token;
+            expiresAt = r.expires_at;
           }
+        }
+
+        // Fallbacks for safety: same-origin Next route, then direct from
+        // renderer (works in packaged builds where the origin is CORS-allowed).
+        if (!token) {
+          try {
+            const same = await fetch("/api/auth/desktop-token", { method: "POST" });
+            if (same.ok) {
+              const j = (await same.json()) as { token?: string; expires_at?: string };
+              token = j.token;
+              expiresAt = j.expires_at;
+            }
+          } catch {
+            /* fall through */
+          }
+        }
+        if (!token) {
           const res = await fetch(`${apiBase}/v1/auth/token`, {
             method: "POST",
             headers: { "content-type": "application/json" },
@@ -77,7 +91,15 @@ export function DesktopAuthBridge() {
           expiresAt = j.expires_at;
         }
 
-        if (!token || cancelled) return;
+        if (!token || cancelled) {
+          // Transient failure (cloud/api unreachable during a deploy, network
+          // blip, etc.). Without this retry the bridge would give up forever
+          // until the next auth-state change — and Supabase's silent refresh
+          // doesn't fire one, so a single hiccup leaves the desktop loops
+          // without a workspace token until you sign out + back in.
+          if (!cancelled) timer = setTimeout(() => void pushToken(), 30_000);
+          return;
+        }
         bh?.setWorkspaceToken?.({ token });
         // Re-mint ~5 min before the 24h token expires.
         const lead = expiresAt
@@ -85,7 +107,9 @@ export function DesktopAuthBridge() {
           : 23 * 3600_000;
         timer = setTimeout(() => void pushToken(), Math.max(60_000, Math.min(lead, 23 * 3600_000)));
       } catch {
-        /* retry on the next auth-state change */
+        // Same as the soft-failure path: keep retrying so a transient cloud/api
+        // issue can't leave the desktop main process tokenless indefinitely.
+        if (!cancelled) timer = setTimeout(() => void pushToken(), 30_000);
       }
     }
 

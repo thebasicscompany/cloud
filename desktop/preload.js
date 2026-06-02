@@ -1,5 +1,12 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
+// Let the renderer's CSS target the host OS — used for things like leaving
+// room above the sidebar header so the macOS traffic lights don't crowd the
+// logo, and making that strip a draggable window region.
+window.addEventListener("DOMContentLoaded", () => {
+  document.documentElement.classList.add("electron", `electron-${process.platform}`);
+});
+
 // Minimal, safe bridge the renderer (web app + pill) can call.
 contextBridge.exposeInMainWorld("basichome", {
   isDesktop: true,
@@ -44,6 +51,16 @@ contextBridge.exposeInMainWorld("basichome", {
   // workspace-JWT signing secret (those live solely in cloud/api).
   setWorkspaceToken: (payload) => ipcRenderer.invoke("basichome:auth:set", payload),
   clearWorkspaceToken: () => ipcRenderer.invoke("basichome:auth:clear"),
+  // Let the renderer outsource the mint to MAIN: avoids the dev CORS allowlist
+  // gap (cloud/api doesn't whitelist http://localhost:3000) and the Supabase
+  // cookie-sync race that makes the same-origin /api/auth/desktop-token route
+  // flap with 401s. Main POSTs to cloud/api directly and stores the JWT.
+  exchangeSupabaseSession: (payload) => ipcRenderer.invoke("basichome:auth:exchange-supabase", payload),
+  // Voice (Deepgram): proxy through main using the stored workspace JWT.
+  voiceCredentials: () => ipcRenderer.invoke("basichome:voice:credentials"),
+  // Open an arbitrary URL in the user's default browser. Used to send them
+  // to chrome://inspect#remote-debugging from the local-Chrome setup helper.
+  openExternal: (url) => ipcRenderer.invoke("basichome:shell:open-external", url),
   // Open an OAuth URL in the user's real browser; the resolved { code, error }
   // comes back via onAuthCode (the renderer then exchanges the code for a session).
   openExternalAuth: (url) => ipcRenderer.invoke("basichome:auth:open-external", url),
@@ -63,5 +80,5 @@ contextBridge.exposeInMainWorld("basichome", {
   },
   // The deployed cloud/api base, owned by the desktop, so the renderer can call
   // /v1/* directly without its own api-base env.
-  apiBase: (process.env.BASICS_API_URL || "https://api.trybasics.ai").replace(/\/+$/, ""),
+  apiBase: (process.env.BASICS_API_URL || process.env.API_BASE_URL || "https://api.trybasics.ai").replace(/\/+$/, ""),
 });

@@ -36,7 +36,52 @@ export function ConnectionNeededBanner({ runId }: { runId: string }) {
   const [toolkits, setToolkits] = useState<string[]>([]);
   const [browserSites, setBrowserSites] = useState<string[]>([]);
   const [connecting, setConnecting] = useState<string | null>(null);
+  const [resuming, setResuming] = useState(false);
+  const [resumed, setResumed] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Fire a `continue` NOTIFY at the worker so the stuck opencode session
+  // re-prompts itself and the agent picks up where it left off. The /message
+  // endpoint already implements exactly that NOTIFY path (cloud-runs.ts:361)
+  // — we just send a fixed instruction telling the agent the connection is
+  // now active. If the binding has expired (worker idle-stopped), the
+  // endpoint returns 200 with {steered:false, reason:'not_live'} and the
+  // user knows to start a fresh run.
+  async function resume() {
+    if (resuming || resumed) return;
+    setResuming(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/runs/${runId}/message`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          message:
+            "The connection(s) you needed are now active. Continue from where you left off — re-attempt the tool call that failed with no_connection, and finish the task.",
+        }),
+      });
+      const data = (await res.json().catch(() => null)) as
+        | { steered?: boolean; reason?: string; error?: string }
+        | null;
+      if (!res.ok) {
+        setError(data?.error ?? "Couldn't resume the run. Try again.");
+        return;
+      }
+      if (data?.steered === false) {
+        setError(
+          data.reason === "not_live"
+            ? "This run isn't live anymore (worker idle-stopped). Start a fresh run — your connection is saved."
+            : `Couldn't resume the run (${data.reason ?? "unknown"}).`,
+        );
+        return;
+      }
+      setResumed(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Network error.");
+    } finally {
+      setResuming(false);
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -74,7 +119,21 @@ export function ConnectionNeededBanner({ runId }: { runId: string }) {
         setError(data?.error ?? "Couldn't start the connection. Try again.");
         return;
       }
-      window.open(data.redirectUrl, "_blank", "noopener,noreferrer");
+      // In Electron, `window.open(url, "_blank")` spawns a fresh BrowserWindow
+      // with no cookies — so the OAuth flow can't see the user's existing
+      // login to e.g. Notion and they have to sign in again. Route through
+      // the desktop bridge's openExternal so it lands in the user's real
+      // Chrome (default browser) where they're already signed in.
+      const bh = (
+        window as unknown as {
+          basichome?: { isDesktop?: boolean; openExternal?: (url: string) => Promise<{ ok?: boolean }> };
+        }
+      ).basichome;
+      if (bh?.isDesktop && typeof bh.openExternal === "function") {
+        void bh.openExternal(data.redirectUrl);
+      } else {
+        window.open(data.redirectUrl, "_blank", "noopener,noreferrer");
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Network error.");
     } finally {
@@ -98,7 +157,7 @@ export function ConnectionNeededBanner({ runId }: { runId: string }) {
               This run needs you to connect something to finish.
             </p>
             <p className="text-muted-foreground text-sm leading-relaxed">
-              Connect the items below, then re-run — the agent will pick up where it left off.
+              Connect the items below, then click <strong>Resume run</strong> — the agent will pick up where it left off without restarting from scratch.
             </p>
           </div>
 
@@ -132,6 +191,19 @@ export function ConnectionNeededBanner({ runId }: { runId: string }) {
                 {browserSites.length > 0 && toolkits.length === 0 ? "Browser logins" : "Manage connections"}
                 <ExternalLink className="size-3.5" />
               </Link>
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={resumed ? "outline" : "default"}
+              onClick={() => void resume()}
+              disabled={resuming || resumed}
+              className="h-8 gap-1.5"
+            >
+              {resuming ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : null}
+              {resumed ? "Resumed — agent is continuing" : "Resume run"}
             </Button>
           </div>
 

@@ -55,6 +55,7 @@ import {
   MagnifyingGlassIcon,
   MicrophoneIcon,
   MinusIcon,
+  ArrowDownTrayIcon,
   PaperClipIcon,
   PauseIcon,
   PencilIcon,
@@ -122,6 +123,7 @@ export const Copy = DocumentDuplicateIcon;
 export const Mic = MicrophoneIcon;
 export const Paperclip = PaperClipIcon;
 export const Pencil = PencilIcon;
+export const Download = ArrowDownTrayIcon;
 export const Square = StopIcon;
 export const ThumbsDown = HandThumbDownIcon;
 export const ThumbsUp = HandThumbUpIcon;

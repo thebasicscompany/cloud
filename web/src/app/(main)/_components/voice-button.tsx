@@ -74,12 +74,24 @@ export function VoiceButton({ onTranscript }: VoiceButtonProps) {
 
     let token: string;
     try {
-      const res = await fetch("/api/voice/token", { method: "POST" });
-      const data = (await res.json()) as { ok?: boolean; token?: string };
-      if (!res.ok || !data.ok || !data.token) {
-        throw new Error("token unavailable");
+      // Inside Electron, ask main to proxy the cloud/api call — sidesteps the
+      // Supabase-cookie-sync race that makes the same-origin Next route flap
+      // with 401s in dev.
+      const bh = (window as unknown as {
+        basichome?: { isDesktop?: boolean; voiceCredentials?: () => Promise<{ ok?: boolean; token?: string }> };
+      }).basichome;
+      if (bh?.isDesktop && typeof bh.voiceCredentials === "function") {
+        const r = await bh.voiceCredentials();
+        if (!r?.ok || !r.token) throw new Error("token unavailable");
+        token = r.token;
+      } else {
+        const res = await fetch("/api/voice/token", { method: "POST" });
+        const data = (await res.json()) as { ok?: boolean; token?: string };
+        if (!res.ok || !data.ok || !data.token) {
+          throw new Error("token unavailable");
+        }
+        token = data.token;
       }
-      token = data.token;
     } catch {
       setError("Voice is unavailable right now.");
       return;

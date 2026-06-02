@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 import Image from "next/image";
 import Link from "next/link";
 
@@ -26,9 +28,21 @@ type AppSidebarProps = {
 };
 
 export function AppSidebar({ user, workspaces }: AppSidebarProps) {
+  // On macOS Electron the window uses `titleBarStyle: hidden` and the traffic
+  // lights sit at x:14, y:14 — they overlap the sidebar's top edge. Pad the
+  // header down past them. Client-only check (avoids SSR hydration mismatch).
+  const [isMacElectron, setIsMacElectron] = useState(false);
+  useEffect(() => {
+    const bh = (window as unknown as { basichome?: { platform?: string } }).basichome;
+    setIsMacElectron(bh?.platform === "darwin");
+  }, []);
+
   return (
     <Sidebar variant="inset" collapsible="icon">
-      <SidebarHeader>
+      <SidebarHeader
+        className={isMacElectron ? "pt-11" : undefined}
+        style={isMacElectron ? { WebkitAppRegion: "drag" } as React.CSSProperties : undefined}
+      >
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton

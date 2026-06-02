@@ -105,7 +105,7 @@ async function startWebServer() {
       NODE_ENV: "production",
       PORT: String(port),
       HOSTNAME: "127.0.0.1",
-      API_BASE_URL: process.env.BASICS_API_URL || "https://api.trybasics.ai",
+      API_BASE_URL: process.env.BASICS_API_URL || process.env.API_BASE_URL || "https://api.trybasics.ai",
     },
     // server.js cwd determines where it resolves .next/static + public from;
     // standalone output co-locates them next to server.js.

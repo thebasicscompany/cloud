@@ -28,6 +28,22 @@ export interface ToolApprovalDecision {
   required: boolean;
   reason?: string;
   expiresInSeconds?: number;
+  /**
+   * Severity hint for the approval prompt UI. `destructive` means the call
+   * matches a default-denylist pattern (delete/drop/purge/wipe/etc.) and the
+   * user is being asked to OVERRIDE that default — surface it with louder
+   * visual treatment (red border, "this deletes data" copy). `high` is
+   * mutating + high impact but not on the default denylist. Defaults to
+   * `medium`. Workspace-custom denylist entries bypass approval entirely
+   * (hard block) — those don't reach this inspector.
+   */
+  risk?: 'low' | 'medium' | 'high' | 'destructive';
+  /**
+   * Convenience flag: `risk === 'destructive'`. Surfaces in the approval
+   * row's `args_preview` so the UI can render the destructive warning
+   * without re-parsing the reason string.
+   */
+  destructive?: boolean;
 }
 
 export interface ToolDefinition<P extends ZodTypeAny, Ctx, R extends ToolResult> {

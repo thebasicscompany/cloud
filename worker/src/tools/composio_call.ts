@@ -263,8 +263,20 @@ export const composio_call = defineTool({
     // policy denial never reveals whether the toolkit happens to be
     // connected. Audit row still written so denied attempts are
     // visible to operators.
+    //
+    // 2026-06-02: split the denylist into two enforcement tiers so that
+    // explicit user approval can override the SAFETY DEFAULT but NOT a
+    // workspace-admin denial:
+    //   - `source: 'default'` (DEFAULT_DENYLIST regexes) → SOFT. By the
+    //     time this code runs the approval framework has already paused
+    //     for the user (via `composioCallApproval` → `risk: 'destructive'`)
+    //     and the user explicitly approved. Don't re-deny — that would
+    //     silently ignore the user's consent (the bug that confused
+    //     dmrknife on 2026-06-02).
+    //   - `source: 'workspace'` (workspace_composio_policy.composio_denylist)
+    //     → HARD. Admin set this; no per-call user approval can override.
     const policyDecision = isDeniedByPolicy(toolSlug, policy ?? {});
-    if (policyDecision.denied) {
+    if (policyDecision.denied && policyDecision.source === 'workspace') {
       await ctx.publish({
         type: "denied_by_policy",
         payload: {

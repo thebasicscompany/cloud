@@ -221,6 +221,20 @@ export async function dispatchCloudRun(
   const browserTarget: BrowserTarget = input.browserTarget ?? 'cloud'
   const relaySession = input.relaySession ?? null
   const ephemeral = input.ephemeral ?? false
+
+  const queueUrl = getConfig().RUNS_QUEUE_URL
+  if (!queueUrl) {
+    throw new Error('runs_queue_not_configured')
+  }
+  const groupId = `${ws}:${input.laneId ?? 'default'}`
+
+  // Insert the row, then enqueue to SQS. If SQS fails (IAM, network, rolling
+  // deploy hiccup), compensate by deleting the row so we don't leave an
+  // orphan cloud_runs row that sits in `pending` forever — that's exactly the
+  // failure mode that left dmrknife's run stuck for 13 minutes on 2026-06-02
+  // until the SQS IAM policy was attached. The sweepStaleRuns() function
+  // below is the belt-and-suspenders safety net for any future class of
+  // commit-succeeded-but-enqueue-lost failures we haven't accounted for.
   await db.execute(sql`
     INSERT INTO public.cloud_runs
       (id, cloud_agent_id, workspace_id, account_id, status, run_mode,
@@ -229,25 +243,31 @@ export async function dispatchCloudRun(
       (${runId}, ${cloudAgentId}, ${ws}, ${acc}, 'pending', 'live',
        ${browserTarget}, ${relaySession}, ${ephemeral})
   `)
-
-  const queueUrl = getConfig().RUNS_QUEUE_URL
-  if (!queueUrl) {
-    throw new Error('runs_queue_not_configured')
+  try {
+    await sqsClient().send(new SendMessageCommand({
+      QueueUrl: queueUrl,
+      MessageBody: JSON.stringify({
+        runId,
+        workspaceId: ws,
+        accountId: acc,
+        goal: input.goal,
+        ...(input.model ? { model: input.model } : {}),
+      }),
+      MessageGroupId: groupId,
+      MessageDeduplicationId: runId,
+    }))
+  } catch (sqsErr) {
+    // Best-effort compensating delete. If this also fails, the sweeper
+    // catches the orphan within a few minutes — that's the contract.
+    await db
+      .execute(sql`DELETE FROM public.cloud_runs WHERE id = ${runId} AND status = 'pending'`)
+      .catch((e) => {
+        // Surface but don't mask the original SQS error.
+        // eslint-disable-next-line no-console
+        console.error('dispatch: compensating delete failed', e)
+      })
+    throw sqsErr
   }
-
-  const groupId = `${ws}:${input.laneId ?? 'default'}`
-  await sqsClient().send(new SendMessageCommand({
-    QueueUrl: queueUrl,
-    MessageBody: JSON.stringify({
-      runId,
-      workspaceId: ws,
-      accountId: acc,
-      goal: input.goal,
-      ...(input.model ? { model: input.model } : {}),
-    }),
-    MessageGroupId: groupId,
-    MessageDeduplicationId: runId,
-  }))
 
   return {
     runId,
@@ -256,4 +276,43 @@ export async function dispatchCloudRun(
     liveViewUrl: null,
     eventsUrl: `/v1/runs/${runId}/events`,
   }
+}
+
+/**
+ * Stale-run sweeper. Marks any `cloud_runs` row whose status is `pending` or
+ * `running` and whose most recent timestamp (`last_progress_at` ?? `started_at`
+ * ?? `created_at`) is older than `thresholdMinutes` as `failed` with
+ * `failure_reason='dispatcher_timeout'`.
+ *
+ * This is the safety net for the entire dispatch path. Any failure mode that
+ * leaves a row in a non-terminal state — SQS denial, worker boot crash, pool
+ * NOTIFY lost, network partition during a rolling deploy — gets cleaned up
+ * within `thresholdMinutes` instead of showing the user a fake "running"
+ * spinner forever. Idempotent: re-running it is harmless.
+ */
+export async function sweepStaleRuns(
+  thresholdMinutes = 5,
+): Promise<{ swept: string[] }> {
+  const rows = await db.execute<{ id: string }>(sql`
+    UPDATE public.cloud_runs
+       SET status = 'failed',
+           failed_at = NOW(),
+           completed_at = NOW(),
+           failure_reason = 'dispatcher_timeout',
+           error_message = 'No progress within ' || ${thresholdMinutes}::text || ' minutes — worker crash, SQS enqueue lost, or rolling deploy. Auto-failed by sweepStaleRuns.'
+     WHERE status IN ('pending', 'running')
+       AND COALESCE(last_progress_at, started_at, created_at) < NOW() - (${thresholdMinutes}::text || ' minutes')::interval
+   RETURNING id
+  `)
+  // drizzle's postgres-js `execute` returns the RowList array directly.
+  const swept = (rows as unknown as Array<{ id: string }>).map((r) => r.id)
+  if (swept.length > 0) {
+    // eslint-disable-next-line no-console
+    console.log('dispatch: sweepStaleRuns failed orphaned runs', {
+      count: swept.length,
+      ids: swept,
+      thresholdMinutes,
+    })
+  }
+  return { swept }
 }

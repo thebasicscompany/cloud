@@ -46,10 +46,17 @@ function startBrowserSignIn(landingUrl, onResult) {
   };
 
   server = http.createServer((req, res) => {
+    console.log("[auth-bridge]", req.method, req.url, "from", req.headers.origin || req.socket.remoteAddress);
     // The POST comes cross-origin from the landing page → allow it.
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "content-type");
+    // Chrome's Private Network Access blocks HTTPS→loopback POSTs unless the
+    // preflight opts in. Without this, the POST fails silently and the landing
+    // page falls back to the basicsoftware-app:// URL scheme.
+    if (req.headers["access-control-request-private-network"]) {
+      res.setHeader("Access-Control-Allow-Private-Network", "true");
+    }
     if (req.method === "OPTIONS") {
       res.writeHead(204).end();
       return;
@@ -83,10 +90,17 @@ function startBrowserSignIn(landingUrl, onResult) {
     });
   });
 
-  server.on("error", (err) => finish({ error: err && err.message }));
+  server.on("error", (err) => {
+    console.error("[auth-bridge] server error:", err && err.message);
+    finish({ error: err && err.message });
+  });
   server.listen(BRIDGE_PORT, "127.0.0.1", () => {
     const target = `${base}/desktop-login-bridge?desktopAuthPort=${BRIDGE_PORT}`;
-    shell.openExternal(target).catch((err) => finish({ error: err && err.message }));
+    console.log("[auth-bridge] listening on 127.0.0.1:" + BRIDGE_PORT + ", opening", target);
+    shell.openExternal(target).catch((err) => {
+      console.error("[auth-bridge] openExternal failed:", err && err.message);
+      finish({ error: err && err.message });
+    });
   });
 }
 

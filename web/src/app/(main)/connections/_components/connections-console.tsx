@@ -191,7 +191,20 @@ export function ConnectionsConsole({ data }: { data: ConnectionsData }) {
       };
       if (json.ok && json.redirectUrl) {
         toast.success(`Opening ${credentialLabel(toolkit)} connection…`);
-        window.open(json.redirectUrl, "_blank", "noopener,noreferrer");
+        // In Electron, `window.open(url, "_blank")` opens a fresh BrowserWindow
+        // with no cookies, so the user has to re-sign-in to authorize.
+        // openExternal routes to their default browser (their real Chrome)
+        // where they're already signed in — one-click authorize.
+        const bh = (
+          window as unknown as {
+            basichome?: { isDesktop?: boolean; openExternal?: (url: string) => Promise<{ ok?: boolean }> };
+          }
+        ).basichome;
+        if (bh?.isDesktop && typeof bh.openExternal === "function") {
+          void bh.openExternal(json.redirectUrl);
+        } else {
+          window.open(json.redirectUrl, "_blank", "noopener,noreferrer");
+        }
       } else {
         toast.error(json.error ?? "Could not start the connection.", {
           description: json.hint,

@@ -72,10 +72,19 @@ export default function PillPage() {
   async function startNarration() {
     let token: string;
     try {
-      const res = await fetch("/api/voice/token", { method: "POST" });
-      const data = (await res.json()) as { ok?: boolean; token?: string };
-      if (!res.ok || !data.ok || !data.token) throw new Error("no token");
-      token = data.token;
+      const bh = (window as unknown as {
+        basichome?: { isDesktop?: boolean; voiceCredentials?: () => Promise<{ ok?: boolean; token?: string }> };
+      }).basichome;
+      if (bh?.isDesktop && typeof bh.voiceCredentials === "function") {
+        const r = await bh.voiceCredentials();
+        if (!r?.ok || !r.token) throw new Error("no token");
+        token = r.token;
+      } else {
+        const res = await fetch("/api/voice/token", { method: "POST" });
+        const data = (await res.json()) as { ok?: boolean; token?: string };
+        if (!res.ok || !data.ok || !data.token) throw new Error("no token");
+        token = data.token;
+      }
     } catch {
       return; // narration is best-effort
     }

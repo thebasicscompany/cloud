@@ -4,7 +4,7 @@
 // renderer in a native desktop window, plus a tray and a global shortcut.
 // The overlay "pill" is part of the web app itself (the in-app overlay
 // component) — the shell does NOT spawn a separate pill window.
-const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, nativeImage, screen, desktopCapturer } = require("electron");
+const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, nativeImage, screen, desktopCapturer, shell } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const localBrowser = require("./local-browser");
@@ -16,6 +16,102 @@ const authContext = require("./auth-context");
 const authExternal = require("./auth-external");
 const authBridge = require("./auth-bridge");
 const { startWebServer, stopWebServer } = require("./web-server");
+
+// Override Electron's bundled name ("Electron") so `app.getName()`, the user
+// data path, and Windows/Linux UI labels say "Basics" in dev — matching the
+// packaged build's `productName`. macOS's app menu still reads from the
+// bundle's CFBundleName in Info.plist (patched separately by
+// scripts/setup-mac-deeplink.mjs).
+app.setName("Basics");
+
+// "Sign in via browser" has two return paths from the landing /desktop-login-bridge:
+//   1) POST to the loopback bridge on 127.0.0.1:34567 (preferred — auth-bridge.js)
+//   2) basicsoftware-app://auth?session=<base64url-json> (fallback when the POST
+//      can't reach us, e.g. browser PNA blocks, no bridge running yet, etc.)
+// Without a registered scheme the fallback on macOS launches a bare Electron from
+// the npx cache (which shows the "To run a local app..." help screen) instead of
+// routing back to us — so register the scheme on every launch and handle both the
+// Mac (open-url) and Windows (second-instance argv) dispatch paths.
+const AUTH_URL_SCHEME = "basicsoftware-app";
+if (process.defaultApp) {
+  // Dev (`npx electron .`): bare Electron has no Info.plist entry for our
+  // scheme, so encode the script path in the registration — otherwise macOS
+  // relaunches Electron with no args and you get the help screen.
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient(AUTH_URL_SCHEME, process.execPath, [path.resolve(process.argv[1])]);
+  }
+} else {
+  app.setAsDefaultProtocolClient(AUTH_URL_SCHEME);
+}
+
+// Single-instance lock: on Windows a deep link spawns a SECOND process and the
+// URL arrives as the last argv; route it to the already-running instance.
+if (!app.requestSingleInstanceLock()) {
+  app.exit(0);
+}
+
+function decodeBridgeSession(encoded) {
+  // Mirrors the landing page's encodeSession: base64url of a UTF-8 JSON blob.
+  const b64 = encoded.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
+  return JSON.parse(Buffer.from(padded, "base64").toString("utf8"));
+}
+
+function handleAuthDeepLink(url) {
+  let payload;
+  try {
+    const session = new URL(url).searchParams.get("session");
+    if (!session) return;
+    payload = decodeBridgeSession(session);
+  } catch {
+    return;
+  }
+  if (!payload || !payload.access_token || !payload.refresh_token) return;
+  dispatchAuthSession({ access_token: payload.access_token, refresh_token: payload.refresh_token });
+}
+
+function dispatchAuthSession(payload) {
+  // Same IPC channel the loopback bridge uses (renderer subscribes via
+  // window.basichome.onAuthSession → supabase.auth.setSession).
+  const send = () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    mainWindow.show();
+    mainWindow.focus();
+    mainWindow.webContents.send("basichome:auth:session", payload);
+  };
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    if (app.isReady()) createMainWindow();
+    else app.whenReady().then(() => createMainWindow());
+  }
+  if (mainWindow && mainWindow.webContents.isLoading()) {
+    mainWindow.webContents.once("did-finish-load", send);
+  } else {
+    send();
+  }
+}
+
+// macOS: the OS dispatches the URL here whether we're cold-launching or
+// already running. preventDefault is required.
+app.on("open-url", (event, url) => {
+  event.preventDefault();
+  if (url && url.startsWith(`${AUTH_URL_SCHEME}://`)) handleAuthDeepLink(url);
+});
+
+// Windows: a second launch carries the URL in argv. Pull it out, dispatch,
+// and focus the existing window.
+app.on("second-instance", (_event, argv) => {
+  const url = Array.isArray(argv)
+    ? argv.find((a) => typeof a === "string" && a.startsWith(`${AUTH_URL_SCHEME}://`))
+    : null;
+  if (url) handleAuthDeepLink(url);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  } else {
+    createMainWindow();
+  }
+});
 
 // Background (always-on) Lens capture is OFF by default — it's a real resource
 // cost, so the user opts in (Settings → Capture) and the choice persists. Lazy
@@ -146,9 +242,12 @@ function createMainWindow() {
 }
 
 function trayImage() {
-  return nativeImage.createFromDataURL(
-    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
-  );
+  // Real Basics logo (build/icon.png is the 1024x1024 source). macOS menu-bar
+  // and Windows system-tray icons want ~16-18px; resize from the source so we
+  // don't ship a separate tiny asset. NOT marked as a template image — the
+  // logo is colored, and template requires monochrome with alpha.
+  const img = nativeImage.createFromPath(path.join(__dirname, "build", "icon.png"));
+  return img.isEmpty() ? img : img.resize({ width: 18, height: 18, quality: "best" });
 }
 
 app.whenReady().then(async () => {
@@ -164,6 +263,14 @@ app.whenReady().then(async () => {
       app.quit();
       return;
     }
+  }
+
+  // macOS dock icon: in dev mode the bundle's icon is the generic Electron
+  // atom — override it with the Basics logo at runtime. No-op on win/linux
+  // (app.dock only exists on darwin).
+  if (process.platform === "darwin" && app.dock) {
+    const dockImg = nativeImage.createFromPath(path.join(__dirname, "build", "icon.png"));
+    if (!dockImg.isEmpty()) app.dock.setIcon(dockImg);
   }
 
   createMainWindow();
@@ -190,7 +297,8 @@ app.whenReady().then(async () => {
     // invisible. NOTE: the current source is a 1x1 transparent PNG placeholder —
     // a real ~18x18 monochrome template PNG asset is still needed to actually
     // show an icon in the menu bar (see report TODO).
-    if (process.platform === "darwin") trayImg.setTemplateImage(true);
+    // Don't flag as a Template image — the Basics logo is colored, not
+    // monochrome, so templating would just erase the green.
     tray = new Tray(trayImg);
     tray.setToolTip("Basics");
     tray.setContextMenu(
@@ -348,6 +456,98 @@ ipcMain.handle("basichome:auth:set", (_e, payload) => {
 ipcMain.handle("basichome:auth:clear", () => {
   authContext.clearToken();
   return { ok: true };
+});
+
+// Same exchange the renderer's same-origin route does, but run from MAIN — no
+// CORS, no Supabase cookies. The renderer hands us the Supabase access_token
+// (which it already has after setSession), we POST it to cloud/api, and store
+// the resulting workspace JWT so computer-use + Lens can read it. Returns the
+// JWT to the renderer so voice + same-origin /api routes can use it too.
+function apiBaseFromEnv() {
+  return (process.env.BASICS_API_URL || process.env.API_BASE_URL || "https://api.trybasics.ai").replace(/\/+$/, "");
+}
+ipcMain.handle("basichome:auth:exchange-supabase", async (_e, payload) => {
+  const accessToken = payload && payload.access_token;
+  const workspaceId = payload && payload.workspace_id;
+  if (!accessToken) return { ok: false, error: "missing access_token" };
+  try {
+    const res = await fetch(`${apiBaseFromEnv()}/v1/auth/token`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(
+        workspaceId ? { supabase_access_token: accessToken, workspace_id: workspaceId } : { supabase_access_token: accessToken },
+      ),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      console.warn("[auth:exchange-supabase] cloud/api rejected:", res.status, body.slice(0, 200));
+      return { ok: false, status: res.status, error: body.slice(0, 200) };
+    }
+    const json = await res.json();
+    if (!json || !json.token) return { ok: false, error: "no token in response" };
+    authContext.setToken({ token: json.token });
+    return { ok: true, token: json.token, expires_at: json.expires_at };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+});
+
+// Open an arbitrary URL in the user's default browser. Used by the Chrome
+// remote-debugging setup helper to deep-link the user straight to
+// chrome://inspect#remote-debugging in their Chrome.
+//
+// `shell.openExternal` doesn't route chrome:// URLs through Chrome on macOS
+// (there's no global LaunchServices handler for that scheme), so for those we
+// fall back to `open -a "Google Chrome" <url>`.
+const { spawn: spawnProc } = require("node:child_process");
+ipcMain.handle("basichome:shell:open-external", async (_e, url) => {
+  if (typeof url !== "string" || !url) return { ok: false, error: "missing url" };
+  try {
+    // chrome:// URLs aren't handled by macOS's default URL routing and
+    // shell.openExternal is also unreliable for them on Windows — spawn
+    // Chrome directly so the user lands on chrome://inspect every time.
+    if (/^chrome:\/\//i.test(url)) {
+      if (process.platform === "darwin") {
+        spawnProc("open", ["-a", "Google Chrome", url], { detached: true, stdio: "ignore" }).unref();
+        return { ok: true };
+      }
+      if (process.platform === "win32") {
+        // `start "" chrome <url>` resolves chrome.exe via PATH/registry — works
+        // for default Chrome installs without hardcoding Program Files paths.
+        spawnProc("cmd", ["/c", "start", "", "chrome", url], { detached: true, stdio: "ignore", shell: false }).unref();
+        return { ok: true };
+      }
+    }
+    await shell.openExternal(url);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+});
+
+// Voice (Deepgram) credentials: the renderer can't call cloud/api directly
+// (CORS) and the same-origin Next route depends on Supabase cookies that may
+// not be set in the bridge sign-in flow. Proxy through main using the
+// already-stored workspace JWT.
+ipcMain.handle("basichome:voice:credentials", async () => {
+  const ctx = await authContext.resolveContext();
+  if (!ctx || !ctx.token) return { ok: false, error: "no workspace token — sign in first" };
+  try {
+    const res = await fetch(`${ctx.apiBase}/v1/voice/credentials`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-workspace-token": ctx.token },
+      body: "{}",
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      return { ok: false, status: res.status, error: body.slice(0, 200) };
+    }
+    const json = await res.json();
+    if (!json || !json.deepgramToken) return { ok: false, error: "no deepgramToken in response" };
+    return { ok: true, token: json.deepgramToken, expiresIn: json.expiresIn ?? 3600 };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
 });
 
 // Sign-in: open the OAuth URL in the user's REAL browser (Google blocks embedded

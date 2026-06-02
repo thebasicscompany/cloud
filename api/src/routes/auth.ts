@@ -96,11 +96,17 @@ async function mintWorkspaceTokenForAccessToken(args: {
   // 3. Resolve the target workspace.
   let targetWorkspaceId = workspaceId
   if (!targetWorkspaceId) {
+    // Personal workspaces are 1:1 with an account, but in practice an account
+    // can ALSO be added as a member/admin of someone else's personal workspace
+    // (legacy / test data). Filter by role=owner so we only pick the workspace
+    // this account actually owns — otherwise `.maybeSingle()` blows up with
+    // PGRST116 "multiple rows" the moment those extra memberships exist.
     const { data: personal, error: personalError } = await admin
       .from('workspace_members')
       .select('workspace_id, workspaces!inner(id, type)')
       .eq('account_id', account.id)
       .eq('seat_status', 'active')
+      .eq('role', 'owner')
       .eq('workspaces.type', 'personal')
       .maybeSingle()
     if (personalError) {

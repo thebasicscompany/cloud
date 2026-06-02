@@ -198,8 +198,22 @@ function composeAutonomyContext(): string {
 You are running AUTONOMOUSLY in the cloud — headless, with NO human watching and NO way to answer a question. Stopping to ask anything HANGS the run; it never reaches a person. So:
 - NEVER ask the user a question, ask for clarification, or wait for confirmation/input. If you catch yourself wanting to ask, instead MAKE THE BEST DECISION yourself from sensible defaults and proceed. Acting on a reasonable assumption always beats stopping to ask.
 - Do NOT seek permission for routine work. Choose an approach, do it, verify the result, and report. Humans review the OUTPUT afterward and correct course if needed — that is the ONLY point a human enters the loop.
+- A SMALL MISMATCH between the user's phrasing and the actual content of a page/dataset is NOT a blocker. Reinterpret to the nearest reasonable thing and proceed. Examples: "rank the startups on YC RFS" → that page lists RFS *categories/ideas*, so rank those. "Find 10 competitors" but only 4 exist → list the 4. "Update the spreadsheet" but the doc is a Notion table → update the table. Stopping to explain that the user's noun was slightly off is the EXACT FAILURE MODE this directive forbids — writing a clarification answer instead of doing the work counts as bailing. Reframe silently and do the task.
 - The ONLY acceptable early stop is a hard external blocker you cannot work around: a gated site you must be signed into but aren't (call \`request_browser_login({host, reason})\`), or a required connection/credential that does not exist. Surface it with the proper tool, write up what you DID accomplish, then finish — never wait.
 - Bias hard toward finishing the task end-to-end on your own judgment. A completed run on a reasonable decision is the goal; a run that stalls asking what to do is a failure.
+
+NEVER FABRICATE. The most dangerous failure mode is "I can't reach the source so I'll write a plausible-sounding paragraph from training-data intuition instead." That is FORBIDDEN. The user trusts that every fact in your output came from work you did THIS run, not from what the model guessed. Concretely:
+- If a section of the task needs a gated site you can't reach (x.com / twitter.com / linkedin.com / a paywalled article / a logged-out app), you MUST call \`request_browser_login({host, reason})\` for that host. Do not work around it by inventing content.
+- If you would not be able to point to a specific tool call (a screenshot, a \`js\` extraction, a \`composio_call\` result, a SQL row) that produced a fact, you must NOT write that fact as a fact. Either omit it or caveat it explicitly ("could not verify — no [X] access on this run").
+- Forbidden examples: writing a "Twitter Signal Analysis" section when you never loaded x.com; listing "10 competitors per category" when you only searched for #1; quoting a "$50B market size" with no source. If you produce any of these, you have lied to the user and the run is a failure even if it returned "complete".
+
+ENUMERATE LOGINS UP FRONT. Before starting work, walk through the WHOLE task and identify every gated site/connection it will need. Call \`request_browser_login({host, reason})\` for EACH missing one in this SAME run — one call per host. Don't discover a login gap halfway through and silently fill it with guesses; that is fabrication.
+
+DO NOT REFERENCE \`/workspace/\` PATHS IN USER-VISIBLE OUTPUT. The container's \`/workspace/\` directory is ephemeral scratch — gone when the worker idle-stops. The user cannot open /workspace/anything from their app. If you produced a document, use the \`doc_write\` tool (it lands in the user's Documents area and persists) and reference THAT by title/slug. Phrases like "saved locally at /workspace/foo.md" or "you can find the file at /workspace/..." are misleading and forbidden.
+
+FILE FORMAT REQUESTS → \`doc_write\`, NEVER raw files. When the user asks for a markdown / .md / docx / .docx / pdf / .pdf / .csv / "file" / "spreadsheet" output, do NOT \`bash\` a heredoc into /workspace, do NOT \`write_file\` into the container fs — that's all ephemeral scratch the user can't reach. Instead: call \`doc_write({title, body})\` with the content as markdown. Then tell the user: "I created a Basics document called \"<title>\" — open the Documents area to view and download it as .md / .docx / .pdf." The Documents area has a built-in Download button that exports the doc in the format they asked for. \`doc_write\` is the ONLY persistent output channel for produced files; \`/workspace\` is invisible to the user.
+
+EVERY RESEARCH/REPORTING TASK MUST END WITH A "Sources" section that lists every URL you actually fetched and every tool call result you relied on. If a section of the report has no underlying source (gated, ran out of time, etc.), state that explicitly in the section itself. The Sources section is mandatory; its absence is itself evidence of fabrication and will fail the run.
 </autonomy>`;
 }
 
@@ -238,6 +252,14 @@ function readEnv(key: string): string {
   return v;
 }
 
+/** Like readEnv but returns undefined instead of throwing — used by the
+ * 1:1 `WORKSPACE_ID/RUN_ID/ACCOUNT_ID` fallback path in resolveBinding,
+ * where missing env is the EXPECTED state for pool-host launches. */
+function optionalEnv(key: string): string | undefined {
+  const v = process.env[key];
+  return v && v.length > 0 ? v : undefined;
+}
+
 interface SessionBinding {
   workspaceId: string;
   runId: string;
@@ -259,58 +281,93 @@ interface SessionBinding {
 }
 
 /** Resolve sessionID → {workspaceId, runId, accountId}. Tries the bindings
- * table first (H.3 pool flow); falls back to process.env (G.1b 1:1). */
+ * table first (H.3 pool flow); falls back to process.env (G.1b 1:1).
+ *
+ * Retries the DB lookup with backoff because the pool host inserts the
+ * binding row AFTER `POST /session` returns (worker/src/main.ts:564-565),
+ * and opencode-serve fires plugin hooks (e.g. `system-transform`) the
+ * moment the session is observable — so the first hook for a new session
+ * can race ahead of the binding write. 10 × 250ms = ~2.5s window, plenty
+ * to absorb the race without making boot feel sluggish.
+ *
+ * Falls back to env ONLY when all three of WORKSPACE_ID/RUN_ID/ACCOUNT_ID
+ * are present (legacy G.1b 1:1 mode). For pool-host launches none of those
+ * are set by the dispatcher (worker/dispatcher/handler.ts:185-197), so the
+ * fallback is a no-op and we throw a clear diagnostic message after the
+ * retries instead of a cryptic "missing env" three frames deeper.
+ */
 async function resolveBinding(
   databaseUrl: string,
   sessionID: string,
 ): Promise<SessionBinding> {
-  const sql = postgres(databaseUrl, { max: 1, prepare: false, idle_timeout: 5 });
-  try {
-    const rows = await sql<
-      Array<{
-        workspace_id: string;
-        run_id: string;
-        account_id: string;
-        automation_id: string | null;
-        dry_run: boolean | null;
-        browser_target: string | null;
-        relay_session: string | null;
-        ephemeral: boolean | null;
-      }>
-    >`
-      SELECT b.workspace_id, b.run_id, b.account_id, r.automation_id, r.dry_run,
-             r.browser_target, r.relay_session, r.ephemeral
-        FROM public.cloud_session_bindings b
-        LEFT JOIN public.cloud_runs r ON r.id = b.run_id
-       WHERE b.session_id = ${sessionID}
-       LIMIT 1
-    `;
-    if (rows[0]) {
-      const binding: SessionBinding = {
-        workspaceId: rows[0].workspace_id,
-        runId: rows[0].run_id,
-        accountId: rows[0].account_id,
-      };
-      if (rows[0].automation_id) binding.automationId = rows[0].automation_id;
-      if (rows[0].dry_run === true) binding.dryRun = true;
-      if (rows[0].browser_target) binding.browserTarget = rows[0].browser_target;
-      if (rows[0].relay_session) binding.relaySession = rows[0].relay_session;
-      if (rows[0].ephemeral === true) binding.ephemeral = true;
-      return binding;
+  const MAX_ATTEMPTS = 10;
+  const RETRY_MS = 250;
+  let lastDbError: unknown = null;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const sql = postgres(databaseUrl, { max: 1, prepare: false, idle_timeout: 5 });
+    try {
+      const rows = await sql<
+        Array<{
+          workspace_id: string;
+          run_id: string;
+          account_id: string;
+          automation_id: string | null;
+          dry_run: boolean | null;
+          browser_target: string | null;
+          relay_session: string | null;
+          ephemeral: boolean | null;
+        }>
+      >`
+        SELECT b.workspace_id, b.run_id, b.account_id, r.automation_id, r.dry_run,
+               r.browser_target, r.relay_session, r.ephemeral
+          FROM public.cloud_session_bindings b
+          LEFT JOIN public.cloud_runs r ON r.id = b.run_id
+         WHERE b.session_id = ${sessionID}
+         LIMIT 1
+      `;
+      if (rows[0]) {
+        const binding: SessionBinding = {
+          workspaceId: rows[0].workspace_id,
+          runId: rows[0].run_id,
+          accountId: rows[0].account_id,
+        };
+        if (rows[0].automation_id) binding.automationId = rows[0].automation_id;
+        if (rows[0].dry_run === true) binding.dryRun = true;
+        if (rows[0].browser_target) binding.browserTarget = rows[0].browser_target;
+        if (rows[0].relay_session) binding.relaySession = rows[0].relay_session;
+        if (rows[0].ephemeral === true) binding.ephemeral = true;
+        return binding;
+      }
+    } catch (e) {
+      // Real DB error (not "row not found") — stop retrying. The env
+      // fallback may still rescue us in 1:1 mode.
+      lastDbError = e;
+      console.error("plugin: cloud_session_bindings lookup error; not retrying", e);
+      await sql.end({ timeout: 2 }).catch(() => undefined);
+      break;
     }
-  } catch (e) {
-    console.error(
-      "plugin: opencode_session_bindings lookup failed; falling back to env",
-      e,
-    );
-  } finally {
     await sql.end({ timeout: 2 }).catch(() => undefined);
+    if (attempt < MAX_ATTEMPTS - 1) {
+      await new Promise((r) => setTimeout(r, RETRY_MS));
+    }
   }
-  return {
-    workspaceId: readEnv("WORKSPACE_ID"),
-    runId: readEnv("RUN_ID"),
-    accountId: readEnv("ACCOUNT_ID"),
-  };
+  // 1:1 env fallback. All three must be present together — partial state
+  // is broken and we'd rather fail clearly than start a session with the
+  // wrong workspace.
+  const workspaceId = optionalEnv("WORKSPACE_ID");
+  const runId = optionalEnv("RUN_ID");
+  const accountId = optionalEnv("ACCOUNT_ID");
+  if (workspaceId && runId && accountId) {
+    return { workspaceId, runId, accountId };
+  }
+  throw new Error(
+    `plugin: no cloud_session_bindings row for sessionID=${sessionID} after ` +
+      `${MAX_ATTEMPTS}×${RETRY_MS}ms and 1:1 env fallback is incomplete ` +
+      `(WORKSPACE_ID=${Boolean(workspaceId)} RUN_ID=${Boolean(runId)} ACCOUNT_ID=${Boolean(accountId)}). ` +
+      `The pool host should have written the binding via insertBinding() in main.ts ` +
+      `before invoking opencode session hooks.` +
+      (lastDbError instanceof Error ? ` Last DB error: ${lastDbError.message}` : ""),
+  );
 }
 
 async function buildRuntime(sessionID: string): Promise<PluginRuntime> {

@@ -342,7 +342,12 @@ export default $config({
     // ALB's AWS-assigned DNS name on port 80, so a clean account can come up
     // without a manual DNS step. Set DEPLOY_API_DOMAIN=1 (and add the ACM
     // CNAME at Vercel) to switch the ALB to the HTTPS custom domain.
-    const useApiCustomDomain = process.env.DEPLOY_API_DOMAIN === "1";
+    // Same opt-out-not-opt-in default as the relay: this used to silently rip
+    // the HTTPS listener off the api ALB whenever someone deployed without
+    // `DEPLOY_API_DOMAIN=1`, which broke every client of api.trybasics.ai with
+    // ERR_CONNECTION_REFUSED on 443 (and surfaced as "fetch failed" / "No
+    // workspace session" in the desktop app).
+    const useApiCustomDomain = process.env.DEPLOY_API_DOMAIN !== "0";
 
     // When a pre-validated cert ARN is supplied (cert validated out-of-band
     // via the Vercel DNS CNAME), use it directly so the deploy never blocks
@@ -401,6 +406,19 @@ export default $config({
         {
           actions: ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
           resources: [$interpolate`${artifactsBucket.arn}/workspaces/*`],
+        },
+        // Was a separate aws.iam.RolePolicy (`BasicsApiSqsSendPolicy`) but it
+        // kept getting deleted on every deploy because Pulumi's state for it
+        // was poisoned the first time the policy was attached out-of-band
+        // (2026-06-02 — IAM was missing in production after the relay/api
+        // domain gate teardown; restored via `aws iam put-role-policy`).
+        // Putting it through SST's permissions array bakes it into the role's
+        // single inline policy, which has never drifted. The dedicated
+        // RolePolicy resource is removed below. Queue arn is hardcoded
+        // because runsQueue is declared later in the file than apiService.
+        {
+          actions: ["sqs:SendMessage", "sqs:GetQueueAttributes"],
+          resources: ["arn:aws:sqs:us-east-1:635649352555:basics-runs.fifo"],
         },
       ],
       volumes: [
@@ -510,7 +528,13 @@ export default $config({
     // NOTE: serves ws:// (no TLS) for now per product decision — harden to wss
     // (CloudFront / custom domain) before non-test traffic carrying screens.
     // ---------------------------------------------------------------------
-    const useRelay = process.env.DEPLOY_RELAY === "1";
+    // Relay is part of production by default. Previously this was gated behind
+    // DEPLOY_RELAY=1 (opt-in), which meant any `sst deploy` run without the
+    // flag tore down CloudFront + the relay ALB — and the next deploy WITH the
+    // flag re-created CloudFront under a fresh `*.cloudfront.net` host, so
+    // Doppler's RELAY_WS_URL went stale every cycle. Opt-out via DEPLOY_RELAY=0
+    // when you specifically want to remove it.
+    const useRelay = process.env.DEPLOY_RELAY !== "0";
     const relayService = useRelay
       ? new sst.aws.Service("BasicsRelay", {
           cluster,
@@ -1003,26 +1027,11 @@ export default $config({
       }`,
     });
 
-    // Phase H follow-up — api control-plane needs to enqueue runs via the
-    // basics-runs.fifo queue. POST /v1/runs and POST /v1/schedules/:id/test
-    // both INSERT agent_runs + SendMessage to this queue.
-    new aws.iam.RolePolicy("BasicsApiSqsSendPolicy", {
-      role: apiService.taskRole.name,
-      name: "basics-api-sqs-send-policy",
-      policy: $interpolate`{
-        "Version": "2012-10-17",
-        "Statement": [
-          {
-            "Effect": "Allow",
-            "Action": [
-              "sqs:SendMessage",
-              "sqs:GetQueueAttributes"
-            ],
-            "Resource": "${runsQueue.arn}"
-          }
-        ]
-      }`,
-    });
+    // (Phase H — basics-runs.fifo SendMessage permission was previously a
+    // separate `aws.iam.RolePolicy("BasicsApiSqsSendPolicy")` here; it kept
+    // getting torn down by Pulumi state drift on every deploy. Folded into
+    // `apiService.permissions` at line ~411 so it lives in the single
+    // SST-managed `inline` policy and stops disappearing.)
 
     // Managed client parity — the API task serves editable workspace file
     // routes directly from the shared EFS access point mounted at /workspaces.

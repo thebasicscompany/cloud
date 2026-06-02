@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { ChevronRight, Clock, Loader2, Pencil, Plus, Trash2 } from "@/icons";
+import { ChevronRight, Clock, Download, Loader2, Pencil, Plus, Trash2 } from "@/icons";
 import { resolveAppIcon } from "@/lib/app-icons";
 
 import { Badge } from "@/components/ui/badge";
@@ -143,10 +143,35 @@ function DocReader({ slug, onClose }: { slug: string; onClose: () => void }) {
             </DialogDescription>
           </div>
           {doc ? (
-            <Button type="button" size="sm" variant="outline" className="mr-8 shrink-0" onClick={() => setEditing(true)}>
-              <Pencil className="size-4" />
-              Edit
-            </Button>
+            <div className="mr-8 flex shrink-0 items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  // Generate a .md file from the document body and trigger a
+                  // download. No server round-trip — the body is already in
+                  // memory. Filename uses the slug so the user gets a stable
+                  // name even if the title has weird characters.
+                  const blob = new Blob([doc.body], { type: "text/markdown;charset=utf-8" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `${doc.slug || "document"}.md`;
+                  document.body.appendChild(a);
+                  a.click();
+                  a.remove();
+                  setTimeout(() => URL.revokeObjectURL(url), 1000);
+                }}
+              >
+                <Download className="size-4" />
+                Download
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setEditing(true)}>
+                <Pencil className="size-4" />
+                Edit
+              </Button>
+            </div>
           ) : null}
         </DialogHeader>
 

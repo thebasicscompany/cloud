@@ -8,7 +8,7 @@
 // pointed at it. Closing the app — or Ctrl+C — tears BOTH down (no stray dev
 // server left running). This replaces the old two-step "start server, then
 // start app" dance.
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import http from 'node:http'
@@ -17,6 +17,14 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const webDir = join(root, 'web')
 const desktopDir = join(root, 'desktop')
 const APP_URL = 'http://localhost:3000'
+
+// macOS: register our local Electron.app as the basicsoftware-app:// handler
+// BEFORE we launch the app, so the "Sign in via browser" deep-link fallback
+// routes back to THIS Electron instead of whichever Electron.app LaunchServices
+// picked from the (shared) com.github.electron bundle id pool.
+if (process.platform === 'darwin') {
+  spawnSync(process.execPath, [join(root, 'scripts', 'setup-mac-deeplink.mjs')], { stdio: 'inherit' })
+}
 
 const children = []
 let shuttingDown = false
@@ -81,12 +89,21 @@ async function waitThenLaunchApp() {
   for (let i = 0; i < 60 && !shuttingDown; i++) {
     if (await ping()) {
       console.log('[dev:electron] web up — opening the app')
-      const electron = spawn('npx', ['electron', '.'], {
-        cwd: desktopDir,
-        stdio: 'inherit',
-        shell: true,
-        env: { ...process.env, BASICS_APP_URL: APP_URL },
-      })
+      // Wrap in `doppler run` so the Electron MAIN process gets the same env
+      // (API_BASE_URL, Supabase keys, RELAY_WS_URL, …) the renderer already
+      // gets via the Next dev server. Without this, the desktop loops and
+      // preload fall back to the prod defaults and computer-use/voice can't
+      // see a workspace token.
+      const electron = spawn(
+        'doppler',
+        ['run', '--project', 'electron_app', '--config', 'dev', '--', 'npx', 'electron', '.'],
+        {
+          cwd: desktopDir,
+          stdio: 'inherit',
+          shell: true,
+          env: { ...process.env, BASICS_APP_URL: APP_URL },
+        },
+      )
       children.push(electron)
       electron.on('exit', () => {
         console.log('[dev:electron] app closed — stopping the dev server')

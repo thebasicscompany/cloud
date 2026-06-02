@@ -13,6 +13,19 @@
 import type postgres from "postgres";
 import type { ToolApprovalDecision } from "@basics/shared";
 
+import { DEFAULT_DENYLIST } from "../composio/denylist.js";
+
+/** Match the static default denylist (sync — no policy DB lookup needed).
+ * Workspace-custom denylist entries are enforced at execute time as a hard
+ * block; the approval inspector only needs to know about the *default*
+ * patterns so the prompt can be visually upgraded to destructive. */
+function matchesDefaultDenylist(toolSlug: string): RegExp | null {
+  for (const re of DEFAULT_DENYLIST) {
+    if (re.test(toolSlug)) return re;
+  }
+  return null;
+}
+
 // Plan §C.3 (and §B.8 denylist) share the same "this slug mutates"
 // regex set. The denylist HARD-blocks; the approval gate SOFT-pauses.
 // Once a workspace allow-lists a particular slug (B.8), this approval
@@ -54,10 +67,27 @@ export function sendSmsApproval(_args: {
 export function composioCallApproval(args: {
   toolSlug: string;
 }): ToolApprovalDecision {
+  const denyPattern = matchesDefaultDenylist(args.toolSlug);
+  if (denyPattern) {
+    // Default denylist match — approval is the user's explicit OVERRIDE of
+    // the system's safety default. Tag as destructive so the UI can render
+    // the prompt with louder treatment (and so composio_call's execute()
+    // gate knows to allow it through after approval lands).
+    return {
+      required: true,
+      reason:
+        `composio_call ${args.toolSlug} — DESTRUCTIVE. Matches the default safety denylist ` +
+        `pattern (${denyPattern.source}). Approving will run it anyway.`,
+      risk: 'destructive',
+      destructive: true,
+      expiresInSeconds: DEFAULT_TTL_4H_SECONDS,
+    };
+  }
   if (COMPOSIO_MUTATING_RE.test(args.toolSlug)) {
     return {
       required: true,
       reason: `composio_call ${args.toolSlug} (mutating external state)`,
+      risk: 'medium',
       expiresInSeconds: DEFAULT_TTL_4H_SECONDS,
     };
   }

@@ -22,7 +22,9 @@ let _pushed = null; // { token, userRole } pushed by the renderer
 let _cached = null; // last resolved context
 
 function apiBase() {
-  return (process.env.BASICS_API_URL || DEFAULT_API_BASE).trim().replace(/\/+$/, "");
+  // BASICS_API_URL is the explicit override; API_BASE_URL is the name Doppler
+  // (and the renderer) already uses, so accept either.
+  return (process.env.BASICS_API_URL || process.env.API_BASE_URL || DEFAULT_API_BASE).trim().replace(/\/+$/, "");
 }
 
 // Read a JWT's claims WITHOUT verifying — cloud/api verifies the signature; the

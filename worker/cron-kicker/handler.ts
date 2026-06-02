@@ -65,6 +65,32 @@ function db(): ReturnType<typeof postgres> {
   return _sql;
 }
 
+/**
+ * Stale-run sweeper — safety net for any failure path that leaves a
+ * cloud_runs row stuck in `pending` or `running` indefinitely (worker crash,
+ * SQS enqueue lost, NOTIFY dropped, rolling-deploy disruption, etc.). Marks
+ * such rows as `failed` with `failure_reason='dispatcher_timeout'` so the UI
+ * stops showing a fake spinner and the user gets a real failure they can
+ * retry. Idempotent and cheap — single UPDATE bounded by the WHERE clause.
+ */
+async function sweepStaleRuns(
+  sql: ReturnType<typeof postgres>,
+  thresholdMinutes = 5,
+): Promise<string[]> {
+  const rows = await sql<Array<{ id: string }>>`
+    UPDATE public.cloud_runs
+       SET status = 'failed',
+           failed_at = NOW(),
+           completed_at = NOW(),
+           failure_reason = 'dispatcher_timeout',
+           error_message = 'No progress within ' || ${thresholdMinutes} || ' minutes — worker crash, SQS enqueue lost, or rolling deploy. Auto-failed by cron-kicker sweepStaleRuns.'
+     WHERE status IN ('pending', 'running')
+       AND COALESCE(last_progress_at, started_at, created_at) < NOW() - (${thresholdMinutes} || ' minutes')::interval
+   RETURNING id
+  `;
+  return rows.map((r) => r.id);
+}
+
 function substituteVars(s: string, vars: Record<string, string> = {}): string {
   return Object.entries(vars).reduce(
     (acc, [k, v]) => acc.replaceAll(`{${k}}`, v),
@@ -598,6 +624,21 @@ export async function handler(event: KickerInput): Promise<
     const sql = db();
     const chainDepth = typeof event.chainDepth === "number" ? event.chainDepth : 0;
     const sweepStart = Date.now();
+    // Piggyback the stale-run sweep on this schedule — it's already firing on
+    // a tight cron and we get orphan cleanup "for free" instead of standing up
+    // a second EventBridge rule. Best-effort: if the sweep throws we still run
+    // the composio poll, which is the original purpose of this tick.
+    try {
+      const sweptIds = await sweepStaleRuns(sql, 5);
+      if (sweptIds.length > 0) {
+        console.log("kicker(poll): sweepStaleRuns failed orphan runs", {
+          count: sweptIds.length,
+          ids: sweptIds,
+        });
+      }
+    } catch (e) {
+      console.error("kicker(poll): sweepStaleRuns failed (non-fatal)", e);
+    }
     const result = await pollComposioTriggers(sql, queueUrl);
     const durationMs = Date.now() - sweepStart;
     console.log("kicker(poll): sweep done", { ...result, chainDepth, durationMs });

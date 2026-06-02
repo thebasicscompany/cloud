@@ -154,6 +154,30 @@
     -webkit-app-region: no-drag;
   }
 
+}
+
+/*
+ * macOS dev/packaged: the window uses `titleBarStyle: hidden` with the
+ * traffic lights at x:14, y:14, so they overlap the sidebar's top edge.
+ * Push the sidebar header down so the logo clears the lights, and make
+ * the strip a draggable window region (interactive children opt out).
+ *
+ * Lives OUTSIDE @layer base so it wins over Tailwind utilities (Tailwind's
+ * `p-2` on the SidebarHeader is in @layer utilities, which beats @layer base
+ * regardless of selector specificity).
+ */
+.electron-darwin [data-slot="sidebar-header"] {
+  /* Traffic lights sit at y:14 and are ~14px tall, so the logo needs a
+   * generous gap (~44px from the top) to feel separate from them. */
+  padding-top: 2.75rem;
+  -webkit-app-region: drag;
+}
+.electron-darwin [data-slot="sidebar-header"] :is(a, button, [role="button"], [data-slot]) {
+  -webkit-app-region: no-drag;
+}
+
+@layer base {
+
   *::-webkit-scrollbar-track {
     background: transparent;
   }

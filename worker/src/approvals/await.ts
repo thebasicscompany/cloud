@@ -132,6 +132,10 @@ export async function awaitApproval(
 
   // (c) Emit the activity event. Include the raw token so a downstream
   // notifier (C.6) can mint the signed link without re-deriving it.
+  // `risk` / `destructive` come from the per-call approval inspector
+  // (e.g. `composioCallApproval`) and let the UI render a louder approval
+  // card when the user is being asked to override the default safety
+  // denylist. Default risk is 'medium'.
   await ctx.publish({
     type: "approval_requested",
     payload: {
@@ -141,6 +145,8 @@ export async function awaitApproval(
       tool_call_id: spec.toolCallId,
       args_preview: argsPreview,
       reason,
+      risk: spec.decision.risk ?? 'medium',
+      destructive: Boolean(spec.decision.destructive),
       expires_at: expiresAt.toISOString(),
       access_token: tokenRaw,
     },
