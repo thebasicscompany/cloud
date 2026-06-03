@@ -3,8 +3,11 @@
 import { useState } from "react";
 
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 
-import { ArrowUpDown, Building2, Check, CircleUser, LogOut, Plus } from "@/icons";
+import Link from "next/link";
+
+import { ArrowUpDown, Building2, Check, CircleUser, LogOut, Pencil, Plus } from "@/icons";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -37,8 +40,13 @@ import type { MyWorkspace } from "@/lib/workspaces";
  */
 export function WorkspaceSwitcher({ workspaces }: { readonly workspaces: readonly MyWorkspace[] }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { isMobile } = useSidebar();
   const [busy, setBusy] = useState(false);
+  const [renaming, setRenaming] = useState<MyWorkspace | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const [renameSubmitting, setRenameSubmitting] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState("");
@@ -57,9 +65,48 @@ export function WorkspaceSwitcher({ workspaces }: { readonly workspaces: readonl
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ workspaceId: id }),
       });
-      if (res.ok) router.refresh();
+      if (res.ok) {
+        // router.refresh() invalidates server-component data, but client
+        // components using React Query keep their cached payload for the
+        // OLD workspace (agents, runs, etc.) — so the user sees stale
+        // data after the switch. Clear ALL query caches so every client
+        // re-fetches under the new workspace JWT.
+        queryClient.clear();
+        router.refresh();
+      }
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function renameWorkspace() {
+    if (!renaming) return;
+    const name = renameValue.trim();
+    if (!name) {
+      setRenameError("Name can't be empty.");
+      return;
+    }
+    setRenameSubmitting(true);
+    setRenameError(null);
+    try {
+      const res = await fetch(`/api/workspace/${encodeURIComponent(renaming.id)}/rename`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || !data.ok) {
+        setRenameError(data.error ?? "Couldn't rename. Try again.");
+        return;
+      }
+      setRenaming(null);
+      setRenameValue("");
+      // Workspace list + everything in this workspace re-fetches with the
+      // new name.
+      queryClient.clear();
+      router.refresh();
+    } finally {
+      setRenameSubmitting(false);
     }
   }
 
@@ -157,6 +204,28 @@ export function WorkspaceSwitcher({ workspaces }: { readonly workspaces: readonl
               className="gap-2"
               onSelect={(e) => {
                 e.preventDefault();
+                setRenameValue(active.name);
+                setRenameError(null);
+                setRenaming(active);
+              }}
+            >
+              <div className="flex size-6 items-center justify-center rounded-md border">
+                <Pencil className="size-3.5 shrink-0" />
+              </div>
+              Rename {active.name}
+            </DropdownMenuItem>
+            <DropdownMenuItem className="gap-2" asChild>
+              <Link href="/team">
+                <div className="flex size-6 items-center justify-center rounded-md border">
+                  <Building2 className="size-3.5 shrink-0" />
+                </div>
+                Manage team &amp; invites
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="gap-2"
+              onSelect={(e) => {
+                e.preventDefault();
                 setCreateOpen(true);
               }}
             >
@@ -219,6 +288,46 @@ export function WorkspaceSwitcher({ workspaces }: { readonly workspaces: readonl
               </Button>
               <Button onClick={() => void createTeam()} disabled={creating || !newName.trim()}>
                 {creating ? "Creating…" : "Create team"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={renaming !== null}
+          onOpenChange={(o) => {
+            if (!o) {
+              setRenaming(null);
+              setRenameError(null);
+            }
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Rename workspace</DialogTitle>
+              <DialogDescription>
+                Give this workspace a name that distinguishes it from your others.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2">
+              <Input
+                autoFocus
+                placeholder="Workspace name"
+                value={renameValue}
+                maxLength={60}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void renameWorkspace();
+                }}
+              />
+              {renameError ? <p className="text-destructive text-sm">{renameError}</p> : null}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setRenaming(null)} disabled={renameSubmitting}>
+                Cancel
+              </Button>
+              <Button onClick={() => void renameWorkspace()} disabled={renameSubmitting || !renameValue.trim()}>
+                {renameSubmitting ? "Saving…" : "Save"}
               </Button>
             </DialogFooter>
           </DialogContent>

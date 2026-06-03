@@ -483,3 +483,40 @@ teamRoute.post('/create-workspace', requireWorkspaceJwt, async (c) => {
 
   return c.json({ ok: true, workspace: { id: wsId, name, type: 'team', slug } })
 })
+
+// ─── POST /workspaces/:id/rename — rename a workspace (owner/admin only) ─────
+//
+// Scoped to the JWT's workspace_id ONLY (path id must match) so a member of
+// workspace A can't rename workspace B by guessing its id. Owner/admin can
+// rename personal workspaces too — useful when a user has multiple "Personal"
+// workspaces and needs to distinguish them.
+teamRoute.post('/workspaces/:id/rename', requireWorkspaceJwt, async (c) => {
+  const id = c.req.param('id')
+  if (id !== c.var.workspace.workspace_id) {
+    return c.json({ ok: false, error: 'You can only rename the workspace you are in.' }, 403)
+  }
+  if (!hasRole(c.var.workspace.role ?? 'member', 'admin')) {
+    return c.json({ ok: false, error: 'Only owners and admins can rename a workspace.' }, 403)
+  }
+  let body: { name?: unknown } = {}
+  try {
+    body = (await c.req.json()) as typeof body
+  } catch {
+    /* tolerate */
+  }
+  const name = typeof body.name === 'string' ? body.name.trim() : ''
+  if (!name) return c.json({ ok: false, error: 'Workspace name is required.' }, 400)
+  if (name.length > 60) return c.json({ ok: false, error: 'Workspace name is too long.' }, 400)
+
+  const supabase = supabaseAdmin()
+  const upd = await supabase
+    .from('workspaces')
+    .update({ name })
+    .eq('id', id)
+    .select('id, name')
+    .single()
+  if (upd.error) {
+    return c.json({ ok: false, error: upd.error.message }, 400)
+  }
+  return c.json({ ok: true, name: upd.data?.name ?? name })
+})
