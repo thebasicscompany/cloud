@@ -130,7 +130,7 @@ export function CreateAgentCanvas() {
   };
 
   return (
-    <div className="-m-4 grid h-[calc(100svh-3rem)] grid-cols-[380px_1fr] gap-0 overflow-hidden bg-background md:-m-6 md:-mb-28">
+    <div className="-m-4 grid h-[calc(100svh-4rem)] max-h-[calc(100svh-4rem)] grid-cols-[380px_1fr] gap-0 overflow-hidden bg-background md:-m-6 md:-mb-28">
       {/* ── LEFT: Basics chat ──────────────────────────────────────────── */}
       <div className="flex h-full min-h-0 flex-col border-r bg-card">
         <div className="flex items-center gap-2 border-b px-4 py-3">
