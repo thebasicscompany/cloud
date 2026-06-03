@@ -95,6 +95,16 @@ async function loadHelpersForRun(
   // cap when applicable.
   limit = 12,
 ): Promise<LoadedHelperSummary[]> {
+  // Ranking: automation-scoped helpers come first (always relevant to THIS
+  // run). Then within each scope rank by a usage signal — recently-used
+  // helpers that have succeeded more than failed beat ones that have never
+  // been called or that mostly fail. Falls back to alphabetical for ties
+  // and for helpers that have never been used (last_used_at IS NULL).
+  //
+  // success_rate is (success + 1) / (success + failure + 2) — Laplace
+  // smoothed so a single failure on a new helper doesn't tank it to 0.
+  // last_used_at NULLS LAST keeps brand-new helpers visible behind proven
+  // ones rather than burying them.
   const rows = await sql<LoadedHelperSummary[]>`
     SELECT name, description, args_schema, helper_version,
            automation_id::text AS automation_id
@@ -102,7 +112,11 @@ async function loadHelpersForRun(
      WHERE workspace_id = ${workspaceId}::uuid
        AND active = true
        AND (automation_id IS NULL ${automationId ? sql` OR automation_id = ${automationId}::uuid` : sql``})
-     ORDER BY (automation_id IS NOT NULL) DESC, name ASC
+     ORDER BY (automation_id IS NOT NULL) DESC,
+              ((COALESCE(success_count, 0) + 1.0) /
+               (COALESCE(success_count, 0) + COALESCE(failure_count, 0) + 2.0)) DESC,
+              last_used_at DESC NULLS LAST,
+              name ASC
      LIMIT ${limit}
   `;
   return rows;

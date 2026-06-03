@@ -1,8 +1,10 @@
 import type { Handler } from 'hono'
 import { getConfig } from '../config.js'
 import gatewayApp from '../gateway/index.js'
+import { getSubscription, monthToDateManagedCents } from '../lib/billing.js'
 import { DatabaseUnavailableError } from '../lib/errors.js'
 import type { WorkspaceToken } from '../lib/jwt.js'
+import { monthlyManagedCreditPoolCents } from '../lib/plan-limits.js'
 import type { AuthenticatedWorkspaceApiKey } from '../lib/workspace-api-keys.js'
 import { recordUsage } from '../lib/metering.js'
 import { teeForUsage } from '../lib/tee-for-usage.js'
@@ -139,6 +141,39 @@ export const gatewayCredentialBridge: Handler<{ Variables: Vars }> = async (c) =
   }
 
   c.set('usageTag', resolved.usageTag)
+
+  // PHASE-1-3 item 2: enforce monthly managed-credit pool. Only gates POOLED
+  // (basics_managed) calls — BYOK keys spend the user's own credit and are
+  // unaffected. Pool size = plan.perSeatMonthlyManagedCredit × seat_count;
+  // unlimited (null) plans skip the check entirely.
+  if (resolved.usageTag === 'basics_managed') {
+    try {
+      const sub = await getSubscription(ws.workspace_id)
+      const seatCount = sub?.seat_count ?? 1
+      const pool = monthlyManagedCreditPoolCents(ws.plan, seatCount)
+      if (pool !== null) {
+        const used = await monthToDateManagedCents(ws.workspace_id)
+        if (used >= pool) {
+          return c.json(
+            {
+              error: 'managed_credit_exhausted',
+              message: `Your plan's monthly managed-LLM budget ($${(pool / 100).toFixed(2)}) is used up. Switch to your own provider key (BYOK) in Settings, wait for next month's reset, or upgrade.`,
+              limitCents: pool,
+              usedCents: used,
+            },
+            402,
+          )
+        }
+      }
+    } catch (err) {
+      // Fail-OPEN on the gate so a transient billing-read failure doesn't
+      // brick the whole managed-LLM surface. Logged so we notice in metrics.
+      logger.warn(
+        { workspaceId: ws.workspace_id, err: (err as Error).message },
+        'gateway-credential-bridge: managed-credit gate read failed — allowing call',
+      )
+    }
+  }
 
   // Rewrite headers + URL for the gateway. We:
   //   - Drop the daemon's `Authorization: Bearer <workspace-jwt>` so the

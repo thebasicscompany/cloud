@@ -87,6 +87,16 @@ async function validateComposioWebhookTriggers(
   triggers: AnyTrigger[],
 ): Promise<TriggerValidationFailure[]> {
   const failures: TriggerValidationFailure[] = []
+
+  // PHASE-1-3 item 9 test-failure fix: lazily construct ComposioClient only
+  // when there's actually a composio_webhook trigger to validate. Eager
+  // construction threw in test envs without COMPOSIO_API_KEY, so the early-
+  // exit 404/409 paths all returned 500 — masking real handler bugs and
+  // breaking the test suite. Lazy construction is also a tiny perf win on
+  // schedule-only / manual-only automations.
+  const hasWebhookTrigger = triggers.some((t) => t.type === 'composio_webhook')
+  if (!hasWebhookTrigger) return failures
+
   const client = new ComposioClient()
 
   // Memoise per-slug schema fetches in case the same trigger appears

@@ -215,6 +215,17 @@ export const helper_call = defineTool({
           ok: true,
         },
       });
+      // Bump usage signals so the loader can rank this helper higher on
+      // future runs. Best-effort: a stats-update failure must not affect
+      // the user-visible result of the call.
+      try {
+        await sql`
+          UPDATE public.cloud_agent_helpers
+             SET success_count = COALESCE(success_count, 0) + 1,
+                 last_used_at = now()
+           WHERE id = ${helper.id}::uuid
+        `;
+      } catch { /* non-fatal */ }
       return { kind: "json" as const, json: result ?? null };
     } catch (e) {
       const latencyMs = Date.now() - t0;
@@ -233,6 +244,14 @@ export const helper_call = defineTool({
           message,
         },
       });
+      try {
+        await sql`
+          UPDATE public.cloud_agent_helpers
+             SET failure_count = COALESCE(failure_count, 0) + 1,
+                 last_used_at = now()
+           WHERE id = ${helper.id}::uuid
+        `;
+      } catch { /* non-fatal */ }
       return {
         kind: "error" as const,
         message: `helper "${helperName}" ${code}: ${message}. Call the underlying tools directly, then helper_write(supersedes_helper_id=${helper.id}) with the fix.`,

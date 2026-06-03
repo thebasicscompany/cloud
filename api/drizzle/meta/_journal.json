@@ -239,6 +239,27 @@
       "when": 1780445000000,
       "tag": "0034_client_agents",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1780455000000,
+      "tag": "0035_helper_usage_signals",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1780456000000,
+      "tag": "0036_subscriptions_invitations",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1780457000000,
+      "tag": "0037_resource_visibility",
+      "breakpoints": true
     }
   ]
 }

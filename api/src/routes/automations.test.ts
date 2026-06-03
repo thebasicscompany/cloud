@@ -670,7 +670,13 @@ describe('POST /v1/automations/:id/run', () => {
     const sentBody = JSON.parse(sentInput.input.MessageBody) as Record<string, unknown>
     expect(sentBody.runId).toBe(body.runId)
     expect(sentBody.workspaceId).toBe(TEST_WORKSPACE_ID)
-    expect(sentBody.goal).toBe('do the thing')
+    // The dispatch path wraps the raw automation goal in a live-run prompt
+    // envelope (wrapAutomationGoal — LIVE-RUN RULES, J.16 state-verification,
+    // etc.) before it goes to SQS. The wrapped body MUST contain the raw
+    // goal text somewhere; strict equality on the raw goal was the old
+    // assertion and was wrong from the moment the wrapper landed.
+    expect(sentBody.goal).toEqual(expect.stringContaining('do the thing'))
+    expect(sentBody.goal).toEqual(expect.stringContaining('EXECUTING automation'))
     expect(sentBody.automationId).toBe(TEST_AUTOMATION_ID)
     expect(sentBody.automationVersion).toBe(3)
     expect(sentBody.triggeredBy).toBe('manual')

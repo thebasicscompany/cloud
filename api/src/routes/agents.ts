@@ -89,6 +89,7 @@ interface AgentRow {
   schedule: unknown
   automation_id: string | null
   created_by: string
+  visibility?: string
   created_at: string
   updated_at: string
 }
@@ -96,7 +97,7 @@ interface AgentRow {
 async function loadAgent(ws: string, id: string): Promise<AgentRow | null> {
   const rows = (await db.execute(sql`
     SELECT id, workspace_id, account_id, name, description, avatar, instructions,
-           target, tools, schedule, automation_id, created_by,
+           target, tools, schedule, automation_id, created_by, visibility,
            created_at::text AS created_at, updated_at::text AS updated_at
       FROM public.client_agents
      WHERE id = ${id} AND workspace_id = ${ws}
@@ -256,13 +257,23 @@ agentsRoute.get(
   ),
   async (c) => {
     const ws = c.var.workspace!.workspace_id
+    const acc = c.var.workspace!.account_id
+    const role = c.var.workspace!.role ?? 'member'
     const q = c.req.valid('query')
+    // Visibility: shared rows visible to everyone in the workspace; private
+    // rows only to creator + admin/owner. Members + viewers don't see other
+    // members' private agents.
+    const isPrivileged = role === 'admin' || role === 'owner'
     const rows = (await db.execute(sql`
       SELECT id, workspace_id, account_id, name, description, avatar, instructions,
-             target, tools, schedule, automation_id, created_by,
+             target, tools, schedule, automation_id, created_by, visibility,
              created_at::text AS created_at, updated_at::text AS updated_at
         FROM public.client_agents
        WHERE workspace_id = ${ws}
+         AND (
+           visibility = 'shared'
+           ${isPrivileged ? sql`OR TRUE` : sql`OR created_by = ${acc}`}
+         )
        ORDER BY updated_at DESC
        LIMIT ${q.limit}
     `)) as unknown as Array<AgentRow>
@@ -275,9 +286,19 @@ agentsRoute.get(
 agentsRoute.get('/:id', async (c) => {
   const id = c.req.param('id')
   if (!UUID_RE.test(id)) return c.json({ error: 'invalid_id' }, 400)
+  // Visibility check: private agents are only visible to their creator and
+  // workspace admins/owners. Return the same 404 as "not found" so a private
+  // row's existence isn't leaked to other members.
+  const acc = c.var.workspace!.account_id
+  const role = c.var.workspace!.role ?? 'member'
+  const isPrivileged = role === 'admin' || role === 'owner'
   const ws = c.var.workspace!.workspace_id
   const row = await loadAgent(ws, id)
   if (!row) return c.json({ error: 'not_found' }, 404)
+  const rowVis = (row as unknown as { visibility?: string }).visibility ?? 'shared'
+  if (rowVis === 'private' && !isPrivileged && row.created_by !== acc) {
+    return c.json({ error: 'not_found' }, 404)
+  }
   return c.json({ agent: publicShape(row) })
 })
 
