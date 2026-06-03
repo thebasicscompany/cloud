@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { UserProfile } from "@/types/settings";
 
+import { MicPicker } from "./mic-picker";
+
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return "?";
@@ -71,6 +73,10 @@ export function ProfileSettingsView({ profile }: { readonly profile: UserProfile
             </Button>
           </div>
         </div>
+      </div>
+
+      <div className="max-w-md">
+        <MicPicker />
       </div>
     </div>
   );

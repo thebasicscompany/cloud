@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Mic } from "@/icons";
 
 import { Button } from "@/components/ui/button";
+import { preferredMicAudioConstraints } from "@/lib/preferred-mic";
 
 const DG_WS_URL =
   "wss://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&interim_results=true&punctuate=true";
@@ -99,7 +100,7 @@ export function VoiceButton({ onTranscript }: VoiceButtonProps) {
 
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: preferredMicAudioConstraints() });
     } catch {
       setError("Microphone access was denied.");
       return;

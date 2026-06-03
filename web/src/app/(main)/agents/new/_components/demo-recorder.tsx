@@ -15,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { preferredMicAudioConstraints } from "@/lib/preferred-mic";
 import type { AgentDraftPatch } from "@/types/agent";
 
 /**
@@ -151,7 +152,7 @@ export function DemoRecorder({ open, onClose, onPatch }: DemoRecorderProps) {
       // and bail.
       let mic: MediaStream;
       try {
-        mic = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mic = await navigator.mediaDevices.getUserMedia({ audio: preferredMicAudioConstraints() });
         micStreamRef.current = mic;
       } catch {
         const bh = (window as unknown as { basichome?: { permOpen?: (k: string) => Promise<unknown> } }).basichome;
