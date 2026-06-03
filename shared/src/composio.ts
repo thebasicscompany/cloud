@@ -298,9 +298,28 @@ export class ComposioClient {
   }
 
   async listAuthConfigs(): Promise<ComposioAuthConfig[]> {
-    return normalizeItems<ComposioAuthConfig>(
-      await this.request('/auth_configs?limit=1000&show_disabled=true'),
-    )
+    // Composio caps each page at 50 regardless of the `limit` param. The
+    // previous one-shot call returned only the first page alphabetical-
+    // descending, so any project with >50 enabled auth_configs would have
+    // toolkits past the first 50 (e.g. notion) silently appear "missing"
+    // - that was the "No enabled Composio auth config found for toolkit
+    // notion" bug. Walk the cursor until we exhaust all pages.
+    const out: ComposioAuthConfig[] = []
+    let cursor: string | undefined
+    for (let page = 0; page < 50; page++) {
+      const params = new URLSearchParams({ limit: '50', show_disabled: 'true' })
+      if (cursor) params.set('cursor', cursor)
+      const response = (await this.request(`/auth_configs?${params.toString()}`)) as {
+        items?: ComposioAuthConfig[]
+        next_cursor?: string | null
+      }
+      const items = response?.items
+      if (Array.isArray(items)) out.push(...items)
+      const nextCursor = response?.next_cursor
+      if (!nextCursor || nextCursor === cursor) break
+      cursor = nextCursor
+    }
+    return out
   }
 
   /**
