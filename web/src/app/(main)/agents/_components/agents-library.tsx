@@ -7,6 +7,7 @@ import { Robot } from "@phosphor-icons/react";
 
 import { Plus, Search } from "@/icons";
 
+import { SuggestionsCard } from "@/app/(main)/_components/suggestions-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAgents } from "@/hooks/queries/use-agents";
@@ -50,6 +51,14 @@ export function AgentsLibrary() {
             </Link>
           </Button>
         </div>
+      </div>
+
+      {/* Suggestions surface — Lens watches the screen passively (when
+       *  installed + opted in) and posts "I noticed you do X, want to
+       *  automate it?" entries to /v1/suggestions. Renders nothing when
+       *  there are no pending suggestions, so it never nags. */}
+      <div className="mb-4">
+        <SuggestionsCard />
       </div>
 
       {/* Negative margin + matching padding gives hover lifts/shadows room
