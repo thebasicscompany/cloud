@@ -81,7 +81,7 @@ export class PgSkillStore implements SkillStore {
          ${input.scope ?? "personal"},
          ${input.requiresIntegrations ?? []},
          ${input.sourceRunId ? [input.sourceRunId] : []},
-         ${input.pendingReview ?? true},
+         ${input.pendingReview ?? false},
          ${input.confidence ?? 0.5})
       RETURNING id, workspace_id, name, pending_review, scope, host
     `;

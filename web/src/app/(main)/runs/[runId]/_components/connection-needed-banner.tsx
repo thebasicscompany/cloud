@@ -38,7 +38,39 @@ export function ConnectionNeededBanner({ runId }: { runId: string }) {
   const [connecting, setConnecting] = useState<string | null>(null);
   const [resuming, setResuming] = useState(false);
   const [resumed, setResumed] = useState(false);
+  const [capturingFor, setCapturingFor] = useState<string | null>(null);
+  const [capturedHosts, setCapturedHosts] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+
+  // Push the user's local Chrome cookies for <host> into the workspace via the
+  // desktop bridge. Lands in workspace_browser_sites; the agent picks them up
+  // when the user clicks Resume (the worker reloads cookies on continue).
+  async function useMacCookies(host: string) {
+    interface CookieBridge {
+      exportLocalCookies?: (host: string) => Promise<{ ok?: boolean; error?: string; count?: number }>;
+    }
+    const bh = typeof window !== "undefined"
+      ? (window as unknown as { basichome?: CookieBridge }).basichome ?? null
+      : null;
+    if (!bh?.exportLocalCookies) {
+      setError("Open Basics on your Mac to use your local cookies.");
+      return;
+    }
+    setCapturingFor(host);
+    setError(null);
+    try {
+      const res = await bh.exportLocalCookies(host);
+      if (res?.ok) {
+        setCapturedHosts((s) => new Set(s).add(host));
+      } else {
+        setError(res?.error ?? `Couldn't capture ${host} cookies from Chrome.`);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Cookie capture failed.");
+    } finally {
+      setCapturingFor(null);
+    }
+  }
 
   // Fire a `continue` NOTIFY at the worker so the stuck opencode session
   // re-prompts itself and the agent picks up where it left off. The /message
@@ -179,12 +211,28 @@ export function ConnectionNeededBanner({ runId }: { runId: string }) {
               </Button>
             ))}
             {browserSites.map((host) => (
-              <Button key={host} asChild size="sm" className="h-8 gap-1.5">
-                <Link href={`/browser?signin=${encodeURIComponent(host)}`}>
-                  <Globe className="size-3.5" />
-                  Sign in to {hostLabel(host)}
-                </Link>
-              </Button>
+              <div key={host} className="inline-flex items-center gap-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => void useMacCookies(host)}
+                  disabled={capturingFor !== null || capturedHosts.has(host)}
+                  className="h-8 gap-1.5"
+                  title={`Push your local Chrome cookies for ${host} to the agent`}
+                >
+                  {capturingFor === host ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <Globe className="size-3.5" />
+                  )}
+                  {capturedHosts.has(host) ? `✓ ${hostLabel(host)} cookies sent` : `Use my ${hostLabel(host)} cookies`}
+                </Button>
+                <Button asChild size="sm" variant="outline" className="h-8 gap-1.5">
+                  <Link href={`/browser?signin=${encodeURIComponent(host)}`}>
+                    Sign in here
+                  </Link>
+                </Button>
+              </div>
             ))}
             <Button asChild variant="ghost" size="sm" className="h-8 gap-1.5">
               <Link href={browserSites.length > 0 && toolkits.length === 0 ? "/browser" : "/connections"}>
