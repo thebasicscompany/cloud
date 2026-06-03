@@ -3,96 +3,53 @@
 import { cn } from "@/lib/utils";
 
 /**
- * Vibrant green aurora with pure-white cloud streaks — modeled on the
- * reference video's blue/white cloud sky, just in our brand green. White
- * blobs are opacity 1.0 with screen blend so the highlights actually read
- * as bright white, not washed-out grey. Slow wave-like motion (50-80s) so
- * it feels alive but never busy.
- *
- * Pure CSS+SVG, GPU only (transform).
+ * Subtle brand-green gradient — same emerald palette as the auth/login
+ * brand panel (#23ab68 / #168350 / #093d28) with a soft mint glow drifting
+ * slowly across it. Animated via background-position shift + a single
+ * floating highlight; deliberately calm so it doesn't compete with the
+ * cards on top.
  */
 export function AuroraCanvas({ className }: { className?: string }) {
   return (
-    <div className={cn("relative isolate overflow-hidden bg-[oklch(0.68_0.27_152)]", className)}>
-      <div className="aurora-cloud a" />
-      <div className="aurora-cloud b" />
-      <div className="aurora-cloud c" />
-      <div className="aurora-cloud d" />
-      <div className="aurora-cloud e" />
-      <div className="aurora-cloud f" />
-      <div className="aurora-cloud g" />
-
-      {/* White vapor texture — gives the cloud edges that wispy, organic feel. */}
-      <svg aria-hidden className="pointer-events-none absolute inset-0 size-full opacity-[0.5] mix-blend-screen">
-        <defs>
-          <filter id="aurora-vapor" x="0" y="0" width="100%" height="100%">
-            <feTurbulence type="fractalNoise" baseFrequency="0.012" numOctaves="3" seed="11" />
-            <feColorMatrix
-              values="0 0 0 0 1
-                      0 0 0 0 1
-                      0 0 0 0 1
-                      0 0 0 1.5 -0.2" />
-            <feComponentTransfer>
-              <feFuncA type="linear" slope="3" intercept="-0.8" />
-            </feComponentTransfer>
-          </filter>
-        </defs>
-        <rect width="100%" height="100%" filter="url(#aurora-vapor)" />
-      </svg>
-
+    <div
+      className={cn(
+        "relative isolate overflow-hidden",
+        className,
+      )}
+    >
+      {/* Base brand gradient — same recipe as the auth brand panel. */}
+      <div className="brand-gradient" />
+      {/* Single soft mint highlight that drifts slowly for the moving feel. */}
+      <div className="mint-glow" />
       <style jsx>{`
-        .aurora-cloud {
+        .brand-gradient {
           position: absolute;
-          inset: -25%;
+          inset: 0;
+          background: linear-gradient(
+            140deg,
+            #23ab68 0%,
+            #168350 46%,
+            #093d28 100%
+          );
+          background-size: 200% 200%;
+          animation: shift 28s ease-in-out infinite alternate;
+        }
+        .mint-glow {
+          position: absolute;
+          inset: -20%;
+          background: radial-gradient(45% 45% at 50% 50%, #5ff0a8 0%, transparent 65%);
+          filter: blur(60px);
+          opacity: 0.4;
           will-change: transform;
-          background: radial-gradient(50% 50% at 50% 50%, oklch(1 0 0) 0%, oklch(1 0 0 / 0.4) 30%, transparent 60%);
-          filter: blur(50px);
-          mix-blend-mode: screen;
-          opacity: 1;
+          animation: drift 36s ease-in-out infinite alternate;
         }
-        /* Slow wave motion — each cloud drifts at its own speed so the surface
-         * has continuous, never-repeating-looking movement. */
-        .a { animation: wave-a 56s ease-in-out infinite alternate; }
-        .b { animation: wave-b 64s ease-in-out infinite alternate; }
-        .c { animation: wave-c 72s ease-in-out infinite alternate; }
-        .d { animation: wave-d 58s ease-in-out infinite alternate; }
-        .e { animation: wave-e 80s ease-in-out infinite alternate; }
-        .f { animation: wave-f 68s ease-in-out infinite alternate; }
-        .g { animation: wave-g 76s ease-in-out infinite alternate; }
-        @keyframes wave-a {
-          0%   { transform: translate3d(-12%, -8%, 0) scale(0.7); }
-          50%  { transform: translate3d(4%, 2%, 0)   scale(1.2); }
-          100% { transform: translate3d(14%, 10%, 0) scale(0.9); }
+        @keyframes shift {
+          0%   { background-position: 0% 50%; }
+          100% { background-position: 100% 50%; }
         }
-        @keyframes wave-b {
-          0%   { transform: translate3d(12%, -4%, 0) scale(1.0); }
-          50%  { transform: translate3d(-2%, 6%, 0)  scale(1.4); }
-          100% { transform: translate3d(-14%, 0, 0)  scale(0.75); }
-        }
-        @keyframes wave-c {
-          0%   { transform: translate3d(4%, 12%, 0)  scale(0.85); }
-          50%  { transform: translate3d(-8%, -2%, 0) scale(1.5); }
-          100% { transform: translate3d(2%, -12%, 0) scale(0.7); }
-        }
-        @keyframes wave-d {
-          0%   { transform: translate3d(-6%, 6%, 0)  scale(1.1); }
-          50%  { transform: translate3d(10%, -8%, 0) scale(0.8); }
-          100% { transform: translate3d(-4%, 12%, 0) scale(1.3); }
-        }
-        @keyframes wave-e {
-          0%   { transform: translate3d(6%, -10%, 0) scale(0.75); }
-          50%  { transform: translate3d(-10%, 2%, 0) scale(1.3); }
-          100% { transform: translate3d(8%, 10%, 0)  scale(0.9); }
-        }
-        @keyframes wave-f {
-          0%   { transform: translate3d(0, 0, 0)     scale(1.0); }
-          50%  { transform: translate3d(8%, -6%, 0)  scale(1.4); }
-          100% { transform: translate3d(-10%, 8%, 0) scale(0.7); }
-        }
-        @keyframes wave-g {
-          0%   { transform: translate3d(-8%, 4%, 0)  scale(0.95); }
-          50%  { transform: translate3d(6%, -10%, 0) scale(1.25); }
-          100% { transform: translate3d(-2%, 12%, 0) scale(0.8); }
+        @keyframes drift {
+          0%   { transform: translate3d(-10%, -8%, 0) scale(0.9); }
+          100% { transform: translate3d(12%, 10%, 0) scale(1.2); }
         }
       `}</style>
     </div>

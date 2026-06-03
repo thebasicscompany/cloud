@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 import { getConnections } from "@/lib/connections-data";
 
-import { ConnectionsConsole } from "./_components/connections-console";
+import { ConnectionsSimple } from "./_components/connections-simple";
 
 export const metadata: Metadata = {
   title: "Connections | Basics",
@@ -19,5 +19,5 @@ export default async function ConnectionsPage({
 }) {
   const { ws } = await searchParams;
   const data = await getConnections(ws);
-  return <ConnectionsConsole data={data} />;
+  return <ConnectionsSimple data={data} />;
 }
