@@ -123,8 +123,11 @@ export function LiveView({ run, takeover, fullBleed, onToggleTakeover }: Props) 
         {liveSession || run.recordingUrl ? (
           <div
             className={cn(
-              "relative flex aspect-[16/10] w-full max-w-4xl flex-col overflow-hidden rounded-lg border bg-background shadow-sm",
-              fullBleed && "h-full max-w-none rounded-none",
+              // Fill the available space — no aspect-ratio forcing. The iframe
+              // renders inside whatever box we give it, so capping by both
+              // dimensions keeps it inside the parent's borders.
+              "relative flex h-full max-h-full w-full max-w-4xl flex-col overflow-hidden rounded-lg border bg-background shadow-sm",
+              fullBleed && "max-w-none rounded-none",
             )}
           >
             <BrowserChrome

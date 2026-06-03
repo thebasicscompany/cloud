@@ -8,6 +8,7 @@ import { ArrowUp, Check, Robot, Sparkle } from "@phosphor-icons/react";
 
 import { AuroraCanvas } from "@/components/aurora-canvas";
 import { Button } from "@/components/ui/button";
+import { ConnectionLogo } from "@/components/connection-logo";
 import { Textarea } from "@/components/ui/textarea";
 import { draftWithBasics, useAgentActions } from "@/hooks/queries/use-agents";
 import type {
@@ -485,9 +486,12 @@ function ToolsList({
         return (
           <div key={slug} className="rounded-lg border bg-white p-2.5">
             <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <div className="truncate font-medium text-sm">{meta.label}</div>
-                {meta.description ? <div className="truncate text-foreground/60 text-xs">{meta.description}</div> : null}
+              <div className="flex min-w-0 items-center gap-2.5">
+                <ConnectionLogo slug={slug} className="size-6 shrink-0" />
+                <div className="min-w-0">
+                  <div className="truncate font-medium text-sm">{meta.label}</div>
+                  {meta.description ? <div className="truncate text-foreground/60 text-xs">{meta.description}</div> : null}
+                </div>
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
                 {showApi ? (
