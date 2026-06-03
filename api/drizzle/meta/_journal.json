@@ -232,6 +232,13 @@
       "when": 1779044900000,
       "tag": "0033_k1_cloud_agent_helpers",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1780445000000,
+      "tag": "0034_client_agents",
+      "breakpoints": true
     }
   ]
 }
