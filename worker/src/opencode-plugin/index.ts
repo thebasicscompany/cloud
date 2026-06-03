@@ -89,7 +89,11 @@ async function loadHelpersForRun(
   sql: ReturnType<typeof postgres>,
   workspaceId: string,
   automationId: string | null,
-  limit = 30,
+  // Context discipline (matches the skills cap rationale): helpers are
+  // injected as summaries on every model turn. Trimmed from 30 → 12 since the
+  // ORDER BY puts automation-scoped helpers first, so they always survive the
+  // cap when applicable.
+  limit = 12,
 ): Promise<LoadedHelperSummary[]> {
   const rows = await sql<LoadedHelperSummary[]>`
     SELECT name, description, args_schema, helper_version,
@@ -497,10 +501,19 @@ async function buildRuntime(sessionID: string): Promise<PluginRuntime> {
   }
 
   // G.4 — load active skills + wire skill_write through PgSkillStore.
+  //
+  // Context discipline: we cap at the top-K highest-confidence skills for the
+  // workspace rather than loadAll(). The transform hook re-injects every loaded
+  // skill into the system prompt on EVERY model turn — at 20 skills × N turns
+  // that's a huge token tax on workspaces with many learned skills, mostly
+  // irrelevant to the current goal. K=5 keeps the most-trusted bias plays
+  // without flooding context. TODO: per-host selective retrieval via
+  // skillLoader.loadForHost(currentUrl) once we have the URL at session-boot
+  // time — would let us drop K further to "skills relevant to this site".
   const skillLoader = new PgSkillLoader({ databaseUrl });
   let skills: LoadedSkill[] = [];
   try {
-    skills = await skillLoader.loadAll({ workspaceId, limit: 20 });
+    skills = await skillLoader.loadAll({ workspaceId, limit: 5 });
     if (skills.length > 0) {
       await publisher.emit({
         type: "skills_loaded",
