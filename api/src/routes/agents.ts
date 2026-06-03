@@ -561,7 +561,29 @@ agentsRoute.post('/:id/run', zValidator('json', RunSchema), async (c) => {
   if (!agent) return c.json({ error: 'not_found' }, 404)
 
   const body = c.req.valid('json')
-  const composedGoal = `${agent.instructions}\n\n---\n\nObjective for this run:\n${body.goal}`
+  // The worker reads `goal` straight from SQS as the OpenCode user message —
+  // there is NO global system-prompt that mandates skill_write. The
+  // automation path gets this via wrapAutomationGoal(); we layer the same
+  // mandates in here so agent-route runs ALSO accumulate skills/helpers
+  // into Memory instead of leaving Memory empty forever.
+  const composedGoal = `${agent.instructions}
+
+---
+
+Objective for this run:
+${body.goal}
+
+---
+
+POST-RUN MEMORY (mandatory — Memory stays empty without these):
+- At the end of EVERY successful run that used the browser tool, you MUST call \`skill_write\` capturing what you learned, BEFORE calling final_answer. Examples:
+  • Selectors (CSS / XPath / aria-label) for elements you clicked or extracted from on each host. The next run shouldn't have to screenshot to find them.
+  • Navigation sequences (URL templates, search query parameters, button-click order) that worked.
+  • Quirks (a button that opens a dialog vs a popup; a search that requires scrolling for results; a list that lazy-loads on scroll).
+  • Mapping rules you applied (score formulas, filter thresholds, name-disambiguation heuristics).
+  Set \`host\` for site-scoped skills (linkedin.com, docs.google.com). Body MUST include a "Last-verified: YYYY-MM-DD" line, the selectors, the interaction sequence, and a concrete example. Multiple skill_write calls per run are fine.
+- If the run reached final_answer through a tool sequence that could be re-run deterministically with the same input shape, you MUST ALSO call \`helper_write\` BEFORE final_answer — pass an \`args_schema\` describing the input shape. Skip helper_write only if you made hard LLM judgment calls in the middle (subjective scoring etc.).
+- Even on a first run with novel input you can almost always emit at least one skill_write. Don't skip — these are the difference between an agent that re-derives everything each fire and one that decays toward zero LLM cost per run.`
 
   try {
     const result = await dispatchCloudRun({
