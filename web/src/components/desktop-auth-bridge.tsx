@@ -56,8 +56,8 @@ export function DesktopAuthBridge() {
         // Preferred: have the MAIN process exchange the supabase token for a
         // workspace JWT. No CORS, no Supabase-cookie-sync race that makes
         // /api/auth/desktop-token flap with 401s in dev.
-        if (typeof bh.exchangeSupabaseSession === "function") {
-          const r = await bh.exchangeSupabaseSession({ access_token: accessToken });
+        if (typeof bh!.exchangeSupabaseSession === "function") {
+          const r = await bh!.exchangeSupabaseSession({ access_token: accessToken });
           if (cancelled) return;
           if (r?.ok && r.token) {
             token = r.token;

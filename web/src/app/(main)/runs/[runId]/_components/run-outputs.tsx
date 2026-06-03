@@ -105,7 +105,7 @@ export function RunOutputs({ run }: { run: Run }) {
             Documents to keep it.
           </p>
           <div className="max-h-[32rem] overflow-auto rounded-lg border bg-muted/20 p-4">
-            <MarkdownLite text={summary} />
+            <MarkdownLite text={summary ?? ""} />
           </div>
           <div className="flex items-center gap-2">
             <Button size="sm" onClick={() => void saveToDocuments()} disabled={saving}>
