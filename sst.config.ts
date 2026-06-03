@@ -77,6 +77,16 @@ export default $config({
       sendblueFromNumber: new sst.Secret("SendblueFromNumber"),
       sendblueSigningSecret: new sst.Secret("SendblueSigningSecret"),
       sesFromEmail: new sst.Secret("SesFromEmail"),
+      // Stripe — billing for Pro / Team plans. Webhook verifies on the raw
+      // body in api/src/routes/billing-webhook.ts; price IDs map to plan tier
+      // in api/src/lib/stripe.ts. APP_BASE_URL + BILLING_RETURN_URL feed the
+      // Checkout / Customer Portal return URLs.
+      stripeSecretKey: new sst.Secret("StripeSecretKey"),
+      stripeWebhookSecret: new sst.Secret("StripeWebhookSecret"),
+      stripePricePro: new sst.Secret("StripePricePro"),
+      stripePriceTeam: new sst.Secret("StripePriceTeam"),
+      appBaseUrl: new sst.Secret("AppBaseUrl"),
+      billingReturnUrl: new sst.Secret("BillingReturnUrl"),
     };
 
     const secretLinks = Object.values(secrets);
@@ -463,6 +473,14 @@ export default $config({
         SENDBLUE_FROM_NUMBER: secrets.sendblueFromNumber.value,
         SENDBLUE_SIGNING_SECRET: secrets.sendblueSigningSecret.value,
         SES_FROM_EMAIL: secrets.sesFromEmail.value,
+        // Stripe — consumed by api/src/lib/stripe.ts (getStripe), price→tier
+        // map, and billing-webhook signature verification.
+        STRIPE_SECRET_KEY: secrets.stripeSecretKey.value,
+        STRIPE_WEBHOOK_SECRET: secrets.stripeWebhookSecret.value,
+        STRIPE_PRICE_PRO: secrets.stripePricePro.value,
+        STRIPE_PRICE_TEAM: secrets.stripePriceTeam.value,
+        APP_BASE_URL: secrets.appBaseUrl.value,
+        BILLING_RETURN_URL: secrets.billingReturnUrl.value,
         // Bucket name surfaces via SST resource link, but we also expose
         // it as a stable env name for code that reads process.env directly.
         RUNTIME_SCREENSHOTS_BUCKET: screenshotsBucket.name,
