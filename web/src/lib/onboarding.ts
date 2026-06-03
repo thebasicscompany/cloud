@@ -93,14 +93,30 @@ export type BasichomeOnboardingRecord = {
   };
 };
 
+/**
+ * Lightweight v2 record - the new onboarding (welcome -> permissions ->
+ * workspace -> first agent -> ready) writes this shape. The fields are
+ * a fraction of v1 because the new flow doesn't ask the user to pick an
+ * engine mode or set per-policy approval defaults; sensible defaults live
+ * in settings and most users will never touch them.
+ */
+export type BasichomeOnboardingRecordV2 = {
+  schemaVersion: 2;
+  completedAt: string;
+  workspace: { name: string };
+  firstAgentSeed?: string;
+  permissions?: Record<"screen" | "microphone" | "accessibility", OnboardingPermissionStatus>;
+};
+
 export function isOnboardingComplete(value: string | null): boolean {
   if (!value) {
     return false;
   }
 
   try {
-    const parsed = JSON.parse(value) as Partial<BasichomeOnboardingRecord>;
-    return parsed.schemaVersion === 1 && typeof parsed.completedAt === "string";
+    const parsed = JSON.parse(value) as Partial<BasichomeOnboardingRecord | BasichomeOnboardingRecordV2>;
+    const v = parsed.schemaVersion;
+    return (v === 1 || v === 2) && typeof parsed.completedAt === "string";
   } catch {
     return false;
   }

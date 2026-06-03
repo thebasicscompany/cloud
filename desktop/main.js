@@ -4,7 +4,7 @@
 // renderer in a native desktop window, plus a tray and a global shortcut.
 // The overlay "pill" is part of the web app itself (the in-app overlay
 // component) — the shell does NOT spawn a separate pill window.
-const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, nativeImage, screen, desktopCapturer, session, shell } = require("electron");
+const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, nativeImage, screen, desktopCapturer, session, shell, systemPreferences } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const localBrowser = require("./local-browser");
@@ -685,6 +685,67 @@ ipcMain.handle("basichome:auth:browser-sign-in", (event) => {
   authBridge.startBrowserSignIn(landing, (result) => {
     if (!event.sender.isDestroyed()) event.sender.send("basichome:auth:session", result);
   });
+  return { ok: true };
+});
+
+// Onboarding permissions — three knobs (screen recording, microphone,
+// accessibility) the user has to grant before the desktop loops can do
+// anything meaningful. Renderer calls perm:status for the live state on
+// each tile, perm:request to trigger the OS dialog (mic only - the others
+// are System Settings panels), and perm:open to deep-link straight into
+// the relevant settings pane so the user doesn't have to hunt through
+// menus.
+ipcMain.handle("basichome:perm:status", () => {
+  if (process.platform !== "darwin") {
+    // Windows/Linux: getDisplayMedia and getUserMedia trigger their own
+    // OS prompts; we report "granted" so the onboarding UI skips ahead
+    // and the live prompt fires when the user actually records.
+    return { screen: "granted", microphone: "granted", accessibility: "granted" };
+  }
+  try {
+    return {
+      screen: systemPreferences.getMediaAccessStatus("screen"),
+      microphone: systemPreferences.getMediaAccessStatus("microphone"),
+      accessibility: systemPreferences.isTrustedAccessibilityClient(false) ? "granted" : "denied",
+    };
+  } catch (e) {
+    return { screen: "unknown", microphone: "unknown", accessibility: "unknown", error: String(e) };
+  }
+});
+
+ipcMain.handle("basichome:perm:request-mic", async () => {
+  if (process.platform !== "darwin") return { ok: true, granted: true };
+  try {
+    const granted = await systemPreferences.askForMediaAccess("microphone");
+    return { ok: true, granted };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+});
+
+ipcMain.handle("basichome:perm:open", async (_e, which) => {
+  if (process.platform !== "darwin") {
+    // Windows: open the Privacy → Microphone settings page; the screen
+    // panel doesn't have a direct anchor URL.
+    if (which === "microphone") {
+      await shell.openExternal("ms-settings:privacy-microphone");
+    } else if (which === "screen") {
+      // Windows doesn't have a per-app screen-recording gate; trying the
+      // generic privacy page is the best we can do.
+      await shell.openExternal("ms-settings:privacy");
+    }
+    return { ok: true };
+  }
+  // macOS deep-links straight into the relevant Privacy & Security panel.
+  // Anchors are stable across recent macOS versions.
+  const anchors = {
+    screen: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
+    microphone: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
+    accessibility: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+  };
+  const url = anchors[which];
+  if (!url) return { ok: false, error: "unknown_pane" };
+  await shell.openExternal(url);
   return { ok: true };
 });
 

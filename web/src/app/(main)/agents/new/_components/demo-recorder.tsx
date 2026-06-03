@@ -39,6 +39,15 @@ const FRAME_MAX = 24;
 const JPEG_QUALITY = 0.55;
 const FRAME_WIDTH = 1280; // downscale for token efficiency
 
+// Live transcription via Deepgram. webkitSpeechRecognition silently fails in
+// Electron's Chromium (no Google API key bundled), and the failure mode was
+// invisible to the user - they'd record, talk, and the transcript would
+// just be empty. Reuses the same realtime path the push-to-talk voice
+// button uses; auth via short-lived workspace-scoped JWT.
+const DG_WS_URL =
+  "wss://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&interim_results=true&punctuate=true";
+const DG_TIMESLICE_MS = 250;
+
 interface CapturedFrame {
   data: string;
   tSec: number;
@@ -79,9 +88,11 @@ export function DemoRecorder({ open, onClose, onPatch }: DemoRecorderProps) {
   const videoElRef = useRef<HTMLVideoElement | null>(null);
   const captureTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const tickTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // SpeechRecognition isn't typed in lib.dom; ref as `any` to keep this widely
-  // browser-compatible (Chrome/Edge have it; Safari is partial).
-  const recogRef = useRef<unknown>(null);
+  // Deepgram realtime transcription. wsRef holds the open socket; recorderRef
+  // holds the MediaRecorder that ships timeslices of audio into it. Both are
+  // torn down by hardReset / stop.
+  const wsRef = useRef<WebSocket | null>(null);
+  const audioRecorderRef = useRef<MediaRecorder | null>(null);
 
   useEffect(() => {
     if (!open) hardReset();
@@ -97,27 +108,63 @@ export function DemoRecorder({ open, onClose, onPatch }: DemoRecorderProps) {
     displayStreamRef.current = null;
     micStreamRef.current = null;
     try {
-      const r = recogRef.current as { stop?: () => void } | null;
-      r?.stop?.();
+      const rec = audioRecorderRef.current;
+      if (rec && rec.state !== "inactive") rec.stop();
     } catch { /* ignore */ }
-    recogRef.current = null;
+    audioRecorderRef.current = null;
+    try {
+      const ws = wsRef.current;
+      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) ws.close();
+    } catch { /* ignore */ }
+    wsRef.current = null;
     framesRef.current = [];
     setElapsed(0);
     setTranscript("");
     setPhase("idle");
   }
 
+  async function getDeepgramToken(): Promise<string | null> {
+    try {
+      const bh = (window as unknown as {
+        basichome?: { isDesktop?: boolean; voiceCredentials?: () => Promise<{ ok?: boolean; token?: string }> };
+      }).basichome;
+      if (bh?.isDesktop && typeof bh.voiceCredentials === "function") {
+        const r = await bh.voiceCredentials();
+        return r?.ok && r.token ? r.token : null;
+      }
+      const res = await fetch("/api/voice/token", { method: "POST" });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; token?: string };
+      return res.ok && data.ok && data.token ? data.token : null;
+    } catch {
+      return null;
+    }
+  }
+
   async function start() {
     try {
-      const display = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-      displayStreamRef.current = display;
-      let mic: MediaStream | null = null;
+      // Mic FIRST so a denial fails fast and doesn't leave a screen-share
+      // dialog half-open. Narration isn't optional here - the draft prompt
+      // leans on the user's voice for intent ("I'm checking my unread Slack
+      // DMs for things that need follow-up"). A silent recording asks the
+      // model to read tea leaves; the result is much worse. If denied, send
+      // the user to the System Settings deep-link via the Electron bridge
+      // and bail.
+      let mic: MediaStream;
       try {
         mic = await navigator.mediaDevices.getUserMedia({ audio: true });
         micStreamRef.current = mic;
       } catch {
-        // mic is optional - silent recording still works
+        const bh = (window as unknown as { basichome?: { permOpen?: (k: string) => Promise<unknown> } }).basichome;
+        toast.error("Basics needs microphone access to record a demo - talk Basics through what you're doing.", {
+          action: bh?.permOpen
+            ? { label: "Open Settings", onClick: () => void bh.permOpen!("microphone") }
+            : undefined,
+        });
+        hardReset();
+        return;
       }
+      const display = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      displayStreamRef.current = display;
 
       // Drive an offscreen <video> with the display stream so we can paint
       // frames from it without rendering it in the page.
@@ -132,37 +179,51 @@ export function DemoRecorder({ open, onClose, onPatch }: DemoRecorderProps) {
       setElapsed(0);
       setTranscript("");
 
-      // Live transcript via webkitSpeechRecognition where supported. Quietly
-      // skip if the API isn't there; the draft endpoint accepts empty transcripts.
-      try {
-        const SR = (window as unknown as { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown })
-          .SpeechRecognition ?? (window as unknown as { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition;
-        if (SR && mic) {
-          const r = new (SR as new () => {
-            continuous: boolean;
-            interimResults: boolean;
-            lang: string;
-            onresult: (e: { resultIndex: number; results: ArrayLike<{ 0: { transcript: string }; isFinal: boolean; length: number }> }) => void;
-            onerror: () => void;
-            start: () => void;
-            stop: () => void;
-          })();
-          r.continuous = true;
-          r.interimResults = false;
-          r.lang = "en-US";
-          r.onresult = (e) => {
-            let added = "";
-            for (let i = e.resultIndex; i < e.results.length; i++) {
-              const res = e.results[i]!;
-              if (res.isFinal) added += `${res[0].transcript} `;
+      // Live transcript via Deepgram WS. Mint a short-lived workspace-scoped
+      // token, open the realtime listen socket, stream MediaRecorder chunks
+      // through. is_final segments get appended to the transcript so the
+      // user can SEE it being captured in the dialog as they talk - that's
+      // the visible "yes this is recording your voice" feedback. If the
+      // token mint or socket open fails we toast it explicitly so we don't
+      // silently record without transcription (the bug we just had).
+      const token = await getDeepgramToken();
+      if (!token) {
+        toast.warning("Voice transcription unavailable - the recording will still capture frames.");
+      } else {
+        try {
+          const ws = new WebSocket(DG_WS_URL, ["bearer", token]);
+          wsRef.current = ws;
+          ws.onopen = () => {
+            try {
+              const rec = new MediaRecorder(mic, { mimeType: "audio/webm" });
+              audioRecorderRef.current = rec;
+              rec.ondataavailable = (ev) => {
+                if (ev.data.size > 0 && ws.readyState === WebSocket.OPEN) ws.send(ev.data);
+              };
+              rec.start(DG_TIMESLICE_MS);
+            } catch (err) {
+              toast.warning(`Voice transcription couldn't start: ${err instanceof Error ? err.message : "unknown"}`);
             }
-            if (added) setTranscript((prev) => (prev ? `${prev.trimEnd()} ${added.trim()}` : added.trim()));
           };
-          r.onerror = () => undefined;
-          r.start();
-          recogRef.current = r;
+          ws.onmessage = (ev) => {
+            try {
+              const data = JSON.parse(ev.data as string) as {
+                channel?: { alternatives?: { transcript?: string }[] };
+                is_final?: boolean;
+              };
+              const t = data.channel?.alternatives?.[0]?.transcript;
+              if (t && data.is_final) {
+                setTranscript((prev) => (prev ? `${prev.trimEnd()} ${t}` : t));
+              }
+            } catch { /* keepalive / non-JSON */ }
+          };
+          ws.onerror = () => {
+            toast.warning("Voice transcription dropped mid-recording.");
+          };
+        } catch (err) {
+          toast.warning(`Voice transcription unavailable: ${err instanceof Error ? err.message : "unknown"}`);
         }
-      } catch { /* ignore */ }
+      }
 
       // Grab the first frame immediately, then on interval.
       void grabFrame();
@@ -231,8 +292,12 @@ export function DemoRecorder({ open, onClose, onPatch }: DemoRecorderProps) {
     try { displayStreamRef.current?.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
     try { micStreamRef.current?.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
     try {
-      const r = recogRef.current as { stop?: () => void } | null;
-      r?.stop?.();
+      const rec = audioRecorderRef.current;
+      if (rec && rec.state !== "inactive") rec.stop();
+    } catch { /* ignore */ }
+    try {
+      const ws = wsRef.current;
+      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) ws.close();
     } catch { /* ignore */ }
 
     // Evenly subsample frames to FRAME_MAX so the model gets a coherent
@@ -283,7 +348,7 @@ export function DemoRecorder({ open, onClose, onPatch }: DemoRecorderProps) {
           </div>
           <div className="flex items-center gap-2 rounded-lg border bg-foreground/[0.02] p-3 text-sm">
             <Microphone weight="fill" className="size-4 shrink-0 text-foreground/70" />
-            Mic is optional - narration helps Basics infer intent.
+            Talk through what you're doing - Basics uses your voice to infer intent.
           </div>
 
           {phase === "recording" ? (

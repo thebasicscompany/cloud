@@ -39,6 +39,13 @@ contextBridge.exposeInMainWorld("basichome", {
   // {ok:false, error:"unsupported_platform"}). Renderer treats failure as
   // "no metadata" and ships the frame on its own.
   captureContext: () => ipcRenderer.invoke("basichome:capture-context"),
+  // Onboarding permission probes + deep-links into System Settings.
+  // permStatus() returns {screen, microphone, accessibility} as 'granted' |
+  // 'denied' | 'not-determined' | 'restricted' | 'unknown' (macOS) or
+  // 'granted' (Windows/Linux — the OS prompts inline when the API is called).
+  permStatus: () => ipcRenderer.invoke("basichome:perm:status"),
+  permRequestMic: () => ipcRenderer.invoke("basichome:perm:request-mic"),
+  permOpen: (which) => ipcRenderer.invoke("basichome:perm:open", which),
   // Settings → Capture: control the always-on Lens daemon.
   lensAlwaysOn: () => ipcRenderer.invoke("basichome:lens:always-on"),
   lensStopCapture: () => ipcRenderer.invoke("basichome:lens:capture-stop"),
