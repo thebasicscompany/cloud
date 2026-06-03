@@ -193,6 +193,18 @@ Don't open a browser to do something an API tool already does. Don't screen-driv
 </tool_strategy>`;
 }
 
+// Memory mandate — kept terse on purpose (gets re-injected EVERY turn). The
+// full why-this-matters reasoning lives in cloud-run-dispatch's automation
+// wrapper; here we just need to keep the rule top-of-mind so the agent calls
+// the tool before final_answer.
+function composeMemoryMandateContext(): string {
+  return `<memory_mandate>
+Before \`final_answer\` on any successful run that used the browser tool, call \`skill_write\` to capture what you learned (selectors, navigation sequence, quirks, mapping rules). Set \`host\` for site-scoped skills. Body MUST include a "Last-verified: YYYY-MM-DD" line plus the selectors + interaction sequence.
+If the whole run was a deterministic tool sequence (no LLM judgment mid-flow), also call \`helper_write\` with an \`args_schema\` describing the input shape. Skip helper_write only if you made subjective scoring/ranking calls.
+Without these, the workspace's Memory stays empty and every future run re-derives everything.
+</memory_mandate>`;
+}
+
 function composeAutonomyContext(): string {
   // The whole product is "low human-in-the-loop": the agent decides and acts;
   // humans only review the result and correct course after the fact. A headless
@@ -974,6 +986,11 @@ export const BasicsBrowserPlugin: Plugin = async (_input) => {
             rt.enabledToolkits,
           ),
         );
+        // Memory mandate — unshifted before autonomy so it sits high in the
+        // final system stack; the rule is reinforced every turn so the agent
+        // doesn't forget skill_write/helper_write by the time it hits
+        // final_answer.
+        output.system.unshift(composeMemoryMandateContext());
         // Autonomy — headless cloud runs must never ask/wait. Unshift LAST so
         // it sits FIRST in the system prompt (highest priority).
         output.system.unshift(composeAutonomyContext());
