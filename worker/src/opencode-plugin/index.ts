@@ -193,15 +193,25 @@ Don't open a browser to do something an API tool already does. Don't screen-driv
 </tool_strategy>`;
 }
 
-// Memory mandate — kept terse on purpose (gets re-injected EVERY turn). The
-// full why-this-matters reasoning lives in cloud-run-dispatch's automation
-// wrapper; here we just need to keep the rule top-of-mind so the agent calls
-// the tool before final_answer.
+// Memory mandate — kept terse (re-injected EVERY turn). Phrased imperatively
+// because earlier softer wording ("you SHOULD call skill_write") was being
+// treated as optional and Memory stayed empty across runs.
 function composeMemoryMandateContext(): string {
   return `<memory_mandate>
-Before \`final_answer\` on any successful run that used the browser tool, call \`skill_write\` to capture what you learned (selectors, navigation sequence, quirks, mapping rules). Set \`host\` for site-scoped skills. Body MUST include a "Last-verified: YYYY-MM-DD" line plus the selectors + interaction sequence.
-If the whole run was a deterministic tool sequence (no LLM judgment mid-flow), also call \`helper_write\` with an \`args_schema\` describing the input shape. Skip helper_write only if you made subjective scoring/ranking calls.
-Without these, the workspace's Memory stays empty and every future run re-derives everything.
+HARD REQUIREMENT — every successful run MUST emit at least one \`skill_write\` BEFORE \`final_answer\`. A run with zero skill_write calls is considered an incomplete run, even if final_answer returned content. This is not optional, not a "if you have time" — it is the same severity as returning the requested answer.
+
+What to write — pick at least ONE that applies to this run, more if multiple apply:
+  • For browser tasks: the host's working selectors (CSS / aria-label / XPath), the URL/search pattern that worked, click sequence, page quirks (lazy-load, popups, dialogs).
+  • For Composio/API tasks: the toolkit + action slug you used, the args shape that worked, any param footguns you hit.
+  • For research/shopping: the source domains that returned good results, the search query pattern, how you filtered/ranked, any anti-bot walls you hit.
+
+How to write:
+  • Call \`skill_write({name, description, body, host?})\`. Set \`host\` ONLY if site-scoped (linkedin.com, amazon.com, etc.); for cross-site lessons leave host out.
+  • Body is markdown. A one-line "Last-verified: YYYY-MM-DD" header is recommended but NOT required for non-selector skills.
+
+ALSO: if the run was a deterministic tool sequence with no LLM judgment mid-flow, ALSO call \`helper_write\` with an \`args_schema\`. Skip helper_write if you made subjective scoring/ranking calls. helper_write is OPTIONAL; skill_write is MANDATORY.
+
+If you're tempted to skip skill_write because "the task was simple" — write it anyway. Even "today's date" runs teach future runs which approach is fastest.
 </memory_mandate>`;
 }
 

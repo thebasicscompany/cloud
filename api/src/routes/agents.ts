@@ -578,6 +578,10 @@ ${body.goal}`
       goal: composedGoal,
       browserTarget: targetToBrowserTarget(agent.target),
       relaySession: body.relaySession,
+      // agentKey drives the cloud_agents.agent_id row this run is attached to,
+      // which the run-views layer surfaces as `workflowName` in Activity.
+      // Without this, every Basics-agent's runs would all show as "ad-hoc".
+      agentKey: agent.name,
       adHocDefinition: `Agent "${agent.name}" (${agent.id})`,
     })
     if (!result) return c.json({ error: 'dispatch_failed' }, 500)

@@ -130,6 +130,15 @@ export type DispatchCloudRunInput = {
   laneId?: string
   model?: string
   adHocDefinition?: string
+  /**
+   * Override the cloud_agents.agent_id key used for lookup/insert. Defaults
+   * to 'ad-hoc' (shared bucket). Pass an agent-specific key (e.g. the
+   * Basics-agent's name or id) so each named agent gets its OWN cloud_agents
+   * row — that's what the run-views layer surfaces as `workflowName` in
+   * Activity, so without this every run from every Basics-agent shows as
+   * "ad-hoc".
+   */
+  agentKey?: string
   /** Defaults to 'cloud' (Browserbase). */
   browserTarget?: BrowserTarget
   /** Per-run relay session id — paired with browserTarget='local_relay'. */
@@ -150,6 +159,7 @@ async function resolveCloudAgentId(input: {
   workspace: WorkspaceToken
   cloudAgentId?: string
   adHocDefinition: string
+  agentKey: string
 }): Promise<string | null> {
   const ws = input.workspace.workspace_id
   const acc = input.workspace.account_id
@@ -163,9 +173,12 @@ async function resolveCloudAgentId(input: {
     return rows[0]?.id ?? null
   }
 
+  // Look up by the caller-supplied key (defaults to 'ad-hoc' for legacy /v1/runs
+  // dispatches). Named agents pass agentKey = agent.name so each gets its own
+  // cloud_agents row → run-views surfaces it as workflowName in Activity.
   const existing = (await db.execute(sql`
     SELECT id FROM public.cloud_agents
-     WHERE workspace_id = ${ws} AND agent_id = 'ad-hoc'
+     WHERE workspace_id = ${ws} AND agent_id = ${input.agentKey}
      LIMIT 1
   `)) as unknown as Array<{ id: string }>
   if (existing[0]) return existing[0].id
@@ -174,7 +187,7 @@ async function resolveCloudAgentId(input: {
     INSERT INTO public.cloud_agents
       (workspace_id, account_id, agent_id, definition, schedule, status, composio_user_id, runtime_mode)
     VALUES
-      (${ws}, ${acc}, 'ad-hoc', ${input.adHocDefinition},
+      (${ws}, ${acc}, ${input.agentKey}, ${input.adHocDefinition},
        'manual', 'active', ${ws}, 'harness')
     RETURNING id
   `)) as unknown as Array<{ id: string }>
@@ -208,6 +221,7 @@ export async function dispatchCloudRun(
   const cloudAgentId = await resolveCloudAgentId({
     workspace: input.workspace,
     cloudAgentId: input.cloudAgentId,
+    agentKey: input.agentKey ?? 'ad-hoc',
     adHocDefinition:
       input.adHocDefinition ?? 'One-shot runs dispatched via POST /v1/runs',
   })
