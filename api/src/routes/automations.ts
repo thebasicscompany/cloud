@@ -35,6 +35,7 @@ import { pickInputMapper } from '../lib/composio-trigger-router.js'
 import { wrapAutomationGoal } from '../lib/cloud-run-dispatch.js'
 import { ComposioClient } from '../lib/composio.js'
 import { logger } from '../middleware/logger.js'
+import { requireRole } from '../middleware/role.js'
 import type { WorkspaceToken } from '../lib/jwt.js'
 
 type Vars = { requestId: string; workspace?: WorkspaceToken }
@@ -303,7 +304,7 @@ function publicShape(row: AutomationRow): Record<string, unknown> {
 
 // ─── POST /v1/automations ────────────────────────────────────────────────
 
-automationsRoute.post('/', zValidator('json', CreateSchema), async (c) => {
+automationsRoute.post('/', requireRole('member'), zValidator('json', CreateSchema), async (c) => {
   const ws = c.var.workspace!.workspace_id
   const acc = c.var.workspace!.account_id
   const body = c.req.valid('json')
@@ -406,7 +407,7 @@ automationsRoute.get('/:id', async (c) => {
 
 // ─── PUT /v1/automations/:id ─────────────────────────────────────────────
 
-automationsRoute.put('/:id', zValidator('json', UpdateSchema), async (c) => {
+automationsRoute.put('/:id', requireRole('member'), zValidator('json', UpdateSchema), async (c) => {
   const id = c.req.param('id')
   if (!UUID_RE.test(id)) return c.json({ error: 'invalid_id' }, 400)
   const ws = c.var.workspace!.workspace_id
@@ -526,7 +527,7 @@ const PatchSchema = z.object({
   target: z.string().optional(),
 })
 
-automationsRoute.patch('/:id', zValidator('json', PatchSchema), async (c) => {
+automationsRoute.patch('/:id', requireRole('member'), zValidator('json', PatchSchema), async (c) => {
   const id = c.req.param('id')
   if (!UUID_RE.test(id)) return c.json({ error: 'invalid_id' }, 400)
   const ws = c.var.workspace!.workspace_id
@@ -625,7 +626,7 @@ automationsRoute.patch('/:id', zValidator('json', PatchSchema), async (c) => {
 
 // ─── DELETE /v1/automations/:id ──────────────────────────────────────────
 
-automationsRoute.delete('/:id', async (c) => {
+automationsRoute.delete('/:id', requireRole('admin'), async (c) => {
   const id = c.req.param('id')
   if (!UUID_RE.test(id)) return c.json({ error: 'invalid_id' }, 400)
   const ws = c.var.workspace!.workspace_id

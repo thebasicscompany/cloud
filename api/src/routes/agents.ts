@@ -28,9 +28,10 @@ import { db } from '../db/index.js'
 import { getAnthropicClient } from '../lib/anthropic.js'
 import { loadConnectedAccountByToolkit } from '../lib/automation-trigger-registry.js'
 import { dispatchCloudRun, UUID_RE } from '../lib/cloud-run-dispatch.js'
-import { PlanLimitError } from '../lib/plan-limits.js'
+import { PlanLimitError, planLimits } from '../lib/plan-limits.js'
 import { supabaseAdmin } from '../lib/supabase.js'
 import { logger } from '../middleware/logger.js'
+import { requireRole } from '../middleware/role.js'
 import type { WorkspaceToken } from '../lib/jwt.js'
 
 type Vars = { requestId: string; workspace?: WorkspaceToken }
@@ -176,10 +177,31 @@ async function deleteScheduleAutomation(
 
 // ─── POST /v1/agents ─────────────────────────────────────────────────────
 
-agentsRoute.post('/', zValidator('json', CreateSchema), async (c) => {
+agentsRoute.post('/', requireRole('member'), zValidator('json', CreateSchema), async (c) => {
   const ws = c.var.workspace!.workspace_id
   const acc = c.var.workspace!.account_id
   const body = c.req.valid('json')
+
+  // PHASE-1-3 item 2: enforce maxAgents from the workspace's plan. null = no
+  // limit (enterprise); otherwise count existing agents and 402 if at the cap.
+  const limits = planLimits(c.var.workspace!.plan)
+  if (limits.maxAgents !== null) {
+    const countRows = (await db.execute(sql`
+      SELECT COUNT(*)::int AS cnt FROM public.client_agents WHERE workspace_id = ${ws}
+    `)) as unknown as Array<{ cnt: number }>
+    const existing = countRows[0]?.cnt ?? 0
+    if (existing >= limits.maxAgents) {
+      return c.json(
+        {
+          error: 'agent_limit',
+          message: `Your plan allows ${limits.maxAgents} agents. Delete one or upgrade to add more.`,
+          limit: limits.maxAgents,
+          existing,
+        },
+        402,
+      )
+    }
+  }
 
   const rows = (await db.execute(sql`
     INSERT INTO public.client_agents
@@ -261,7 +283,7 @@ agentsRoute.get('/:id', async (c) => {
 
 // ─── PATCH /v1/agents/:id ────────────────────────────────────────────────
 
-agentsRoute.patch('/:id', zValidator('json', UpdateSchema), async (c) => {
+agentsRoute.patch('/:id', requireRole('member'), zValidator('json', UpdateSchema), async (c) => {
   const id = c.req.param('id')
   if (!UUID_RE.test(id)) return c.json({ error: 'invalid_id' }, 400)
   const ws = c.var.workspace!.workspace_id
@@ -360,7 +382,7 @@ agentsRoute.patch('/:id', zValidator('json', UpdateSchema), async (c) => {
 
 // ─── DELETE /v1/agents/:id ───────────────────────────────────────────────
 
-agentsRoute.delete('/:id', async (c) => {
+agentsRoute.delete('/:id', requireRole('member'), async (c) => {
   const id = c.req.param('id')
   if (!UUID_RE.test(id)) return c.json({ error: 'invalid_id' }, 400)
   const ws = c.var.workspace!.workspace_id
@@ -626,7 +648,7 @@ function targetToBrowserTarget(
   }
 }
 
-agentsRoute.post('/:id/run', zValidator('json', RunSchema), async (c) => {
+agentsRoute.post('/:id/run', requireRole('member'), zValidator('json', RunSchema), async (c) => {
   const id = c.req.param('id')
   if (!UUID_RE.test(id)) return c.json({ error: 'invalid_id' }, 400)
   const ws = c.var.workspace!.workspace_id

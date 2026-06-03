@@ -6,6 +6,7 @@ import { logger } from '../middleware/logger.js'
 import { supabaseAdmin } from '../lib/supabase.js'
 import type { WorkspaceToken } from '../lib/jwt.js'
 import { requireWorkspaceJwt } from '../middleware/jwt.js'
+import { requireRole } from '../middleware/role.js'
 
 /**
  * Workspace connections — the read model for the Connections surface: the
@@ -125,7 +126,10 @@ connectionsRoute.get('/', requireWorkspaceJwt, async (c) => {
 
 const SLUG_RE = /^[a-z0-9_-]{1,80}$/
 
-connectionsRoute.delete('/:slug', requireWorkspaceJwt, async (c) => {
+// Disconnecting an app affects every member of the workspace — gate to
+// admin/owner so a viewer (or a hostile member) can't strip an integration
+// the whole team depends on.
+connectionsRoute.delete('/:slug', requireWorkspaceJwt, requireRole('admin'), async (c) => {
   const slug = (c.req.param('slug') ?? '').trim().toLowerCase()
   if (!SLUG_RE.test(slug)) return c.json({ error: 'invalid_slug' }, 400)
   const ws = c.var.workspace.workspace_id
