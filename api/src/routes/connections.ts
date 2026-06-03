@@ -60,9 +60,10 @@ interface ConnectionBrowserSite {
 
 connectionsRoute.get('/', requireWorkspaceJwt, async (c) => {
   const ws = c.var.workspace.workspace_id
+  const acc = c.var.workspace.account_id
   const supabase = supabaseAdmin()
 
-  const [toolkitsRes, credsRes, sitesRes] = await Promise.all([
+  const [toolkitsRes, credsRes, sitesRes, liveByToolkit] = await Promise.all([
     supabase
       .from('composio_tool_cache')
       .select('toolkit_slug,schema_version,fetched_at')
@@ -80,13 +81,32 @@ connectionsRoute.get('/', requireWorkspaceJwt, async (c) => {
       .select('host,display_name,last_verified_at,expires_at')
       .eq('workspace_id', ws)
       .order('host', { ascending: true }),
+    // composio_tool_cache only gets a row when an agent run actually USES the
+    // toolkit (it's a schema cache, not the source of truth for "is this
+    // connected"). A freshly OAuth'd toolkit has a Composio connected_account
+    // but no cache row, so without this query it was invisible on the
+    // connections page until the user ran an agent against it.
+    loadConnectedAccountByToolkit(ws, acc).catch(() => ({}) as Record<string, string>),
   ])
 
-  const toolkits: ConnectionToolkit[] = (toolkitsRes.data ?? []).map((t) => ({
-    slug: t.toolkit_slug as string,
-    schemaVersion: (t.schema_version as number) ?? null,
-    fetchedAt: (t.fetched_at as string) ?? null,
-  }))
+  // Merge: any cached toolkit + any live Composio-active connection, deduped
+  // by slug. Cache rows take precedence so we keep the schema metadata when
+  // we have it.
+  const seen = new Set<string>()
+  const toolkits: ConnectionToolkit[] = []
+  for (const t of toolkitsRes.data ?? []) {
+    const slug = (t.toolkit_slug as string).toLowerCase()
+    seen.add(slug)
+    toolkits.push({
+      slug: t.toolkit_slug as string,
+      schemaVersion: (t.schema_version as number) ?? null,
+      fetchedAt: (t.fetched_at as string) ?? null,
+    })
+  }
+  for (const liveSlug of Object.keys(liveByToolkit).sort()) {
+    if (seen.has(liveSlug)) continue
+    toolkits.push({ slug: liveSlug, schemaVersion: null, fetchedAt: null })
+  }
 
   const credentials: ConnectionCredential[] = (credsRes.data ?? []).map((cred) => ({
     id: cred.id as string,
