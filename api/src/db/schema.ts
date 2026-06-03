@@ -606,6 +606,44 @@ export const clientRoutineArtifacts = pgTable(
   ],
 )
 
+/**
+ * Workspace-scoped named agents — configurable workers a user describes
+ * once (instructions + target + tool allowlist) and can then invoke or
+ * schedule. When `schedule.enabled` is true the route layer mirrors the
+ * agent into `public.automations` for the trigger/dispatch infra to pick
+ * up; the resulting automation id lives on `automationId` so we can keep
+ * the two in sync on edit/delete.
+ */
+export const clientAgents = pgTable(
+  'client_agents',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id').notNull(),
+    accountId: uuid('account_id').notNull(),
+    name: text('name').notNull(),
+    description: text('description'),
+    avatar: text('avatar'),
+    instructions: text('instructions').notNull(),
+    target: text('target').notNull(),
+    tools: jsonb('tools')
+      .$type<Array<{ tool: string; mode: 'api' | 'browser' | 'both' }>>()
+      .notNull()
+      .default([]),
+    schedule: jsonb('schedule').$type<{ cron: string; enabled: boolean } | null>(),
+    automationId: uuid('automation_id'),
+    createdBy: uuid('created_by').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index('client_agents_workspace_updated_idx').on(t.workspaceId, t.updatedAt),
+  ],
+)
+
 export const clientRoutineRuns = pgTable(
   'client_routine_runs',
   {
@@ -655,3 +693,5 @@ export type ClientApp = typeof clientApps.$inferSelect
 export type ClientRoutine = typeof clientRoutines.$inferSelect
 export type ClientRoutineArtifact = typeof clientRoutineArtifacts.$inferSelect
 export type ClientRoutineRun = typeof clientRoutineRuns.$inferSelect
+export type ClientAgent = typeof clientAgents.$inferSelect
+export type NewClientAgent = typeof clientAgents.$inferInsert

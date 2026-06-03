@@ -66,6 +66,7 @@ import {
   TableCellsIcon,
   PlayIcon,
   ShieldCheckIcon,
+  SparklesIcon,
   StopIcon,
   TrashIcon,
   UserCircleIcon,
@@ -143,6 +144,7 @@ export const FileCheck2 = DocumentCheckIcon;
 export const Lock = LockClosedIcon;
 export const CheckCircle2 = CheckCircleIcon;
 export const ShieldCheck = ShieldCheckIcon;
+export const Sparkles = SparklesIcon;
 export const XCircle = XCircleIcon;
 
 export const CircleCheckIcon = CheckCircleIcon;

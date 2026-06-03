@@ -29,6 +29,7 @@ import {
 } from './routes/approvals.js'
 import { sendblueInboundRoute } from './routes/sendblue-inbound.js'
 import { automationsRoute, dryRunPreviewRoute, draftFromChatRoute } from './routes/automations.js'
+import { agentsRoute } from './routes/agents.js'
 import { browserSitesRoute } from './routes/browser-sites.js'
 import { approvalsSseRoute } from './routes/approvals-sse.js'
 import { outputsSseRoute } from './routes/outputs-sse.js'
@@ -244,6 +245,11 @@ export function buildApp() {
   app.use('/v1/automations', requireWorkspaceJwt)
   app.use('/v1/automations/*', requireWorkspaceJwt)
   app.route('/v1/automations', automationsRoute)
+
+  // Workspace-scoped named agents (CRUD + Chief-of-Staff drafting + run).
+  app.use('/v1/agents', requireWorkspaceJwt)
+  app.use('/v1/agents/*', requireWorkspaceJwt)
+  app.route('/v1/agents', agentsRoute)
 
   app.onError((err, c) => {
     const cause = (err as Error & { cause?: unknown }).cause
