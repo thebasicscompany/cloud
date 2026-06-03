@@ -19,15 +19,17 @@ const MetallicPaint = dynamic(() => import("./metallic-paint"), {
   loading: () => null,
 });
 
-// Palette has to thread two opposite asks: "no black" AND "too much white".
-// So both gradient stops sit in the *mid* green range - the highlights are
-// pastel green (not near-white), the troughs are saturated mid green (not
-// near-black). The shader's hi/lo bands stay clearly green at every pixel.
-// `tintColor` close to white keeps the final color-burn pass weak so the
-// burn doesn't yank the result back toward darker hues.
-const GREEN_LIGHT = "#c9f5d8";
-const GREEN_DARK = "#5fc88a";
-const GREEN_TINT = "#dcf2e1";
+// Threads three asks: no black, no white wash, AND metallic shimmer. Both
+// gradient stops live in the green range so the body of the orb stays
+// green; tintColor is saturated green (not near-white) because the final
+// `mix(col, 1 - col/tint, length(tint-1)*0.5)` color-burn pass is what
+// gives the iridescent chromatic edges - pulling tint to white killed
+// the metallic look and made the orb match the iridescent right panel
+// (the prior attempt's complaint). Saturated tint + strong chromaticSpread
+// + nonzero fresnel = metallic. Bright endpoints = no black/white wash.
+const GREEN_LIGHT = "#b3f0c8";
+const GREEN_DARK = "#3ab36e";
+const GREEN_TINT = "#4ac487";
 
 export function BasicsOrb({ pending = false, size = 24, className }: { pending?: boolean; size?: number; className?: string }) {
   return (
@@ -40,21 +42,22 @@ export function BasicsOrb({ pending = false, size = 24, className }: { pending?:
         imageSrc="/basics-orb.svg"
         seed={42}
         scale={3.2}
-        patternSharpness={1.1}
+        patternSharpness={1.3}
         noiseScale={0.55}
         speed={pending ? 1.1 : 0.25}
         liquid={pending ? 1.0 : 0.55}
         mouseAnimation={false}
-        // brightness = 1 keeps the trough = darkColor exactly (the shader
-        // computes lo = darkColor * (2 - brightness); anything > 1 drives lo
-        // toward black). Lower fresnel + chromaticSpread tame the bright rim
-        // that otherwise reads as a white halo and washes the orb out.
+        // brightness = 1 keeps lo = darkColor exactly (the shader does
+        // lo = darkColor * (2 - brightness); anything above 1 drags the
+        // trough toward black). Chromatic + fresnel + refraction stay
+        // turned UP so the metallic shimmer + iridescent rim show through;
+        // they're what makes it read as metal instead of a flat green disc.
         brightness={1.0}
-        contrast={0.55}
-        refraction={0.012}
-        blur={0.014}
-        chromaticSpread={pending ? 2.4 : 1.4}
-        fresnel={0.65}
+        contrast={0.85}
+        refraction={0.02}
+        blur={0.012}
+        chromaticSpread={pending ? 3.8 : 2.8}
+        fresnel={0.95}
         angle={0}
         waveAmplitude={pending ? 2.6 : 0.9}
         distortion={pending ? 1.0 : 0.4}
