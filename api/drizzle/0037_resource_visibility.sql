@@ -23,13 +23,10 @@ ALTER TABLE public.cloud_runs
 CREATE INDEX IF NOT EXISTS idx_cloud_runs_ws_visibility
   ON public.cloud_runs (workspace_id, visibility);
 
--- automations: same.
+-- automations: same. created_by already exists (populated by the routes).
 ALTER TABLE public.automations
   ADD COLUMN IF NOT EXISTS visibility text NOT NULL DEFAULT 'shared'
     CHECK (visibility IN ('private','shared'));
-ALTER TABLE public.automations
-  ADD COLUMN IF NOT EXISTS created_by uuid;
-UPDATE public.automations SET created_by = account_id WHERE created_by IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_automations_ws_visibility
   ON public.automations (workspace_id, visibility);
