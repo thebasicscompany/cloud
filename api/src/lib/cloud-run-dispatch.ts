@@ -218,6 +218,27 @@ export async function dispatchCloudRun(
     }
   }
 
+  // PHASE-1-3 item 2: enforce dailyCloudMinutes. Sums duration_seconds for
+  // cloud runs that started today (UTC) and 402s once the plan's daily
+  // budget is exceeded. Local-target runs (local_compute / local_relay) are
+  // excluded — they don't consume cloud Fargate time. null = unlimited.
+  if (limits.dailyCloudMinutes !== null && (input.browserTarget ?? 'cloud') === 'cloud') {
+    const usage = (await db.execute(sql`
+      SELECT COALESCE(SUM(duration_seconds), 0)::int AS sec
+        FROM public.cloud_runs
+       WHERE workspace_id = ${ws}
+         AND browser_target = 'cloud'
+         AND started_at >= date_trunc('day', now() AT TIME ZONE 'UTC')
+    `)) as unknown as Array<{ sec: number }>
+    const usedMin = Math.floor((usage[0]?.sec ?? 0) / 60)
+    if (usedMin >= limits.dailyCloudMinutes) {
+      throw new PlanLimitError(
+        'daily_cloud_minutes',
+        `Your plan allows ${limits.dailyCloudMinutes} cloud-run minutes per day. Used ${usedMin} so far — wait for tomorrow's reset or upgrade.`,
+      )
+    }
+  }
+
   const cloudAgentId = await resolveCloudAgentId({
     workspace: input.workspace,
     cloudAgentId: input.cloudAgentId,
