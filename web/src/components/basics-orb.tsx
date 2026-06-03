@@ -42,7 +42,7 @@ export function BasicsOrb({ pending = false, size = 24, className }: { pending?:
         imageSrc="/basics-orb.svg"
         seed={42}
         scale={3.2}
-        patternSharpness={1.3}
+        patternSharpness={1.55}
         noiseScale={0.55}
         speed={pending ? 1.1 : 0.25}
         liquid={pending ? 1.0 : 0.55}
@@ -53,10 +53,16 @@ export function BasicsOrb({ pending = false, size = 24, className }: { pending?:
         // turned UP so the metallic shimmer + iridescent rim show through;
         // they're what makes it read as metal instead of a flat green disc.
         brightness={1.0}
-        contrast={0.85}
-        refraction={0.02}
-        blur={0.012}
-        chromaticSpread={pending ? 3.8 : 2.8}
+        // contrast = 1 = identity (no flattening). Higher would over-
+        // separate; 1 keeps the natural band falloff.
+        contrast={1.0}
+        // blur is the band-edge softness inside the metallic mG() function.
+        // 0.003 reads as crisp; 0.012 reads as soft / blurry. refraction
+        // doubles as chromatic offset magnitude - keep it modest so the
+        // RGB channels stay near-aligned (less chromatic blur).
+        refraction={0.012}
+        blur={0.003}
+        chromaticSpread={pending ? 3.2 : 2.4}
         fresnel={0.95}
         angle={0}
         waveAmplitude={pending ? 2.6 : 0.9}
