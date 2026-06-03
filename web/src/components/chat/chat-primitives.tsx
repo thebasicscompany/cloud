@@ -1,8 +1,9 @@
 "use client";
 
 import { ArrowUp, Sparkle } from "@phosphor-icons/react";
+import dynamic from "next/dynamic";
 import { forwardRef, useEffect, useRef } from "react";
-import type { KeyboardEvent, ReactNode } from "react";
+import type { JSX, KeyboardEvent, ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -97,6 +98,8 @@ export interface ChatComposerProps {
   /** Extra controls rendered above the textarea (suggested follow-ups, etc). */
   topSlot?: ReactNode;
   className?: string;
+  /** When true, render the push-to-talk mic button next to send. Defaults true. */
+  voice?: boolean;
 }
 
 export function ChatComposer({
@@ -109,6 +112,7 @@ export function ChatComposer({
   rows = 1,
   topSlot,
   className,
+  voice = true,
 }: ChatComposerProps) {
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -117,6 +121,15 @@ export function ChatComposer({
     }
   };
   const send = sendDisabled ?? !value.trim();
+  // Voice dictation: append finalized transcripts to whatever's already in
+  // the textarea so the user can dictate, then edit before sending. Interim
+  // partials are ignored to avoid flicker.
+  const onTranscript = (text: string, isFinal: boolean) => {
+    if (!isFinal) return;
+    const chunk = text.trim();
+    if (!chunk) return;
+    onChange(value ? `${value.trimEnd()} ${chunk}` : chunk);
+  };
   return (
     <div className={cn("border-t bg-background/60 p-3 backdrop-blur-sm", className)}>
       {topSlot}
@@ -130,6 +143,7 @@ export function ChatComposer({
           disabled={disabled}
           className="min-h-9 resize-none border-0 bg-transparent px-2 py-1.5 text-sm focus-visible:ring-0"
         />
+        {voice && !disabled ? <ComposerVoiceButton onTranscript={onTranscript} /> : null}
         <Button
           type="button"
           onClick={onSubmit}
@@ -144,3 +158,11 @@ export function ChatComposer({
     </div>
   );
 }
+
+// Dynamic import keeps the Deepgram WS + MediaRecorder code out of the bundle
+// for callers that don't actually render the mic (chat-to-run, basics canvas,
+// future agent surfaces — all opt in via voice={true|false}).
+const ComposerVoiceButton = dynamic(
+  () => import("@/app/(main)/_components/voice-button").then((m) => m.VoiceButton),
+  { ssr: false, loading: () => null },
+) as (props: { onTranscript: (text: string, isFinal: boolean) => void }) => JSX.Element;

@@ -34,6 +34,10 @@ export type Billing = {
   limits: PlanLimits;
   monthlyManagedCreditPoolCents: number | null;
   managedUsedCents: number;
+  /** Saved agents in this workspace — compared against limits.maxAgents. */
+  agentCount: number;
+  /** Cloud-run minutes consumed UTC-today, compared against limits.dailyCloudMinutes. */
+  cloudMinutesUsedToday: number;
   catalog: PlanCatalogEntry[];
   canManageBilling: boolean;
 };
@@ -59,6 +63,8 @@ const FALLBACK: Billing = {
   },
   monthlyManagedCreditPoolCents: 100,
   managedUsedCents: 0,
+  agentCount: 0,
+  cloudMinutesUsedToday: 0,
   catalog: [],
   canManageBilling: false,
 };

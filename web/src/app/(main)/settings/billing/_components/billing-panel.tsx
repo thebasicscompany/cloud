@@ -16,6 +16,42 @@ function usd(cents: number | null | undefined): string {
   return `$${(cents / 100).toFixed(cents % 100 === 0 ? 0 : 2)}`;
 }
 
+function UsageBar({
+  label,
+  used,
+  cap,
+  renderValue,
+}: {
+  label: string;
+  used: number;
+  cap: number | null;
+  renderValue: (n: number) => string;
+}) {
+  const pct = cap !== null && cap > 0 ? Math.min(100, Math.round((used / cap) * 100)) : 0;
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-foreground/70">{label}</span>
+        <span className="font-medium">
+          {renderValue(used)}
+          {cap !== null ? ` / ${renderValue(cap)}` : " (unlimited)"}
+        </span>
+      </div>
+      {cap !== null ? (
+        <div className="h-2 w-full overflow-hidden rounded-full bg-foreground/5">
+          <div
+            className={cn(
+              "h-full rounded-full transition-all",
+              pct >= 100 ? "bg-destructive" : pct >= 80 ? "bg-amber-500" : "bg-primary",
+            )}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 const PLAN_ORDER: BillingPlan[] = ["free", "pro", "team", "enterprise"];
 
 export function BillingPanel({ billing }: { billing: Billing }) {
@@ -30,6 +66,9 @@ export function BillingPanel({ billing }: { billing: Billing }) {
     pricePerSeatCents,
     monthlyManagedCreditPoolCents,
     managedUsedCents,
+    agentCount,
+    cloudMinutesUsedToday,
+    limits,
     catalog,
     canManageBilling,
     hasStripeCustomer,
@@ -122,24 +161,37 @@ export function BillingPanel({ billing }: { billing: Billing }) {
             ) : null}
           </div>
 
-          {/* Managed-AI usage */}
+          {/* Usage bars — show what's used vs the plan cap so the user sees
+              their position BEFORE the API returns a 402. */}
+          <UsageBar
+            label="Agents saved"
+            used={agentCount}
+            cap={limits.maxAgents}
+            renderValue={(v) => `${v}`}
+          />
+          <UsageBar
+            label="Cloud-run minutes today"
+            used={cloudMinutesUsedToday}
+            cap={limits.dailyCloudMinutes}
+            renderValue={(v) => `${v} min`}
+          />
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Included AI used this month</span>
+              <span className="text-foreground/70">Included AI used this month</span>
               <span className="font-medium">
                 {usd(managedUsedCents)}
                 {monthlyManagedCreditPoolCents !== null ? ` / ${usd(monthlyManagedCreditPoolCents)}` : " (unlimited)"}
               </span>
             </div>
             {monthlyManagedCreditPoolCents !== null ? (
-              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+              <div className="h-2 w-full overflow-hidden rounded-full bg-foreground/5">
                 <div
-                  className={cn("h-full rounded-full", usedPct >= 100 ? "bg-destructive" : "bg-primary")}
+                  className={cn("h-full rounded-full transition-all", usedPct >= 100 ? "bg-destructive" : usedPct >= 80 ? "bg-amber-500" : "bg-primary")}
                   style={{ width: `${usedPct}%` }}
                 />
               </div>
             ) : null}
-            <p className="text-muted-foreground text-xs">
+            <p className="text-foreground/60 text-xs">
               Managed Anthropic/Gemini usage on this workspace — local and cloud runs both count. Bring your own keys
               (Team plan and up) to remove this cap.
             </p>

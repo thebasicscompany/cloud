@@ -1,5 +1,7 @@
 import { Hono } from 'hono'
+import { sql } from 'drizzle-orm'
 
+import { db } from '../db/index.js'
 import { supabaseAdmin } from '../lib/supabase.js'
 import { hasRole, type WorkspaceToken } from '../lib/jwt.js'
 import { requireWorkspaceJwt } from '../middleware/jwt.js'
@@ -41,6 +43,22 @@ billingRoute.get('/', requireWorkspaceJwt, async (c) => {
   const seats = await activeSeatCount(ws)
   const plan = sub?.plan ?? c.var.workspace.plan
   const managedUsedCents = await monthToDateManagedCents(ws)
+
+  // Per-resource usage for the billing panel's progress bars. The enforcement
+  // already happens at the route layer (agents.ts POST / and cloud-run-dispatch
+  // dailyCloudMinutes gate); these reads just surface the SAME numbers in the
+  // UI so the user sees "you've used X of Y" before hitting 402.
+  const [agentsCnt, cloudSec] = await Promise.all([
+    db.execute(sql`SELECT COUNT(*)::int AS cnt FROM public.client_agents WHERE workspace_id = ${ws}`),
+    db.execute(sql`
+      SELECT COALESCE(SUM(duration_seconds), 0)::int AS sec
+        FROM public.cloud_runs
+       WHERE workspace_id = ${ws}
+         AND browser_target = 'cloud'
+         AND started_at >= date_trunc('day', now() AT TIME ZONE 'UTC')
+    `),
+  ]) as unknown as [Array<{ cnt: number }>, Array<{ sec: number }>]
+
   return c.json({
     plan,
     status: sub?.status ?? 'active',
@@ -53,6 +71,8 @@ billingRoute.get('/', requireWorkspaceJwt, async (c) => {
     limits: planLimits(plan),
     monthlyManagedCreditPoolCents: monthlyManagedCreditPoolCents(plan, seats),
     managedUsedCents,
+    agentCount: agentsCnt[0]?.cnt ?? 0,
+    cloudMinutesUsedToday: Math.floor((cloudSec[0]?.sec ?? 0) / 60),
     catalog: PLAN_CATALOG,
     canManageBilling: hasRole(c.var.workspace.role ?? 'member', 'admin'),
   })
