@@ -639,6 +639,96 @@ Bias your suggestedTools toward what's already connected. If the agent needs a t
   }
 })
 
+// ─── POST /v1/agents/draft-from-demo ─────────────────────────────────────
+//
+// User records their screen + narrates ("I open Gmail, search 'invoice',
+// download attachments to Downloads…"). Client sends ≤24 frames as base64
+// JPEGs + the transcript. We pass both to Claude (vision) to draft a full
+// agent — name, instructions, target, suggested tools — and return it as
+// the same `patch` shape the chat /draft uses, so the canvas can apply it
+// without a separate code path.
+
+const DemoFrameSchema = z.object({
+  // base64-encoded JPEG (no data: prefix). Capped at ~512 KB after b64.
+  data: z.string().min(64).max(700_000),
+  // Seconds from the start of the recording. Helps the model order events.
+  tSec: z.number().min(0).max(60 * 60),
+})
+
+const DraftFromDemoSchema = z.object({
+  transcript: z.string().max(32 * 1024).optional(),
+  frames: z.array(DemoFrameSchema).min(1).max(24),
+})
+
+const DEMO_SYSTEM = `You are Basics, drafting a brand new Agent from a screen-recording demo the user just performed.
+
+You receive:
+- A short transcript of what the user said while recording (may be empty).
+- Up to 24 screenshots from the recording, in time order, each with its tSec.
+
+Your job: infer what the agent should DO, then draft NAME, INSTRUCTIONS, TARGET, and SUGGESTED TOOLS. The instructions should describe the task as a reusable procedure — not a play-by-play of THIS run. Pick the target by what the user actually did:
+- If they used a browser to do everything → 'cloud' (or 'chrome' if it clearly depended on their logged-in session).
+- If they used native macOS apps / Finder / system UI → 'computer'.
+
+Tool catalog — the ONLY valid slugs are: gmail, google_calendar, google_sheets, google_docs, google_drive, slack, notion, linear, github, asana, trello, airtable, hubspot, salesforce, jira, stripe, shopify. Do NOT invent slugs. Include suggestedBrowserSites (bare hosts like "x.com") for sites where the user is logged in.
+
+Reply with ONE JSON object (no markdown):
+  {
+    "reply": string,                       // one-sentence summary of what you saw
+    "patch": {
+      "name": string,
+      "instructions": string,              // the standing system-prompt for the agent
+      "target": "cloud" | "computer" | "chrome",
+      "suggestedTools"?: string[],
+      "suggestedBrowserSites"?: string[]
+    },
+    "complete": true
+  }`
+
+agentsRoute.post('/draft-from-demo', requireRole('member'), zValidator('json', DraftFromDemoSchema), async (c) => {
+  const body = c.req.valid('json')
+  const ws = c.var.workspace!.workspace_id
+  const acc = c.var.workspace!.account_id
+  const conn = await loadWorkspaceConnections(ws, acc)
+  const preamble = `\n\nWorkspace's CURRENT connections — prefer these in suggestedTools / suggestedBrowserSites:
+- Composio toolkits: ${conn.connectedToolkits.length ? conn.connectedToolkits.join(', ') : '(none)'}
+- Saved browser sessions: ${conn.savedHosts.length ? conn.savedHosts.join(', ') : '(none)'}`
+
+  // Frames go in time order. Each becomes an image block; the transcript
+  // goes in as a single text block first so the model has narration context
+  // before it sees the visuals.
+  const sortedFrames = [...body.frames].sort((a, b) => a.tSec - b.tSec)
+  const userBlocks: Array<
+    | { type: 'text'; text: string }
+    | { type: 'image'; source: { type: 'base64'; media_type: 'image/jpeg'; data: string } }
+  > = []
+  userBlocks.push({
+    type: 'text',
+    text: `Transcript (may be empty):\n${body.transcript?.trim() || '(no narration)'}\n\nScreenshots in time order follow. Use them + the transcript to infer the procedure, then draft the agent.`,
+  })
+  for (const f of sortedFrames) {
+    userBlocks.push({
+      type: 'image',
+      source: { type: 'base64', media_type: 'image/jpeg', data: f.data },
+    })
+  }
+
+  try {
+    const client = getAnthropicClient()
+    const msg = await client.messages.create({
+      model: DRAFT_MODEL,
+      max_tokens: 2000,
+      system: DEMO_SYSTEM + preamble,
+      messages: [{ role: 'user', content: userBlocks }],
+    })
+    const text = msg.content.map((b) => (b.type === 'text' ? b.text : '')).join('')
+    return c.json(parseDraftReply(text))
+  } catch (err) {
+    logger.warn({ err: (err as Error).message }, 'agents draft-from-demo: anthropic call failed')
+    return c.json({ error: 'draft_unavailable', message: (err as Error).message }, 503)
+  }
+})
+
 // ─── POST /v1/agents/:id/run ─────────────────────────────────────────────
 //
 // Kicks off a one-shot run using this agent's preconfigured instructions +

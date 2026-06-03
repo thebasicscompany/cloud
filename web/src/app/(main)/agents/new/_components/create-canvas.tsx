@@ -8,6 +8,8 @@ import { Check, Robot, Sparkle } from "@phosphor-icons/react";
 
 import { Button } from "@/components/ui/button";
 import { ChatComposer, ChatMessage, ChatThread } from "@/components/chat/chat-primitives";
+
+import { DemoRecorder } from "./demo-recorder";
 import { ConnectionLogo } from "@/components/connection-logo";
 import { Iridescence } from "@/components/iridescence";
 import { Textarea } from "@/components/ui/textarea";
@@ -63,6 +65,7 @@ export function CreateAgentCanvas() {
   const { create: createAgent } = useAgentActions();
 
   const [chat, setChat] = useState<ChatTurn[]>([INTRO]);
+  const [demoOpen, setDemoOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [thinking, setThinking] = useState(false);
 
@@ -145,6 +148,15 @@ export function CreateAgentCanvas() {
             <Sparkle weight="fill" className="size-3.5" />
           </div>
           <div className="font-medium text-sm">Basics</div>
+          <button
+            type="button"
+            onClick={() => setDemoOpen(true)}
+            className="ml-auto inline-flex items-center gap-1.5 rounded-full border bg-card px-2.5 py-1 text-foreground/70 text-xs transition-colors hover:border-foreground/30 hover:text-foreground"
+            title="Show Basics what to do — screen + voice"
+          >
+            <span className="size-1.5 rounded-full bg-destructive" />
+            Record a demo
+          </button>
         </div>
         <ChatThread scrollKey={`${chat.length}-${thinking ? 1 : 0}`}>
           {chat.map((turn, i) => (
@@ -280,6 +292,15 @@ export function CreateAgentCanvas() {
           </div>
         </div>
       </div>
+
+      <DemoRecorder
+        open={demoOpen}
+        onClose={() => setDemoOpen(false)}
+        onPatch={(patch, summary) => {
+          applyPatch(patch);
+          setChat((prev) => [...prev, { role: "assistant", content: summary }]);
+        }}
+      />
     </div>
   );
 }
