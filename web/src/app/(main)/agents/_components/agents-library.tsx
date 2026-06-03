@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
-import { Plus, Search, Sparkles } from "@/icons";
+import { Robot } from "@phosphor-icons/react";
+
+import { Plus, Search } from "@/icons";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -98,7 +100,7 @@ function AgentCard({ agent }: { agent: Agent }) {
         ) : initials ? (
           <span className="font-medium text-foreground/80 text-sm">{initials}</span>
         ) : (
-          <Sparkles className="size-4" />
+          <Robot weight="fill" className="size-5" />
         )}
       </div>
       <div className="min-w-0 w-full">
@@ -122,7 +124,7 @@ function EmptyState({ hasQuery }: { hasQuery: boolean }) {
   }
   return (
     <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed bg-foreground/[0.02] p-12 text-center">
-      <Sparkles className="mb-3 size-7 text-foreground/40" />
+      <Robot weight="fill" className="mb-3 size-8 text-foreground/40" />
       <h2 className="font-medium text-base">No agents yet</h2>
       <p className="mt-1 max-w-sm text-foreground/60 text-sm">
         Agents are reusable workers you create once and run on demand or on a schedule.

@@ -1,11 +1,16 @@
+import { Robot } from "@phosphor-icons/react/dist/ssr";
+
 import {
   Cog,
   CogSolid,
   Play,
   PlaySolid,
-  Sparkles,
   type Icon,
 } from "@/icons";
+
+// Phosphor's Robot is the brand mark for Agents — distinctive, not the generic
+// "magic sparkles" trope. Filled weight reads clearly at 16px in the sidebar.
+const AgentIcon = Robot as unknown as Icon;
 
 export interface NavSubItem {
   title: string;
@@ -41,7 +46,7 @@ export const sidebarItems: NavGroup[] = [
   {
     id: 1,
     items: [
-      { title: "Agents", url: "/agents", icon: Sparkles, iconActive: Sparkles },
+      { title: "Agents", url: "/agents", icon: AgentIcon, iconActive: AgentIcon },
       { title: "Activity", url: "/runs", icon: Play, iconActive: PlaySolid },
       { title: "Settings", url: "/settings", icon: Cog, iconActive: CogSolid },
     ],

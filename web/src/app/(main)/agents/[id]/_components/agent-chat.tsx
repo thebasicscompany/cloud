@@ -5,7 +5,9 @@ import { useEffect, useRef, useState } from "react";
 
 import { toast } from "sonner";
 
-import { ArrowUp, Pencil, Sparkles, Trash2 } from "@/icons";
+import { Robot } from "@phosphor-icons/react";
+
+import { ArrowUp, Pencil, Trash2 } from "@/icons";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -79,7 +81,7 @@ export function AgentChatRun({ id }: { id: string }) {
     <div className="mx-auto flex h-full w-full max-w-3xl flex-col overflow-hidden p-6">
       <header className="flex items-center gap-3 pb-4">
         <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-foreground/5 text-2xl">
-          {agent.avatar || <Sparkles className="size-5" />}
+          {agent.avatar || <Robot weight="fill" className="size-6" />}
         </div>
         <div className="min-w-0 flex-1">
           <h1 className="truncate font-semibold text-lg">{agent.name}</h1>
