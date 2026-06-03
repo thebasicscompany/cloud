@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * Edit a record's data/status (user interaction). Repointed to cloud/api
- * `PATCH /v1/apps/:slug/records/:recordId` (workspace-scoped by the JWT) — no
+ * `PATCH /v1/apps/:slug/records/:recordId` (workspace-scoped by the JWT) - no
  * service-role admin client, no hardcoded workspace.
  */
 export async function PATCH(req: Request, { params }: { params: Promise<{ slug: string; recordId: string }> }) {
@@ -34,7 +34,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ slug: 
 
 /**
  * Delete a record (user interaction). Repointed to cloud/api
- * `DELETE /v1/apps/:slug/records/:recordId` (workspace-scoped by the JWT) — no
+ * `DELETE /v1/apps/:slug/records/:recordId` (workspace-scoped by the JWT) - no
  * service-role admin client, no hardcoded workspace.
  */
 export async function DELETE(req: Request, { params }: { params: Promise<{ slug: string; recordId: string }> }) {

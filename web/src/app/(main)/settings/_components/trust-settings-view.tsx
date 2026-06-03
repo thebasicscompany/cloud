@@ -78,7 +78,7 @@ export function TrustSettingsView() {
                     <span className="block text-xs">{formatDay(g.grantedAt)}</span>
                   </TableCell>
                   <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
-                    {g.expiresAt ? formatDay(g.expiresAt) : "—"}
+                    {g.expiresAt ? formatDay(g.expiresAt) : "-"}
                   </TableCell>
                   <TableCell className="text-right">
                     <Button type="button" variant="ghost" size="sm">

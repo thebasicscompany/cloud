@@ -7,7 +7,7 @@ import { WORKSPACE_COOKIE, cloudFetch } from "@/lib/api/cloud";
  * POST /api/workspace/leave
  *
  * Leaves the user's CURRENT workspace (the one the active JWT is scoped to).
- * cloud/api `POST /v1/team/leave` enforces the rules — you can't leave your
+ * cloud/api `POST /v1/team/leave` enforces the rules - you can't leave your
  * personal workspace, and a sole owner must transfer/delete first. On success we
  * clear the selection cookie so the next render falls back to the personal
  * workspace.

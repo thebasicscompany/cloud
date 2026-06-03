@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
  *
  * Bundle-safe: forwards to the runtime API
  *   POST /v1/workspaces/:workspaceId/browser-sites/:host/finalize { sessionId }
- * authed with the signed-in user's WORKSPACE JWT (cloud.ts) — no renderer-side
+ * authed with the signed-in user's WORKSPACE JWT (cloud.ts) - no renderer-side
  * JWT minting. Returns { ok, host, expiresAt }. Cookies are NEVER exposed here.
  */
 

@@ -6,8 +6,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Bundle a recorded routine — the spoken narration plus the screenshots the user
- * showed — into a durable Document and a prompt that drives the agent to build
+ * Bundle a recorded routine - the spoken narration plus the screenshots the user
+ * showed - into a durable Document and a prompt that drives the agent to build
  * (and run) an automation from the demonstration.
  *
  * Bundle-safe: this proxies the deployed runtime API

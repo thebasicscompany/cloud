@@ -39,7 +39,7 @@ export function VoiceButton({ onTranscript }: VoiceButtonProps) {
       try {
         recorder.stop();
       } catch {
-        // ignore — recorder may already be stopping
+        // ignore - recorder may already be stopping
       }
     }
     recorderRef.current = null;
@@ -49,7 +49,7 @@ export function VoiceButton({ onTranscript }: VoiceButtonProps) {
       try {
         ws.close();
       } catch {
-        // ignore — socket may already be closed
+        // ignore - socket may already be closed
       }
     }
     wsRef.current = null;
@@ -74,7 +74,7 @@ export function VoiceButton({ onTranscript }: VoiceButtonProps) {
 
     let token: string;
     try {
-      // Inside Electron, ask main to proxy the cloud/api call — sidesteps the
+      // Inside Electron, ask main to proxy the cloud/api call - sidesteps the
       // Supabase-cookie-sync race that makes the same-origin Next route flap
       // with 401s in dev.
       const bh = (window as unknown as {

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 /**
  * Detect macOS on the client so keyboard-shortcut hints render the right
- * modifier — ⌘ on Mac, Ctrl on Windows/Linux. We ship both desktops, so
+ * modifier - ⌘ on Mac, Ctrl on Windows/Linux. We ship both desktops, so
  * nothing should hardcode the Mac symbol. SSR-safe: defaults to non-Mac and
  * corrects on mount (the shortcut hint is non-critical chrome).
  */

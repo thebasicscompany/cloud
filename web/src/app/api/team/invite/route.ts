@@ -11,7 +11,7 @@ export const runtime = "nodejs";
  *   POST /v1/team/invite { email, role, workspaceName }
  * authed with the user's short-lived WORKSPACE JWT (cloud.ts). The runtime
  * creates the workspace_invitations row under the verified workspace AND sends
- * the invite email server-side (cloud/api owns the SES creds — the renderer
+ * the invite email server-side (cloud/api owns the SES creds - the renderer
  * must not). The legacy `workspaceId` body field is accepted for compatibility
  * but ignored: the JWT is the source of truth.
  */

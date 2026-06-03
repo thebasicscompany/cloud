@@ -194,7 +194,7 @@ export function ConnectionsConsole({ data }: { data: ConnectionsData }) {
         // In Electron, `window.open(url, "_blank")` opens a fresh BrowserWindow
         // with no cookies, so the user has to re-sign-in to authorize.
         // openExternal routes to their default browser (their real Chrome)
-        // where they're already signed in — one-click authorize.
+        // where they're already signed in - one-click authorize.
         const bh = (
           window as unknown as {
             basichome?: { isDesktop?: boolean; openExternal?: (url: string) => Promise<{ ok?: boolean }> };
@@ -481,7 +481,7 @@ function CredentialsCard({
                       ) : null}
                     </TableCell>
                     <TableCell className="hidden text-muted-foreground text-sm md:table-cell">
-                      {cred.provenance ?? "—"}
+                      {cred.provenance ?? "-"}
                     </TableCell>
                     <TableCell className="hidden text-muted-foreground text-sm lg:table-cell">
                       {formatRelative(cred.lastUsedAt ?? undefined)}
@@ -615,7 +615,7 @@ function BrowserSitesCard({
                       {formatRelative(site.lastVerifiedAt ?? undefined)}
                     </TableCell>
                     <TableCell className="hidden text-muted-foreground text-sm lg:table-cell">
-                      {site.expiresAt ? new Date(site.expiresAt).toLocaleDateString() : "—"}
+                      {site.expiresAt ? new Date(site.expiresAt).toLocaleDateString() : "-"}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1.5">

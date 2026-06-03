@@ -5,7 +5,7 @@ import { cloudFetch } from "@/lib/api/cloud";
 export const runtime = "nodejs";
 
 /**
- * POST /api/automations/:id/activate — flip a draft/paused automation to active.
+ * POST /api/automations/:id/activate - flip a draft/paused automation to active.
  * Proxies cloud/api `POST /v1/automations/:id/activate`, which registers the
  * automation's triggers (EventBridge schedule + any Composio webhooks) BEFORE
  * flipping status. On a trigger-registration failure cloud/api returns 422 with

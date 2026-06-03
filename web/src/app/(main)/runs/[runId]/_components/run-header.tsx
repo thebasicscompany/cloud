@@ -82,7 +82,7 @@ export function RunHeader({ run, takeover, onToggleTakeover, paused, onTogglePau
         </div>
       </div>
 
-      {/* User-friendly metadata strip — only what the user actually cares
+      {/* User-friendly metadata strip - only what the user actually cares
        *  about. Removed: raw run UUID, Steps:0 noise, Trigger:Manual (the
        *  default), Runtime:live (always live in the UI), Actor UUID,
        *  Session UUID, raw Target slug. Kept: Started + Duration + Cost
@@ -134,7 +134,7 @@ function formatDuration(run: Run, isLive: boolean): string {
       const ms = Date.now() - new Date(run.startedAt).getTime();
       return `${formatMs(ms)} elapsed`;
     }
-    return "—";
+    return "-";
   }
   const ms = new Date(run.completedAt).getTime() - new Date(run.startedAt).getTime();
   return formatMs(ms);

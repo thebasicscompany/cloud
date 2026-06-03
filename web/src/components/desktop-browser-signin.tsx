@@ -12,7 +12,7 @@ import { createClient } from "@/lib/supabase/client";
  * The Electron app opens the landing site's /desktop-login-bridge in the system
  * browser; after the user signs in there, that page POSTs the Supabase session to
  * the app's loopback (desktop/auth-bridge.js), which forwards it here over IPC.
- * We call supabase.auth.setSession so the session is established in-app — no
+ * We call supabase.auth.setSession so the session is established in-app - no
  * credentials are ever typed in the Electron window. Renders nothing on the web.
  */
 type DesktopBridge = {

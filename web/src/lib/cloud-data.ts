@@ -10,7 +10,7 @@ import type { PlatformEvent } from "@/types/platform-events";
  *
  * SECURE MIGRATION: every function now calls `cloud/api` (`/v1/run-views/*`,
  * `/v1/automations`) with the request's short-lived WORKSPACE JWT (exchanged
- * from the user's Supabase session — see `@/lib/api/cloud`). The backend scopes
+ * from the user's Supabase session - see `@/lib/api/cloud`). The backend scopes
  * every read to the caller's workspace, so this lib no longer needs the
  * service-role admin client or a hardcoded PRIMARY_WORKSPACE_ID. The
  * Browserbase API key for live-view resolution now stays server-side in
@@ -85,7 +85,7 @@ export async function getRunBrowserLoginNeeds(runId: string): Promise<string[]> 
  * The live-view URL for a run's CURRENTLY ACTIVE browser tab. Resolution
  * (calling Browserbase with the server-side BROWSERBASE_API_KEY) now happens in
  * cloud/api; this just returns the resolved URL. `pageUrl` is retained in the
- * shape for source compatibility but is no longer surfaced (always null) — the
+ * shape for source compatibility but is no longer surfaced (always null) - the
  * renderer only needs the live-view URL.
  */
 export async function getActiveLiveView(
@@ -105,7 +105,7 @@ export interface PendingActionRow {
 }
 
 /**
- * Workspace-wide "waiting on you" list — recent runs blocked needing the user to
+ * Workspace-wide "waiting on you" list - recent runs blocked needing the user to
  * connect a browser login or a Composio toolkit. Browser-login hosts that are
  * already saved (connected) are dropped.
  */

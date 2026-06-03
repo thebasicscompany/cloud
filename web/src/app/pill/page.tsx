@@ -7,7 +7,7 @@ import { Loader2, Mic, Square } from "@/icons";
 /**
  * The floating Record/Teach HUD (Model: the demo's CaptureHUD). This page is
  * loaded in a frameless, always-on-top, transparent Electron window that sits
- * OVER the user's other apps — NOT anchored to the main window — so they can
+ * OVER the user's other apps - NOT anchored to the main window - so they can
  * demonstrate a workflow in their real apps while talking it through. Lens
  * captures screen/context; we capture the spoken narration (Deepgram); on Stop
  * the recorded routine is saved as a Document the agent can turn into an
@@ -133,7 +133,7 @@ export default function PillPage() {
           const res = await fetch("/api/lens/context");
           if (res.ok) ctx = await res.json();
         } catch {
-          /* fall through — startRecording will surface a clear error */
+          /* fall through - startRecording will surface a clear error */
         }
         const r = bh?.lensRecordStart
           ? await bh.lensRecordStart({ label: "Recorded routine", workspaceId: ctx.workspaceId, userId: ctx.userId })
@@ -161,7 +161,7 @@ export default function PillPage() {
     return () => clearInterval(id);
   }, [phase]);
 
-  // Capture the screen periodically while recording — the visual half of the
+  // Capture the screen periodically while recording - the visual half of the
   // demonstration. Capped + downscaled (in main.js) so it stays light.
   useEffect(() => {
     if (phase !== "recording") return;
@@ -212,7 +212,7 @@ export default function PillPage() {
         if (data?.prompt) prompt = data.prompt;
       }
     } catch {
-      /* best-effort — narration-only prompt still hands off below */
+      /* best-effort - narration-only prompt still hands off below */
     }
     // Hand the routine to the main window so the loop continues into building an
     // automation (same origin → shared localStorage; Home reads it on mount and
@@ -243,7 +243,7 @@ export default function PillPage() {
               {String(Math.floor(elapsed / 60)).padStart(2, "0")}:{String(elapsed % 60).padStart(2, "0")}
             </span>
             <span className="min-w-0 flex-1 truncate text-muted-foreground text-xs">
-              {micOn ? "Teaching — demonstrate it and talk it through" : "Recording — demonstrate the workflow"}
+              {micOn ? "Teaching - demonstrate it and talk it through" : "Recording - demonstrate the workflow"}
             </span>
             <Mic className={micOn ? "size-4 text-red-500" : "size-4 text-muted-foreground/50"} />
             <button

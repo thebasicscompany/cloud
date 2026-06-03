@@ -55,7 +55,7 @@ export function RunDetail({ runId }: { runId: string }) {
 
       <ConnectionNeededBanner runId={run.id} />
 
-      {/* Live view is the centerpiece. We dropped the timeline/log panel — the
+      {/* Live view is the centerpiece. We dropped the timeline/log panel - the
        *  verification strip surfaces anything that needs human attention inline. */}
       <div className="overflow-hidden rounded-lg border bg-card">
         <div className={takeover ? "h-[calc(100vh-12rem)]" : "h-[calc(100vh-22rem)] min-h-[420px]"}>

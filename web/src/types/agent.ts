@@ -1,5 +1,5 @@
 /**
- * Agent — a named, workspace-scoped worker the user creates once and then
+ * Agent - a named, workspace-scoped worker the user creates once and then
  * runs (or schedules) repeatedly. Mirrors the `runtime.client_agents` row.
  */
 

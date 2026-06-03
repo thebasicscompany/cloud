@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * Save a `storageState` blob (cookies + localStorage) exported from the user's
- * LOCAL Chrome so the cloud agent's browser can reuse that login — the
+ * LOCAL Chrome so the cloud agent's browser can reuse that login - the
  * "use my local login in the cloud" path. The desktop app captures cookies via
  * CDP for a single host the user picks (explicit, opt-in) and POSTs them here.
  *

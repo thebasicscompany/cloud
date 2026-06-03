@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
  * (`POST /v1/automations/:id/run`) with the caller's per-user workspace JWT.
  * That endpoint resolves the automation's goal server-side, inserts the
  * cloud_runs row (automation_id + version + triggered_by='manual'), and
- * publishes to the runs queue — no admin client / cron-kicker, no
+ * publishes to the runs queue - no admin client / cron-kicker, no
  * client-supplied workspace. External contract is unchanged: `{ ok, runId? }`.
  */
 export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {

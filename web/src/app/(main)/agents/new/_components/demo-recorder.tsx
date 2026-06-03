@@ -31,7 +31,7 @@ import type { AgentDraftPatch } from "@/types/agent";
  *      /api/agents/draft-from-demo. The response is the same shape the
  *      Basics chat returns, so the parent canvas can apply it directly.
  *
- * No retries, no resume — keep it dead simple. If recording fails partway
+ * No retries, no resume - keep it dead simple. If recording fails partway
  * we surface a toast and let the user start over.
  */
 const FRAME_INTERVAL_MS = 3_000;
@@ -39,7 +39,28 @@ const FRAME_MAX = 24;
 const JPEG_QUALITY = 0.55;
 const FRAME_WIDTH = 1280; // downscale for token efficiency
 
-interface CapturedFrame { data: string; tSec: number }
+interface CapturedFrame {
+  data: string;
+  tSec: number;
+  // Per-frame screen context from the Electron bridge (macOS only). Lets the
+  // server-side draft prompt anchor each frame to "user is in Gmail" instead
+  // of asking the model to read the chrome of every screenshot. Absent in
+  // browser mode; the endpoint treats them as optional.
+  appName?: string;
+  windowTitle?: string;
+  focusedUrl?: string;
+}
+
+interface BasichomeBridge {
+  isDesktop?: boolean;
+  captureContext?: () => Promise<{
+    ok: boolean;
+    appName?: string;
+    windowTitle?: string;
+    focusedUrl?: string;
+    error?: string;
+  }>;
+}
 
 interface DemoRecorderProps {
   open: boolean;
@@ -95,7 +116,7 @@ export function DemoRecorder({ open, onClose, onPatch }: DemoRecorderProps) {
         mic = await navigator.mediaDevices.getUserMedia({ audio: true });
         micStreamRef.current = mic;
       } catch {
-        // mic is optional — silent recording still works
+        // mic is optional - silent recording still works
       }
 
       // Drive an offscreen <video> with the display stream so we can paint
@@ -180,7 +201,26 @@ export function DemoRecorder({ open, onClose, onPatch }: DemoRecorderProps) {
     const b64 = dataUrl.split(",", 2)[1] ?? "";
     if (!b64) return;
     const tSec = (Date.now() - startedAtRef.current) / 1000;
-    framesRef.current.push({ data: b64, tSec });
+    // Best-effort per-frame metadata via the Electron bridge. Runs in parallel
+    // with the JPEG encode so it doesn't extend frame interval. Missing or
+    // failed metadata just ships the frame without it.
+    let ctx_app: { appName?: string; windowTitle?: string; focusedUrl?: string } = {};
+    const bh = (window as unknown as { basichome?: BasichomeBridge }).basichome;
+    if (bh?.captureContext) {
+      try {
+        const r = await bh.captureContext();
+        if (r?.ok) {
+          ctx_app = {
+            appName: r.appName || undefined,
+            windowTitle: r.windowTitle || undefined,
+            focusedUrl: r.focusedUrl || undefined,
+          };
+        }
+      } catch {
+        // ignore - frame ships without metadata
+      }
+    }
+    framesRef.current.push({ data: b64, tSec, ...ctx_app });
   }
 
   async function stop() {
@@ -231,7 +271,7 @@ export function DemoRecorder({ open, onClose, onPatch }: DemoRecorderProps) {
         <DialogHeader>
           <DialogTitle>Record a demo</DialogTitle>
           <DialogDescription>
-            Show Basics what to do — share your screen and talk through the task. We&apos;ll draft the agent
+            Show Basics what to do - share your screen and talk through the task. We&apos;ll draft the agent
             from what you did and said.
           </DialogDescription>
         </DialogHeader>
@@ -243,7 +283,7 @@ export function DemoRecorder({ open, onClose, onPatch }: DemoRecorderProps) {
           </div>
           <div className="flex items-center gap-2 rounded-lg border bg-foreground/[0.02] p-3 text-sm">
             <Microphone weight="fill" className="size-4 shrink-0 text-foreground/70" />
-            Mic is optional — narration helps Basics infer intent.
+            Mic is optional - narration helps Basics infer intent.
           </div>
 
           {phase === "recording" ? (

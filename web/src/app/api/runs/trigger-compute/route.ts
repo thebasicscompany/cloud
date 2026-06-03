@@ -6,12 +6,12 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Trigger a PURE computer-use run — the agent runs in the cloud and decides,
+ * Trigger a PURE computer-use run - the agent runs in the cloud and decides,
  * but execution is local computer-use (mouse/keyboard, any app) via the desktop
- * watcher. Unlike "my computer — your Chrome", this bridges NO browser: the run
+ * watcher. Unlike "my computer - your Chrome", this bridges NO browser: the run
  * is marked `browser_target='local_compute'`, which makes the worker offer
  * `computer_use` (rt.isLocal) WITHOUT launching any local Chrome. If the agent
- * ever needs a webpage it uses the cloud browser. No relay session needed — the
+ * ever needs a webpage it uses the cloud browser. No relay session needed - the
  * desktop watcher (always-on while the app is open) picks up the sub-task.
  *
  * Dispatch goes through cloud/api `POST /v1/runs` authed with the caller's

@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import type { TrustGrant } from "@/types/settings";
 
-/** Real trust grants — backed by /api/settings/trust (workspace_rules). */
+/** Real trust grants - backed by /api/settings/trust (workspace_rules). */
 export function useSettingsTrustGrants() {
   return useQuery({
     queryKey: ["settings", "trust"],

@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 import type { Billing, BillingPlan } from "@/lib/billing-data";
 
 function usd(cents: number | null | undefined): string {
-  if (cents === null || cents === undefined) return "—";
+  if (cents === null || cents === undefined) return "-";
   return `$${(cents / 100).toFixed(cents % 100 === 0 ? 0 : 2)}`;
 }
 
@@ -124,11 +124,11 @@ export function BillingPanel({ billing }: { billing: Billing }) {
     <div className="space-y-6">
       {justReturned === "success" ? (
         <div className="rounded-lg border bg-card p-3 text-sm">
-          Thanks! Your subscription is updating — it may take a moment to reflect here.
+          Thanks! Your subscription is updating - it may take a moment to reflect here.
         </div>
       ) : null}
       {justReturned === "cancelled" ? (
-        <div className="rounded-lg border bg-card p-3 text-muted-foreground text-sm">Checkout cancelled — no changes made.</div>
+        <div className="rounded-lg border bg-card p-3 text-muted-foreground text-sm">Checkout cancelled - no changes made.</div>
       ) : null}
       {error ? (
         <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-destructive text-sm">{error}</div>
@@ -161,7 +161,7 @@ export function BillingPanel({ billing }: { billing: Billing }) {
             ) : null}
           </div>
 
-          {/* Usage bars — show what's used vs the plan cap so the user sees
+          {/* Usage bars - show what's used vs the plan cap so the user sees
               their position BEFORE the API returns a 402. */}
           <UsageBar
             label="Agents saved"
@@ -192,7 +192,7 @@ export function BillingPanel({ billing }: { billing: Billing }) {
               </div>
             ) : null}
             <p className="text-foreground/60 text-xs">
-              Managed Anthropic/Gemini usage on this workspace — local and cloud runs both count. Bring your own keys
+              Managed model usage on this workspace. Local and cloud runs both count. Bring your own keys
               (Team plan and up) to remove this cap.
             </p>
           </div>
@@ -203,6 +203,13 @@ export function BillingPanel({ billing }: { billing: Billing }) {
       <div className="grid gap-3 sm:grid-cols-2">
         {orderedCatalog.map((entry) => {
           const isCurrent = entry.plan === plan;
+          const currentIdx = PLAN_ORDER.indexOf(plan);
+          const entryIdx = PLAN_ORDER.indexOf(entry.plan);
+          // Pick the verb from tier direction, not Stripe-customer presence -
+          // an enterprise user looking at the Pro card is downgrading, not
+          // upgrading, even if they've never had a Stripe checkout session.
+          const verb =
+            entryIdx > currentIdx ? "Upgrade to" : entryIdx < currentIdx ? "Downgrade to" : "Switch to";
           return (
             <Card key={entry.plan} className={cn(isCurrent && "border-primary")}>
               <CardContent className="flex h-full flex-col gap-3 p-4">
@@ -243,7 +250,7 @@ export function BillingPanel({ billing }: { billing: Billing }) {
                         disabled={busy === entry.plan}
                         onClick={() => upgrade(entry.plan as "pro" | "team")}
                       >
-                        {busy === entry.plan ? "Starting…" : `${hasStripeCustomer ? "Switch to" : "Upgrade to"} ${entry.name}`}
+                        {busy === entry.plan ? "Starting…" : `${verb} ${entry.name}`}
                       </Button>
                     ) : (
                       <Button size="sm" variant="outline" className="w-full" disabled>
@@ -252,7 +259,7 @@ export function BillingPanel({ billing }: { billing: Billing }) {
                     )
                   ) : (
                     <Button variant="outline" size="sm" className="w-full" disabled>
-                      {canManageBilling && hasStripeCustomer ? "Downgrade via Manage" : "—"}
+                      {canManageBilling && hasStripeCustomer ? "Downgrade via Manage" : "-"}
                     </Button>
                   )}
                 </div>

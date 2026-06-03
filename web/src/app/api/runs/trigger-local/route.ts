@@ -7,12 +7,12 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Model B — "Run on my computer". Two-step so the desktop bridge is up before
+ * Model B - "Run on my computer". Two-step so the desktop bridge is up before
  * the worker connects:
  *
  *  1) POST { goal } (no session)  → return { session, token, relayUrl }. The
  *     token is the caller's per-user workspace JWT (exchanged from their Supabase
- *     session by cloud/api `POST /v1/auth/token` — NOT minted locally, so no
+ *     session by cloud/api `POST /v1/auth/token` - NOT minted locally, so no
  *     JWT-signing secret lives in the renderer). The renderer then calls
  *     window.basichome.localRelayStart({relayUrl, session, token}) to bridge the
  *     user's local Chrome into the relay.
@@ -20,9 +20,9 @@ export const dynamic = "force-dynamic";
  *     `POST /v1/runs` with browser_target='local_relay' + relay_session +
  *     ephemeral, so the worker attaches its CDP to the relay (the user's Chrome)
  *     instead of Browserbase. No service-role admin client, no local Lambda
- *     invoke — cloud/api writes the routing onto the run row at dispatch time.
+ *     invoke - cloud/api writes the routing onto the run row at dispatch time.
  *
- * The relay endpoint is read from RELAY_WS_URL (server config, not a secret) —
+ * The relay endpoint is read from RELAY_WS_URL (server config, not a secret) -
  * when unset, local runs are not available and we say so.
  */
 export async function POST(req: Request) {
@@ -37,25 +37,25 @@ export async function POST(req: Request) {
   const relayUrl = (process.env.RELAY_WS_URL ?? "").trim();
   if (!relayUrl) {
     return NextResponse.json(
-      { ok: false, error: "Local runs aren't enabled yet — the browser relay isn't configured.", code: "no_relay" },
+      { ok: false, error: "Local runs aren't enabled yet - the browser relay isn't configured.", code: "no_relay" },
       { status: 503 },
     );
   }
 
-  // Step 1 — provision (no session yet): hand back a fresh relay session id + the
+  // Step 1 - provision (no session yet): hand back a fresh relay session id + the
   // caller's per-user workspace JWT for the desktop to authenticate to the relay.
   if (typeof body.session !== "string" || !body.session) {
     const token = await getWorkspaceToken();
     if (!token) {
       return NextResponse.json(
-        { ok: false, error: "No workspace session — sign in and try again." },
+        { ok: false, error: "No workspace session - sign in and try again." },
         { status: 401 },
       );
     }
     return NextResponse.json({ ok: true, step: "provision", session: randomUUID(), token, relayUrl });
   }
 
-  // Step 2 — trigger the run, bound to this relay session + ephemeral. cloud/api
+  // Step 2 - trigger the run, bound to this relay session + ephemeral. cloud/api
   // inserts the cloud_runs row with the local-relay routing already set, so
   // resolveBinding reads it at opencode session boot.
   if (!goal) return NextResponse.json({ ok: false, error: "A goal is required." }, { status: 400 });

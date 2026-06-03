@@ -5,14 +5,14 @@ import { cloudGet } from "@/lib/api/cloud";
 /**
  * Read model for the Connections surface, backed by `cloud/api`
  * (`GET /v1/connections`). The request's workspace JWT scopes every read to the
- * caller's own workspace — no service-role admin client and no hardcoded
+ * caller's own workspace - no service-role admin client and no hardcoded
  * workspace id. Secret material is NEVER returned: the backend excludes
  * `workspace_credentials.ciphertext` (the encrypted secret) and
  * `workspace_browser_sites.storage_state_json` (the saved cookies / storage
  * state) at the query level so they can never reach a client.
  */
 
-/** Primary basichome workspace — used when no workspace id is supplied. */
+/** Primary basichome workspace - used when no workspace id is supplied. */
 export const PRIMARY_WORKSPACE_ID = "139e7cdc-7060-49c8-a04f-2afffddbd708";
 
 export interface ConnectionToolkit {
@@ -24,10 +24,10 @@ export interface ConnectionToolkit {
 
 export interface ConnectionCredential {
   id: string;
-  /** Provider family — e.g. "gmail", "anthropic". */
+  /** Provider family - e.g. "gmail", "anthropic". */
   kind: string;
   label: string | null;
-  /** Where the credential came from — e.g. "basics_managed", "byok". */
+  /** Where the credential came from - e.g. "basics_managed", "byok". */
   provenance: string | null;
   /** e.g. "active", "expired", "not_provisioned", "revoked". */
   status: string | null;

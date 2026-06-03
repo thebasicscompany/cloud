@@ -11,7 +11,7 @@ export function VerificationStrip({ run }: { run: Run }) {
   const { data: steps, isLoading } = useRunSteps(run.id);
 
   // Verification checks are REAL run steps (payload.kind === "check") the
-  // worker emits — no separate mock check fixture.
+  // worker emits - no separate mock check fixture.
   const checks: CheckResult[] = (steps ?? [])
     .filter((s) => s.payload.kind === "check")
     .map((s) => {

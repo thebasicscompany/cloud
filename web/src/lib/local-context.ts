@@ -9,7 +9,7 @@ import type {
   LocalContextStore,
 } from "@/types/local-context";
 
-// v2: abandons any v1 store that was seeded with demo/mock capture rows — the
+// v2: abandons any v1 store that was seeded with demo/mock capture rows - the
 // store is now honestly empty until the local Lens engine produces real data.
 export const BASICHOME_LOCAL_CONTEXT_STORAGE_KEY = "basichome:lens:local-context:v2";
 

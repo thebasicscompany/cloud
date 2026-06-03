@@ -3,14 +3,15 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { CalendarClock, Building2, Eye, Plug, ShieldCheck, UserCog } from "@/icons";
+import { CalendarClock, Building2, CreditCard, Plug, ShieldCheck, UserCog, Users } from "@/icons";
 
 import { cn } from "@/lib/utils";
 
 const sections = [
   { title: "Profile", url: "/settings/profile", icon: UserCog },
   { title: "Workspace", url: "/settings/workspace", icon: Building2 },
-  { title: "Capture", url: "/settings/capture", icon: Eye },
+  { title: "Team", url: "/settings/team", icon: Users },
+  { title: "Billing", url: "/settings/billing", icon: CreditCard },
   { title: "Integrations", url: "/settings/integrations", icon: Plug },
   { title: "Trust", url: "/settings/trust", icon: ShieldCheck },
   { title: "Schedules", url: "/settings/schedules", icon: CalendarClock },

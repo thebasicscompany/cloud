@@ -20,7 +20,7 @@ import { useCloudAutomations } from "@/hooks/queries/use-cloud-automations";
 /**
  * Watches for newly-created automations and surfaces a prominent, centered
  * announcement when a dry-run preview starts. A draft never runs on its own,
- * and the dry-run otherwise fires with no obvious indication — a small
+ * and the dry-run otherwise fires with no obvious indication - a small
  * bottom-right toast was too easy to miss. This pops a centered modal so the
  * user actually notices, and offers a one-click jump to watch it live.
  * Decoupled from the authoring chat so it fires no matter how the automation
@@ -66,7 +66,7 @@ export function AutomationNotifications() {
           <DialogTitle className="text-center text-lg">Dry-run preview started</DialogTitle>
           <DialogDescription className="text-center">
             <span className="font-medium text-foreground">“{announce?.name}”</span> is running a
-            dry-run right now — a safe pass with no real side-effects, so you can see exactly what it
+            dry-run right now - a safe pass with no real side-effects, so you can see exactly what it
             will do. Activate it once the preview looks right.
           </DialogDescription>
         </DialogHeader>

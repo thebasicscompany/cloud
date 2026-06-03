@@ -265,7 +265,7 @@ export function TeamConsole({ workspaces, selectedWorkspaceId, members, invitati
                           Revoke
                         </Button>
                       ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
+                        <span className="text-xs text-muted-foreground">-</span>
                       )}
                     </TableCell>
                   </TableRow>

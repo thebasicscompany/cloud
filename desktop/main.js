@@ -16,6 +16,7 @@ const authContext = require("./auth-context");
 const authExternal = require("./auth-external");
 const authBridge = require("./auth-bridge");
 const { startWebServer, stopWebServer } = require("./web-server");
+const { execFile } = require("child_process");
 
 // Override Electron's bundled name ("Electron") so `app.getName()`, the user
 // data path, and Windows/Linux UI labels say "Basics" in dev — matching the
@@ -425,6 +426,79 @@ ipcMain.handle("basichome:capture-screen", async () => {
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
+});
+
+// Capture per-frame screen context for the Record-a-demo flow. Returns the
+// frontmost app's name + window title, plus the active browser tab URL when
+// the frontmost app is a known browser. Gives Claude an explicit "user is in
+// Gmail at gmail.com/inbox" hint per frame instead of forcing it to read the
+// pixels — closes most of the screenpipe-vs-DemoRecorder accuracy gap without
+// shipping a separate native daemon (ADR 0013).
+//
+// macOS only. On Windows we'd reach for GetForegroundWindow + UI Automation;
+// not wired yet. Renderer should treat the unsupported case as "no metadata"
+// and fall back to plain frames.
+const CAPTURE_CONTEXT_SCRIPT = `
+tell application "System Events"
+  set frontApp to first application process whose frontmost is true
+  set appName to name of frontApp
+  try
+    set winTitle to value of attribute "AXTitle" of front window of frontApp
+  on error
+    set winTitle to ""
+  end try
+end tell
+set browserURL to ""
+if appName is "Safari" then
+  try
+    tell application "Safari" to set browserURL to URL of current tab of front window
+  end try
+else if appName is "Google Chrome" or appName is "Google Chrome Canary" then
+  try
+    tell application "Google Chrome" to set browserURL to URL of active tab of front window
+  end try
+else if appName is "Arc" then
+  try
+    tell application "Arc" to set browserURL to URL of active tab of front window
+  end try
+else if appName is "Microsoft Edge" then
+  try
+    tell application "Microsoft Edge" to set browserURL to URL of active tab of front window
+  end try
+else if appName is "Brave Browser" then
+  try
+    tell application "Brave Browser" to set browserURL to URL of active tab of front window
+  end try
+end if
+return appName & "||" & winTitle & "||" & browserURL
+`;
+
+ipcMain.handle("basichome:capture-context", async () => {
+  if (process.platform !== "darwin") {
+    return { ok: false, error: "unsupported_platform" };
+  }
+  return new Promise((resolve) => {
+    execFile(
+      "/usr/bin/osascript",
+      ["-e", CAPTURE_CONTEXT_SCRIPT],
+      { timeout: 600 },
+      (err, stdout) => {
+        if (err) {
+          resolve({ ok: false, error: err.message });
+          return;
+        }
+        const [appName, windowTitle, focusedUrl] = String(stdout || "")
+          .trim()
+          .split("||");
+        resolve({
+          ok: true,
+          appName: appName || "",
+          windowTitle: windowTitle || "",
+          focusedUrl: focusedUrl || "",
+        });
+      },
+    );
+  });
 });
 
 // Computer-use (LOCAL): run a closed eyes→brain→hands loop that drives the real

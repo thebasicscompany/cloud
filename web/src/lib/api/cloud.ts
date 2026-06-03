@@ -14,7 +14,7 @@ import { createClient } from "@/lib/supabase/server";
  * This is the secure replacement for the dev-grade data libs that used the
  * Supabase service-role admin client + a hardcoded PRIMARY_WORKSPACE_ID. Here we
  * derive a short-lived WORKSPACE JWT from the signed-in user's Supabase session
- * (cloud/api `POST /v1/auth/token`) and call `/v1/*` with it — so every read is
+ * (cloud/api `POST /v1/auth/token`) and call `/v1/*` with it - so every read is
  * scoped to the caller's workspace by the backend, and NO service-role key or
  * JWT-signing secret is ever needed in the renderer (critical once the renderer
  * is bundled into Electron with no hosted web).
@@ -55,7 +55,7 @@ export const getWorkspaceToken = cache(async (): Promise<string> => {
   if (!accessToken) return "";
 
   // The user's selected workspace (the in-app switcher writes this cookie). Try
-  // it first, then fall back to the default (personal) workspace if it fails —
+  // it first, then fall back to the default (personal) workspace if it fails -
   // so a stale cookie (e.g. a workspace the user has since left) can never lock
   // them out of the app.
   const cookieStore = await cookies();
@@ -98,7 +98,7 @@ export async function hasWorkspaceSession(): Promise<boolean> {
  * signed out. Used only to build `:workspaceId`-path runtime endpoints (e.g.
  * `/v1/workspaces/:ws/browser-sites/...`); the backend STILL re-verifies the
  * token and cross-checks the path against the verified claim, so decoding here
- * (no signature check) is safe — a tampered id can't address another workspace.
+ * (no signature check) is safe - a tampered id can't address another workspace.
  */
 export async function getWorkspaceId(): Promise<string> {
   const token = await getWorkspaceToken();
@@ -144,7 +144,7 @@ export async function cloudGet<T>(path: string, fallback: T): Promise<T> {
 /**
  * GET a PUBLIC `cloud/api` endpoint (no workspace JWT) and parse JSON, returning
  * `fallback` on any failure. For unauthenticated surfaces where the caller has
- * no session yet — e.g. the invite-accept page, where the opaque invite token in
+ * no session yet - e.g. the invite-accept page, where the opaque invite token in
  * the path/query is the credential, not a workspace JWT.
  */
 export async function cloudGetPublic<T>(path: string, fallback: T): Promise<T> {

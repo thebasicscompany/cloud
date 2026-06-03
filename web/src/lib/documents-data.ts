@@ -4,10 +4,10 @@ import { cloudGet } from "@/lib/api/cloud";
 
 /**
  * Documents = long-form artifacts (reports, plans, drafts) the agent +
- * automations write and the user reviews — distinct from Apps (record
+ * automations write and the user reviews - distinct from Apps (record
  * collections). Read model now served per-user by cloud/api `/v1/documents`
  * (workspace-scoped by the JWT); no service-role admin client, no hardcoded
- * workspace — safe to run inside the bundled Electron renderer.
+ * workspace - safe to run inside the bundled Electron renderer.
  */
 
 export interface DocSource {

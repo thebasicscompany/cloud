@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 
 /**
  * Actionable amber banner shown on a run blocked because it needs the user to
- * connect something — a Composio toolkit OR a browser login. Reads both from
+ * connect something - a Composio toolkit OR a browser login. Reads both from
  * GET /api/runs/[id]/connection-needs:
  *  - toolkits → one-click "Connect" (mints a Composio OAuth link).
  *  - browserSites → one-click "Sign in to <host>" (deep-links the Browser
@@ -75,7 +75,7 @@ export function ConnectionNeededBanner({ runId }: { runId: string }) {
   // Fire a `continue` NOTIFY at the worker so the stuck opencode session
   // re-prompts itself and the agent picks up where it left off. The /message
   // endpoint already implements exactly that NOTIFY path (cloud-runs.ts:361)
-  // — we just send a fixed instruction telling the agent the connection is
+  // - we just send a fixed instruction telling the agent the connection is
   // now active. If the binding has expired (worker idle-stopped), the
   // endpoint returns 200 with {steered:false, reason:'not_live'} and the
   // user knows to start a fresh run.
@@ -89,7 +89,7 @@ export function ConnectionNeededBanner({ runId }: { runId: string }) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           message:
-            "The connection(s) you needed are now active. Continue from where you left off — re-attempt the tool call that failed with no_connection, and finish the task.",
+            "The connection(s) you needed are now active. Continue from where you left off - re-attempt the tool call that failed with no_connection, and finish the task.",
         }),
       });
       const data = (await res.json().catch(() => null)) as
@@ -102,7 +102,7 @@ export function ConnectionNeededBanner({ runId }: { runId: string }) {
       if (data?.steered === false) {
         setError(
           data.reason === "not_live"
-            ? "This run isn't live anymore (worker idle-stopped). Start a fresh run — your connection is saved."
+            ? "This run isn't live anymore (worker idle-stopped). Start a fresh run - your connection is saved."
             : `Couldn't resume the run (${data.reason ?? "unknown"}).`,
         );
         return;
@@ -152,7 +152,7 @@ export function ConnectionNeededBanner({ runId }: { runId: string }) {
         return;
       }
       // In Electron, `window.open(url, "_blank")` spawns a fresh BrowserWindow
-      // with no cookies — so the OAuth flow can't see the user's existing
+      // with no cookies - so the OAuth flow can't see the user's existing
       // login to e.g. Notion and they have to sign in again. Route through
       // the desktop bridge's openExternal so it lands in the user's real
       // Chrome (default browser) where they're already signed in.
@@ -177,7 +177,7 @@ export function ConnectionNeededBanner({ runId }: { runId: string }) {
 
   const names = toolkits.map(titleCase);
   // When all the agent needs is a browser-cookie push (no Composio OAuth),
-  // the new request_browser_login tool auto-resumes once cookies land — the
+  // the new request_browser_login tool auto-resumes once cookies land - the
   // user does NOT need to click "Resume run". Hide that button + reword the
   // helper text. Cookies-only path is the common case for mid-session blocks
   // on Reddit / Twitter / paywalled sites.
@@ -196,13 +196,13 @@ export function ConnectionNeededBanner({ runId }: { runId: string }) {
           <div className="space-y-1">
             <p className="font-semibold text-foreground text-sm">
               {cookiesOnly
-                ? `Agent is paused — needs your ${browserSites.length === 1 ? hostLabel(browserSites[0]!) : "site"} login.`
+                ? `Agent is paused - needs your ${browserSites.length === 1 ? hostLabel(browserSites[0]!) : "site"} login.`
                 : "This run needs you to connect something to finish."}
             </p>
             <p className="text-muted-foreground text-sm leading-relaxed">
               {cookiesOnly
-                ? <>Push your cookies with one click — the agent picks them up immediately and continues. Times out in ~5&nbsp;min.</>
-                : <>Connect the items below, then click <strong>Resume run</strong> — the agent will pick up where it left off without restarting from scratch.</>}
+                ? <>Push your cookies with one click - the agent picks them up immediately and continues. Times out in ~5&nbsp;min.</>
+                : <>Connect the items below, then click <strong>Resume run</strong> - the agent will pick up where it left off without restarting from scratch.</>}
             </p>
           </div>
 
@@ -268,7 +268,7 @@ export function ConnectionNeededBanner({ runId }: { runId: string }) {
                 {resuming ? (
                   <Loader2 className="size-3.5 animate-spin" />
                 ) : null}
-                {resumed ? "Resumed — agent is continuing" : "Resume run"}
+                {resumed ? "Resumed - agent is continuing" : "Resume run"}
               </Button>
             ) : capturedHosts.size > 0 ? (
               <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-100 px-2 py-1 text-emerald-800 text-xs dark:bg-emerald-500/15 dark:text-emerald-300">

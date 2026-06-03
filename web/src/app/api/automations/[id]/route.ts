@@ -15,7 +15,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
 }
 
 /**
- * Automation mutations — bundle-safe via cloud/api (`PATCH /v1/automations/:id`)
+ * Automation mutations - bundle-safe via cloud/api (`PATCH /v1/automations/:id`)
  * with the caller's per-user workspace JWT (no admin client / hardcoded
  * workspace). The cloud/api handler ports the same action logic:
  *  - pause/resume → status
@@ -70,7 +70,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 }
 
 /**
- * DELETE /api/automations/:id — hard delete the automation AND all its runs.
+ * DELETE /api/automations/:id - hard delete the automation AND all its runs.
  * Proxies cloud/api `DELETE /v1/automations/:id?purge=true` with the workspace
  * JWT. cloud/api tears down any live triggers, then deletes the runs (FK cascade
  * clears their activity/steps/approvals) + the automation row.

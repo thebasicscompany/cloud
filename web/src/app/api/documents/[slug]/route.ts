@@ -16,7 +16,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
 
 /**
  * Edit a document (user). Repointed to cloud/api `PATCH /v1/documents/:slug`
- * (workspace-scoped by the JWT) — no service-role admin client, no hardcoded
+ * (workspace-scoped by the JWT) - no service-role admin client, no hardcoded
  * workspace. Also covers pin/unpin (`pinned`).
  */
 export async function PATCH(req: Request, { params }: { params: Promise<{ slug: string }> }) {
@@ -43,7 +43,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ slug: 
 
 /**
  * Archive (soft-delete) a document (user). Repointed to cloud/api
- * `DELETE /v1/documents/:slug` (workspace-scoped by the JWT) — no service-role
+ * `DELETE /v1/documents/:slug` (workspace-scoped by the JWT) - no service-role
  * admin client, no hardcoded workspace.
  */
 export async function DELETE(_req: Request, { params }: { params: Promise<{ slug: string }> }) {

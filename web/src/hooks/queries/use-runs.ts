@@ -6,7 +6,7 @@ import type { Run, RunStep, RunsFilter } from "@/types/runs";
 
 /**
  * Runs are backed entirely by REAL cloud_runs from the Basics Supabase project
- * via /api/runs (server, service-role). No mock/local runs are merged anymore —
+ * via /api/runs (server, service-role). No mock/local runs are merged anymore -
  * a stuck worker is reaped server-side and stale "live" runs are downgraded in
  * the mapper, so the list reflects real execution only.
  */
@@ -15,7 +15,7 @@ async function getJson<T>(url: string, fallback: T): Promise<T> {
     const res = await fetch(url);
     if (res.ok) return (await res.json()) as T;
   } catch {
-    // network/offline — fall back
+    // network/offline - fall back
   }
   return fallback;
 }

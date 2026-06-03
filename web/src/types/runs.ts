@@ -128,7 +128,7 @@ export type RunsFilter = {
 /**
  * UI-side enrichment that joins workflow + run history. The API will
  * eventually return this shape from a `/workflows?withSummary=true`
- * endpoint or similar — for now, derived client-side from mocks.
+ * endpoint or similar - for now, derived client-side from mocks.
  */
 export type WorkflowSummary = Workflow & {
   successRate: number | null; // 0..1, null if no completed runs

@@ -34,6 +34,11 @@ contextBridge.exposeInMainWorld("basichome", {
   closePill: () => ipcRenderer.send("basichome:pill:close"),
   // Capture a screenshot of the screen (the visual half of a demonstration).
   captureScreen: () => ipcRenderer.invoke("basichome:capture-screen"),
+  // Per-frame screen context for the Record-a-demo flow: frontmost app name,
+  // window title, and active browser tab URL (macOS only — Windows returns
+  // {ok:false, error:"unsupported_platform"}). Renderer treats failure as
+  // "no metadata" and ships the frame on its own.
+  captureContext: () => ipcRenderer.invoke("basichome:capture-context"),
   // Settings → Capture: control the always-on Lens daemon.
   lensAlwaysOn: () => ipcRenderer.invoke("basichome:lens:always-on"),
   lensStopCapture: () => ipcRenderer.invoke("basichome:lens:capture-stop"),

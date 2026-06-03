@@ -94,7 +94,7 @@ export function DesktopAuthBridge() {
         if (!token || cancelled) {
           // Transient failure (cloud/api unreachable during a deploy, network
           // blip, etc.). Without this retry the bridge would give up forever
-          // until the next auth-state change — and Supabase's silent refresh
+          // until the next auth-state change - and Supabase's silent refresh
           // doesn't fire one, so a single hiccup leaves the desktop loops
           // without a workspace token until you sign out + back in.
           if (!cancelled) timer = setTimeout(() => void pushToken(), 30_000);

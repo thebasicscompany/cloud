@@ -151,7 +151,7 @@ function DocReader({ slug, onClose }: { slug: string; onClose: () => void }) {
                 variant="outline"
                 onClick={() => {
                   // Generate a .md file from the document body and trigger a
-                  // download. No server round-trip — the body is already in
+                  // download. No server round-trip - the body is already in
                   // memory. Filename uses the slug so the user gets a stable
                   // name even if the title has weird characters.
                   const blob = new Blob([doc.body], { type: "text/markdown;charset=utf-8" });

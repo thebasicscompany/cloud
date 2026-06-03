@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 
 /**
  * Basics-brand emerald gradient. Stays in the brand range (#23ab68 +
- * #168350) with a soft mint highlight (#5ff0a8) for lift — explicitly NO
+ * #168350) with a soft mint highlight (#5ff0a8) for lift - explicitly NO
  * near-black stops. Drifts slowly so the surface has gentle motion.
  */
 export function AuroraCanvas({ className }: { className?: string }) {

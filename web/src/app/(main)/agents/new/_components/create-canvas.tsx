@@ -4,7 +4,9 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { toast } from "sonner";
-import { Check, Robot, Sparkle } from "@phosphor-icons/react";
+import { Check, Robot } from "@phosphor-icons/react";
+
+import { BasicsMark } from "@/components/basics-mark";
 
 import { Button } from "@/components/ui/button";
 import { ChatComposer, ChatMessage, ChatThread } from "@/components/chat/chat-primitives";
@@ -24,11 +26,11 @@ import type {
 
 const TARGETS: Array<{ id: AgentTarget; title: string; blurb: string; emoji: string }> = [
   { id: "cloud", title: "Cloud", blurb: "A fresh cloud browser. No logins needed.", emoji: "☁️" },
-  { id: "computer", title: "Computer use", blurb: "Your Mac — apps, Finder, system stuff.", emoji: "🖥️" },
+  { id: "computer", title: "Computer use", blurb: "Your Mac - apps, Finder, system stuff.", emoji: "🖥️" },
   { id: "chrome", title: "Your Chrome", blurb: "Your real Chrome, your logged-in sessions.", emoji: "🌐" },
 ];
 
-// Mirror of the API's ALLOWED_TOOLKITS — only real Composio integrations the
+// Mirror of the API's ALLOWED_TOOLKITS - only real Composio integrations the
 // agent can actually OAuth into. Anything outside this list is ignored. The
 // "browser" capability isn't a toolkit; it's built into cloud/chrome targets.
 type ToolKind = "api" | "site" | "both";
@@ -57,7 +59,7 @@ interface ChatTurn extends AgentDraftMessage {}
 
 const INTRO: ChatTurn = {
   role: "assistant",
-  content: "I'm Basics. Tell me what you want your new agent to do — a sentence is enough.",
+  content: "I'm Basics. Tell me what you want your new agent to do - a sentence is enough.",
 };
 
 export function CreateAgentCanvas() {
@@ -145,14 +147,14 @@ export function CreateAgentCanvas() {
       <div className="flex h-full min-h-0 flex-col border-r bg-card">
         <div className="flex items-center gap-2 border-b px-4 py-3">
           <div className="flex size-6 items-center justify-center rounded-md bg-foreground/5">
-            <Sparkle weight="fill" className="size-3.5" />
+            <BasicsMark size={14} />
           </div>
           <div className="font-medium text-sm">Basics</div>
           <button
             type="button"
             onClick={() => setDemoOpen(true)}
             className="ml-auto inline-flex items-center gap-1.5 rounded-full border bg-card px-2.5 py-1 text-foreground/70 text-xs transition-colors hover:border-foreground/30 hover:text-foreground"
-            title="Show Basics what to do — screen + voice"
+            title="Show Basics what to do - screen + voice"
           >
             <span className="size-1.5 rounded-full bg-destructive" />
             Record a demo
@@ -210,7 +212,7 @@ export function CreateAgentCanvas() {
             </Button>
           </div>
 
-          {/* Content area — agent card always centered, sections stack
+          {/* Content area - agent card always centered, sections stack
               centered beneath. Layout grows downward as Basics fills in the
               instructions/tools sections; when only the agent card is shown
               it sits roughly halfway down (justify-center). */}
@@ -246,27 +248,11 @@ export function CreateAgentCanvas() {
                       </button>
                     ))}
                   </div>
-                  {target ? (
-                    <div className="mt-3 flex items-center gap-2 rounded-lg bg-foreground/5 p-2.5">
-                      <label className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(schedule?.enabled)}
-                          onChange={(e) =>
-                            setSchedule(e.target.checked ? { cron: schedule?.cron ?? "0 9 * * *", enabled: true } : null)
-                          }
-                        />
-                        Run on a schedule
-                      </label>
-                      {schedule?.enabled ? (
-                        <input
-                          type="text"
-                          value={schedule.cron}
-                          onChange={(e) => setSchedule({ cron: e.target.value, enabled: true })}
-                          placeholder="cron, e.g. 0 9 * * *"
-                          className="ml-auto h-7 w-40 rounded border bg-background px-2 text-xs"
-                        />
-                      ) : null}
+                  {target === "cloud" ? (
+                    <SchedulePicker schedule={schedule} setSchedule={setSchedule} />
+                  ) : target ? (
+                    <div className="mt-3 rounded-lg bg-foreground/5 p-2.5 text-foreground/60 text-xs">
+                      Scheduling is only available for Cloud agents. Computer and Chrome agents need to be started by hand because they run on your machine.
                     </div>
                   ) : null}
                 </SectionCard>
@@ -277,7 +263,7 @@ export function CreateAgentCanvas() {
                       value={instructions}
                       onChange={(e) => setInstructions(e.target.value)}
                       className="min-h-24 resize-none bg-white text-sm"
-                      placeholder="Basics will draft this for you — or type your own."
+                      placeholder="Basics will draft this for you - or type your own."
                     />
                   </SectionCard>
                 ) : null}
@@ -403,6 +389,86 @@ function SectionCard({
           100% { transform: translateY(0) scale(1); opacity: 1; }
         }
       `}</style>
+    </div>
+  );
+}
+
+// Cadence presets that compile to a 5-field cron. Times are server time (UTC
+// on Fargate); we surface that in the label so the user isn't surprised when
+// "9 AM" doesn't match their wall clock. If a saved agent has a cron we don't
+// recognize, we drop into a Custom row so they can edit the raw expression
+// instead of being silently overwritten.
+const SCHEDULE_PRESETS: Array<{ label: string; cron: string }> = [
+  { label: "Every hour", cron: "0 * * * *" },
+  { label: "Every 6 hours", cron: "0 */6 * * *" },
+  { label: "Every day at 9 AM (UTC)", cron: "0 9 * * *" },
+  { label: "Every weekday at 9 AM (UTC)", cron: "0 9 * * 1-5" },
+  { label: "Every Monday at 9 AM (UTC)", cron: "0 9 * * 1" },
+  { label: "Every 1st of month at 9 AM (UTC)", cron: "0 9 1 * *" },
+];
+
+function SchedulePicker({
+  schedule,
+  setSchedule,
+}: {
+  schedule: AgentSchedule | null;
+  setSchedule: (s: AgentSchedule | null) => void;
+}) {
+  const enabled = Boolean(schedule?.enabled);
+  const cron = schedule?.cron ?? "0 9 * * *";
+  const matched = SCHEDULE_PRESETS.find((p) => p.cron === cron);
+  const [isCustom, setIsCustom] = useState(enabled && !matched);
+
+  return (
+    <div className="mt-3 space-y-2 rounded-lg bg-foreground/5 p-2.5">
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => {
+            if (e.target.checked) {
+              setSchedule({ cron, enabled: true });
+              setIsCustom(false);
+            } else {
+              setSchedule(null);
+            }
+          }}
+        />
+        Run on a schedule
+      </label>
+      {enabled ? (
+        <div className="flex items-center gap-2">
+          <select
+            value={isCustom ? "__custom__" : cron}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === "__custom__") {
+                setIsCustom(true);
+              } else {
+                setIsCustom(false);
+                setSchedule({ cron: v, enabled: true });
+              }
+            }}
+            className="h-8 flex-1 rounded border bg-background px-2 text-xs"
+          >
+            {SCHEDULE_PRESETS.map((p) => (
+              <option key={p.cron} value={p.cron}>
+                {p.label}
+              </option>
+            ))}
+            <option value="__custom__">Custom (cron)</option>
+          </select>
+          {isCustom ? (
+            <input
+              type="text"
+              value={cron}
+              onChange={(e) => setSchedule({ cron: e.target.value, enabled: true })}
+              placeholder="0 9 * * *"
+              className="h-8 w-32 rounded border bg-background px-2 text-xs font-mono"
+            />
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

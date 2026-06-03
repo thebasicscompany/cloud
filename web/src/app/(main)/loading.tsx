@@ -1,5 +1,5 @@
 // Instant-navigation skeleton for every (main) page. Next renders this the moment
-// a tab is clicked — while the page's server data streams in over the network — so
+// a tab is clicked - while the page's server data streams in over the network - so
 // navigation feels immediate instead of pausing on the fetch. Keep it lightweight.
 
 function Bar({ className = "" }: { className?: string }) {

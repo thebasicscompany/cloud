@@ -25,7 +25,7 @@ export function LiveView({ run, takeover, fullBleed, onToggleTakeover }: Props) 
   // Completed runs show a recording (if any); non-browser runs show the result.
   const liveSession = isLive && Boolean(run.liveUrl);
   // Model B "run on my Chrome": the worker drove the user's LOCAL Chrome via the
-  // relay — no Browserbase session and no in-app live view (they watch their own
+  // relay - no Browserbase session and no in-app live view (they watch their own
   // window). Detected by the synthetic `local-relay:` session id.
   const isLocalRun = (run.browserbaseSessionId ?? "").startsWith("local-relay:");
 
@@ -62,7 +62,7 @@ export function LiveView({ run, takeover, fullBleed, onToggleTakeover }: Props) 
   // "Agent is getting started…" is only meaningful for the brief planning window
   // before the agent navigates. The active-tab URL probe (pageUrl) can lag well
   // behind reality, so after a short grace period we stop covering the live view
-  // — better to show the agent's real browser than to overstay a blank overlay.
+  // - better to show the agent's real browser than to overstay a blank overlay.
   const [pastGrace, setPastGrace] = useState(false);
   useEffect(() => {
     if (!liveSession) {
@@ -70,7 +70,7 @@ export function LiveView({ run, takeover, fullBleed, onToggleTakeover }: Props) 
       return;
     }
     setPastGrace(false);
-    // Keep the "getting started" cover brief — once the session is up the real
+    // Keep the "getting started" cover brief - once the session is up the real
     // browser (even a blank planning tab) is more reassuring than an overlay
     // that overstays and reads as "still loading forever".
     const t = setTimeout(() => setPastGrace(true), 8000);
@@ -78,7 +78,7 @@ export function LiveView({ run, takeover, fullBleed, onToggleTakeover }: Props) 
   }, [liveSession, run.id]);
 
   // The agent's tab is still blank (booting, planning, or waiting on a sign-in).
-  // Show that instead of a bare white frame, which reads like a broken page —
+  // Show that instead of a bare white frame, which reads like a broken page -
   // but only for the first few seconds, so it never overstays the live view.
   const onBlank = liveSession && (!pageUrl || pageUrl.startsWith("about:")) && !pastGrace;
   const embedUrl = liveSession ? (activeUrl ?? run.liveUrl) : run.recordingUrl;
@@ -104,11 +104,11 @@ export function LiveView({ run, takeover, fullBleed, onToggleTakeover }: Props) 
               {takeover ? "Exit" : "Take over"}
             </Button>
           )}
-          {externalUrl && (
+          {externalUrl && !liveSession && (
             <Button asChild size="sm" variant="ghost" className="h-7 gap-1 px-2">
               <a href={externalUrl} target="_blank" rel="noreferrer">
                 <ExternalLink className="size-3.5" />
-                {liveSession ? "Open live" : "Watch recording"}
+                Watch recording
               </a>
             </Button>
           )}
@@ -123,7 +123,7 @@ export function LiveView({ run, takeover, fullBleed, onToggleTakeover }: Props) 
         {liveSession || run.recordingUrl ? (
           <div
             className={cn(
-              // Fill the available space — no aspect-ratio forcing. The iframe
+              // Fill the available space - no aspect-ratio forcing. The iframe
               // renders inside whatever box we give it, so capping by both
               // dimensions keeps it inside the parent's borders.
               "relative flex h-full max-h-full w-full max-w-4xl flex-col overflow-hidden rounded-lg border bg-background shadow-sm",
@@ -140,7 +140,7 @@ export function LiveView({ run, takeover, fullBleed, onToggleTakeover }: Props) 
             <div className="relative w-full flex-1">
               <iframe
                 src={embedUrl ?? undefined}
-                title={liveSession ? "Browserbase live view" : "Run recording"}
+                title={liveSession ? "Live browser view" : "Run recording"}
                 className="h-full w-full border-0 bg-white"
                 // The Browserbase live view is an interactive remote browser: it
                 // needs pointer-lock (mouse capture), popups, modals and downloads
@@ -155,7 +155,7 @@ export function LiveView({ run, takeover, fullBleed, onToggleTakeover }: Props) 
                   <OrbitRing />
                   <p className="font-medium text-sm">Agent is getting started…</p>
                   <p className="max-w-xs text-muted-foreground text-xs">
-                    The browser is open but hasn&apos;t loaded a page yet — it&apos;s planning, or waiting on a
+                    The browser is open but hasn&apos;t loaded a page yet - it&apos;s planning, or waiting on a
                     sign-in. The view follows along as soon as it navigates.
                   </p>
                 </div>
@@ -178,12 +178,12 @@ export function LiveView({ run, takeover, fullBleed, onToggleTakeover }: Props) 
             </p>
             <p className="text-muted-foreground text-sm">
               {isLocalRun
-                ? "This run drives your own Chrome window — there's no in-app browser view for a local run. Watch it in Chrome; the timeline on the left logs every action, and the result is in the Output panel."
+                ? "This run drives your own Chrome window - there's no in-app browser view for a local run. Watch it in Chrome; the timeline on the left logs every action, and the result is in the Output panel."
                 : isLive
-                  ? "The agent hasn't opened a browser session yet — follow the steps on the left."
+                  ? "The agent hasn't opened a browser session yet - follow the steps on the left."
                   : run.browserbaseSessionId
-                    ? "The live view is only available while a run is active. The tools & reasoning timeline on the left shows every browser action it took — the result is in the Output panel."
-                    : "See the tools & reasoning timeline on the left for exactly what happened — the result is in the Output panel."}
+                    ? "The live view is only available while a run is active. The tools & reasoning timeline on the left shows every browser action it took - the result is in the Output panel."
+                    : "See the tools & reasoning timeline on the left for exactly what happened - the result is in the Output panel."}
             </p>
             {run.browserbaseSessionId && !isLive ? (
               <p className="font-mono text-muted-foreground/70 text-xs">

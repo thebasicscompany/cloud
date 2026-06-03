@@ -90,7 +90,7 @@ export function LocalAgentWorkbench() {
         window.localStorage.removeItem("basichome:routine-prompt");
       }
     } catch {
-      /* localStorage unavailable — ignore */
+      /* localStorage unavailable - ignore */
     }
   }, []);
 
@@ -126,7 +126,7 @@ export function LocalAgentWorkbench() {
     return () => window.removeEventListener("basichome:use-prompt", onUsePrompt as EventListener);
   }, []);
 
-  // Model B — "Run on my computer": provision a relay session, bridge the local
+  // Model B - "Run on my computer": provision a relay session, bridge the local
   // Chrome via the desktop, then trigger a cloud run that drives that browser.
   const runOnMyComputer = async () => {
     const bh = desktopBridge();
@@ -149,7 +149,7 @@ export function LocalAgentWorkbench() {
       }
       // attach (not managed): drive the user's REAL Chrome on the debug port so
       // their logins/cookies are used, instead of a throwaway isolated profile.
-      // Attaching triggers Chrome's "allow debugging" prompt — surface a clear
+      // Attaching triggers Chrome's "allow debugging" prompt - surface a clear
       // heads-up so the user knows to go click Allow, kept up until it resolves.
       const allowToast = toast.loading(
         'Go to your Chrome window and click "Allow" on the debugging prompt so the agent can drive it.',
@@ -324,18 +324,18 @@ export function LocalAgentWorkbench() {
               >
                 <NativeSelectOption value="cloud">Cloud (recommended)</NativeSelectOption>
                 {isDesktop ? (
-                  <NativeSelectOption value="computer">My computer — your Chrome</NativeSelectOption>
+                  <NativeSelectOption value="computer">My computer - your Chrome</NativeSelectOption>
                 ) : null}
                 {isDesktop ? (
-                  <NativeSelectOption value="computer-full">My computer — full control (beta)</NativeSelectOption>
+                  <NativeSelectOption value="computer-full">My computer - full control (beta)</NativeSelectOption>
                 ) : null}
               </NativeSelect>
               <p className="text-muted-foreground text-xs">
                 {where === "computer-full"
-                  ? "Drives your whole computer — mouse, keyboard, any app. It takes over while it works; you can Stop anytime."
+                  ? "Drives your whole computer - mouse, keyboard, any app. It takes over while it works; you can Stop anytime."
                   : where === "computer"
                     ? "Drives your own Chrome with your logins. Keep Chrome open."
-                    : "Runs on Basics Cloud — watch it live, review it after."}
+                    : "Runs on Basics Cloud - watch it live, review it after."}
               </p>
             </div>
             <Button
@@ -364,7 +364,7 @@ export function LocalAgentWorkbench() {
         <div className="rounded-lg border bg-card p-4">
           <div className="flex items-center gap-2">
             <Monitor className="size-4 text-primary" />
-            <h3 className="font-medium text-sm">Full computer control {cuRunning ? "— working" : cuResult ? "— done" : ""}</h3>
+            <h3 className="font-medium text-sm">Full computer control {cuRunning ? "- working" : cuResult ? "- done" : ""}</h3>
           </div>
           <ol className="mt-3 space-y-1.5 text-sm">
             {cuSteps.map((s, i) => (
@@ -452,7 +452,7 @@ export function LocalAgentWorkbench() {
         </div>
       ) : (
         <div className="rounded-lg border border-dashed p-5 text-muted-foreground text-sm">
-          Nothing running yet. Describe a task above and hit Start — you&apos;ll see its status, controls, and results here.
+          Nothing running yet. Describe a task above and hit Start - you&apos;ll see its status, controls, and results here.
         </div>
       )}
 

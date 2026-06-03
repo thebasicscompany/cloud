@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 type Invite = { id: string; token: string; role: string; workspaceId: string; workspaceName: string };
 
 /**
- * Home "you've been invited" banner — surfaces pending workspace invitations
+ * Home "you've been invited" banner - surfaces pending workspace invitations
  * addressed to the signed-in user's email so they accept in-app instead of
  * hunting for the email link. Accepting adds the membership; `router.refresh()`
  * then re-renders the sidebar switcher with the new workspace. Renders nothing

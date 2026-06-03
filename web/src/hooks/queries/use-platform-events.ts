@@ -29,7 +29,7 @@ export function usePlatformEventStore() {
         const res = await fetch("/api/logs");
         if (res.ok) real = ((await res.json()).events ?? []) as PlatformEvent[];
       } catch {
-        // network/transient — render an empty log rather than mock rows
+        // network/transient - render an empty log rather than mock rows
       }
       const events = real.map((event) => {
         const fb = store.feedback[event.id];
@@ -79,7 +79,7 @@ export function usePlatformEventActions() {
   const updateStore = (updater: (store: PlatformEventStore) => PlatformEventStore) => {
     const current = readPlatformEventStore();
     const next = writePlatformEventStore(updater(current));
-    // Feedback/training labels changed locally — refetch so the real event
+    // Feedback/training labels changed locally - refetch so the real event
     // stream re-applies them.
     void queryClient.invalidateQueries({ queryKey: PLATFORM_EVENTS_QUERY_KEY });
     return { store: next };

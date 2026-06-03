@@ -6,7 +6,7 @@ import { cloudGet } from "@/lib/api/cloud";
  * Apps = agent-built, workspace-private data surfaces. Runs/automations/agents
  * write outputs into them and read off them; the user can also add/edit records
  * directly. Read model backed by the deployed runtime API (`cloud/api`,
- * `/v1/apps`), scoped to the caller's workspace by the workspace JWT — no
+ * `/v1/apps`), scoped to the caller's workspace by the workspace JWT - no
  * service-role admin client and no hardcoded workspace id in the renderer.
  */
 

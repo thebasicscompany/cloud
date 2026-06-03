@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
  *
  * Bundle-safe: forwards to the runtime API
  *   POST /v1/workspaces/:workspaceId/browser-sites/:host/connect
- * authed with the signed-in user's WORKSPACE JWT (cloud.ts) — no renderer-side
+ * authed with the signed-in user's WORKSPACE JWT (cloud.ts) - no renderer-side
  * JWT minting. The API returns camelCase { sessionId, liveViewUrl, host,
  * expiresAt }; we re-expose it under the snake_case shape the client expects
  * (session_id, live_view_url, expires_at). Cookies are NEVER exposed here.

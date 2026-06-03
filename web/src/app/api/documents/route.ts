@@ -12,7 +12,7 @@ export async function GET() {
 
 /**
  * Create a document. Used by the user's "New document" flow and by agents.
- * Repointed to cloud/api `POST /v1/documents` (workspace-scoped by the JWT) — no
+ * Repointed to cloud/api `POST /v1/documents` (workspace-scoped by the JWT) - no
  * service-role admin client, no hardcoded workspace. The cloud/api handler owns
  * validation + the success/conflict/error contract, so we pass its status and
  * JSON straight through.

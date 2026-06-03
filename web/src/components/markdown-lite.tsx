@@ -6,7 +6,7 @@ import remarkGfm from "remark-gfm";
  * Backed by react-markdown + remark-gfm so it handles the full common
  * markdown surface (links, fenced code blocks, tables, task lists,
  * autolinks, blockquotes, strikethrough, etc.). No `dangerouslySetInnerHTML`
- * — react-markdown escapes every leaf node automatically.
+ * - react-markdown escapes every leaf node automatically.
  */
 export function MarkdownLite({ text }: { text: string }) {
   return (

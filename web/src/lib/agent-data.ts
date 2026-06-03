@@ -13,7 +13,7 @@ import { cloudGet } from "@/lib/api/cloud";
  * the renderer.
  *
  * Now backed by cloud/api (`GET /v1/agent`) authed with the request's
- * short-lived workspace JWT — every read is scoped to the caller's workspace by
+ * short-lived workspace JWT - every read is scoped to the caller's workspace by
  * the backend, replacing the old service-role admin client + hardcoded
  * PRIMARY_WORKSPACE_ID. No service-role key ever reaches the renderer.
  */
@@ -140,7 +140,7 @@ export async function getAgentData(_workspaceId?: string): Promise<AgentData> {
  * Per-user-scope limitation: a workspace JWT can only ever see ITS OWN
  * workspace, so the old cross-workspace listing (a service-role admin scan of
  * every `workspaces` row with global per-workspace tallies) is structurally
- * impossible here — there is no longer any admin client. We derive a
+ * impossible here - there is no longer any admin client. We derive a
  * single-element list describing just the current workspace from the agent
  * overview (`/v1/agent`), so the workspace switcher still renders the workspace
  * the caller is in. The per-workspace `runs`/`members` tallies are not available

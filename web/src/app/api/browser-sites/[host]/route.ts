@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
  *
  * Bundle-safe: forwards to the runtime API
  *   DELETE /v1/workspaces/:workspaceId/browser-sites/:host
- * authed with the signed-in user's WORKSPACE JWT (cloud.ts) — no renderer-side
+ * authed with the signed-in user's WORKSPACE JWT (cloud.ts) - no renderer-side
  * JWT minting. The stored cookies are removed at the DB level by the runtime;
  * no secret material is ever returned here.
  */

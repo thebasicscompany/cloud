@@ -51,7 +51,7 @@ export function useApproval(approvalId: string | undefined) {
 }
 
 export function useApprovalLogs() {
-  // No separate audit-log table for approvals yet — the Logs/Audit surface
+  // No separate audit-log table for approvals yet - the Logs/Audit surface
   // carries the platform event stream. Return empty rather than mock rows.
   const query = useApprovalStore();
   return { ...query, data: [] as WorkspaceApprovalLogEvent[] };

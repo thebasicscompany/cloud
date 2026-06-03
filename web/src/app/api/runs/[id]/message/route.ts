@@ -6,16 +6,16 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Message / steer a run — entirely through cloud/api (bundle-safe; no direct DB).
+ * Message / steer a run - entirely through cloud/api (bundle-safe; no direct DB).
  *
  * If the run is LIVE, cloud/api's `POST /v1/runs/:id/message` pg_notifies the
  * pool channel ({kind:'continue'}) and the worker folds the message into the
  * running opencode session. If it isn't live (or that endpoint isn't reachable
- * yet — e.g. before an api deploy), we fall back to starting a NEW follow-up run
+ * yet - e.g. before an api deploy), we fall back to starting a NEW follow-up run
  * that references the original.
  *
  * Previously this used `lib/run-steer.ts`, which opened a direct session-mode
- * Postgres connection (DATABASE_URL_SESSION) from the web layer — now removed so
+ * Postgres connection (DATABASE_URL_SESSION) from the web layer - now removed so
  * the desktop bundle holds no DB connection string.
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -50,7 +50,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // Network error → fall through to the follow-up run.
   }
 
-  // No live run to steer — start a NEW follow-up run that references the original.
+  // No live run to steer - start a NEW follow-up run that references the original.
   const goal = `Follow-up to a previous run. Previous run id: ${id}. New instruction: ${message}`;
   try {
     const res = await cloudFetch("/v1/runs", {

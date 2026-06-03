@@ -3,10 +3,10 @@ import "server-only";
 import { cloudFetch, cloudGet } from "@/lib/api/cloud";
 
 /**
- * Automation suggestions — the "I noticed you do X, want to automate it?" surface.
+ * Automation suggestions - the "I noticed you do X, want to automate it?" surface.
  *
  * Reads + the dismiss/accept mutation now go through cloud/api
- * (`/v1/suggestions`), scoped to the caller's workspace by the workspace JWT —
+ * (`/v1/suggestions`), scoped to the caller's workspace by the workspace JWT -
  * no service-role admin client, no hardcoded PRIMARY_WORKSPACE_ID. See
  * `cloud/api/src/routes/suggestions.ts`.
  *
@@ -56,7 +56,7 @@ export async function setSuggestionStatus(
 // Suggestion GENERATION (run-history recurrence + lens recurrence clustering).
 //
 // These are write-heavy batch jobs (cluster recent activity, upsert rows) that
-// must NOT run under the per-user renderer model — they need the platform's own
+// must NOT run under the per-user renderer model - they need the platform's own
 // workspace context and would otherwise re-cluster on every read. Generation
 // moves server-side (a worker / route job). The clustering logic lives there,
 // not here; these stubs keep the existing call sites working by returning the

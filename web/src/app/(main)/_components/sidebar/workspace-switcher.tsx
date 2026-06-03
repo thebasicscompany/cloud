@@ -36,7 +36,7 @@ import type { MyWorkspace } from "@/lib/workspaces";
  * workspace to `/api/workspace/switch` (sets the selection cookie) then
  * `router.refresh()` re-renders the whole app under a JWT scoped to it. "Create
  * team" makes a new team workspace and switches into it; "Leave" (teams only)
- * uses a two-click inline confirm — no native dialogs.
+ * uses a two-click inline confirm - no native dialogs.
  */
 export function WorkspaceSwitcher({ workspaces }: { readonly workspaces: readonly MyWorkspace[] }) {
   const router = useRouter();
@@ -68,7 +68,7 @@ export function WorkspaceSwitcher({ workspaces }: { readonly workspaces: readonl
       if (res.ok) {
         // router.refresh() invalidates server-component data, but client
         // components using React Query keep their cached payload for the
-        // OLD workspace (agents, runs, etc.) — so the user sees stale
+        // OLD workspace (agents, runs, etc.) - so the user sees stale
         // data after the switch. Clear ALL query caches so every client
         // re-fetches under the new workspace JWT.
         queryClient.clear();

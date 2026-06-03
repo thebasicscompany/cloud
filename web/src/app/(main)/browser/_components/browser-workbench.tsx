@@ -63,19 +63,19 @@ export function BrowserWorkbench({ savedSites }: { savedSites: ConnectionBrowser
           setSignInHost(host);
           document.getElementById("signin-host")?.scrollIntoView({ behavior: "smooth", block: "center" });
           // The whole point is to reuse the login you already have. On desktop,
-          // try the local Chrome cookies first — no re-typing in a cloud window.
+          // try the local Chrome cookies first - no re-typing in a cloud window.
           // It falls back gracefully (needs_debug / error) so the manual cloud
           // sign-in is still one click away.
           if (desktop) void useMyLocalLogin(host);
         }
       }
     } catch {
-      // no query params — ignore
+      // no query params - ignore
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // "Use my local login" — export this host's cookies from the user's local
+  // "Use my local login" - export this host's cookies from the user's local
   // Chrome (via the desktop bridge) and save them so the cloud agent reuses the
   // login. No re-typing a password in a cloud window.
   const useMyLocalLogin = async (hostArg?: string) => {
@@ -86,7 +86,7 @@ export function BrowserWorkbench({ savedSites }: { savedSites: ConnectionBrowser
     }
     const bh = (window as unknown as { basichome?: { exportLocalCookies?: (h: string) => Promise<{ ok?: boolean; cookies?: unknown[]; error?: string }> } }).basichome;
     if (!bh?.exportLocalCookies) {
-      setSignIn({ phase: "error", message: "This needs the desktop app — open Basics on your computer." });
+      setSignIn({ phase: "error", message: "This needs the desktop app - open Basics on your computer." });
       return;
     }
     setSignIn({ phase: "finalizing", host });
@@ -94,7 +94,7 @@ export function BrowserWorkbench({ savedSites }: { savedSites: ConnectionBrowser
       const res = await bh.exportLocalCookies(host);
       if (!res?.ok) {
         const err = res?.error ?? "";
-        // Chrome isn't reachable over the debug protocol — guide the user to
+        // Chrome isn't reachable over the debug protocol - guide the user to
         // enable it (same prerequisite browser-harness has), then retry.
         if (/CDP not reachable|no CDP|debug port|ECONNREFUSED/i.test(err)) {
           setSignIn({ phase: "needs_debug", host });
@@ -104,7 +104,7 @@ export function BrowserWorkbench({ savedSites }: { savedSites: ConnectionBrowser
       }
       const cookies = Array.isArray(res.cookies) ? res.cookies : [];
       if (cookies.length === 0)
-        throw new Error(`You're not signed in to ${host} in your Chrome yet — sign in there first, then try again.`);
+        throw new Error(`You're not signed in to ${host} in your Chrome yet - sign in there first, then try again.`);
       const save = await fetch("/api/browser-sites/local-cookies", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -261,7 +261,7 @@ export function BrowserWorkbench({ savedSites }: { savedSites: ConnectionBrowser
           <div className="mt-4 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="text-sm">
-                Signing in to <span className="font-medium">{signIn.host}</span> — complete the login below, then save.
+                Signing in to <span className="font-medium">{signIn.host}</span> - complete the login below, then save.
               </div>
               <div className="flex gap-2">
                 <Button type="button" size="sm" onClick={() => void finalizeSignIn()} disabled={signIn.phase === "finalizing"}>
@@ -287,7 +287,7 @@ export function BrowserWorkbench({ savedSites }: { savedSites: ConnectionBrowser
               </div>
             )}
             <p className="text-muted-foreground text-xs">
-              Passkeys are tied to this device and won't work in the cloud window — use a password or email/Google login
+              Passkeys are tied to this device and won't work in the cloud window - use a password or email/Google login
               here, or run on your own Chrome from the desktop app for passkey sites.
             </p>
           </div>
@@ -341,7 +341,7 @@ export function BrowserWorkbench({ savedSites }: { savedSites: ConnectionBrowser
             <p className="font-medium text-foreground">Turn on remote debugging in Chrome first</p>
             <p className="mt-1 text-muted-foreground">
               To reuse your local <span className="font-medium">{signIn.host}</span> login, Basics needs to read it from
-              your Chrome — which requires remote debugging to be on (one-time):
+              your Chrome - which requires remote debugging to be on (one-time):
             </p>
             <ol className="mt-2 ml-4 list-decimal space-y-1 text-muted-foreground">
               <li>Quit Chrome completely.</li>

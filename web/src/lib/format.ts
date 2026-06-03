@@ -18,7 +18,7 @@ export function formatCron(cron: string | undefined): string {
  * Relative time label: "just now", "12m ago", "3h ago", "2d ago".
  */
 export function formatRelative(iso: string | undefined): string {
-  if (!iso) return "—";
+  if (!iso) return "-";
   const ms = Date.now() - new Date(iso).getTime();
   const min = Math.round(ms / 60_000);
   if (min < 1) return "just now";
@@ -29,7 +29,7 @@ export function formatRelative(iso: string | undefined): string {
 }
 
 export function formatDuration(startedAt: string, completedAt?: string): string {
-  if (!completedAt) return "—";
+  if (!completedAt) return "-";
   const ms = new Date(completedAt).getTime() - new Date(startedAt).getTime();
   const sec = Math.max(1, Math.round(ms / 1000));
   if (sec < 60) return `${sec}s`;

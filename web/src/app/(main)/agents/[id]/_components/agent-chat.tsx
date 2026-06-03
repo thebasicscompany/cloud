@@ -67,7 +67,7 @@ export function AgentChatRun({ id }: { id: string }) {
         ? (window as unknown as { basichome?: CuBridge }).basichome ?? null
         : null;
       if (!bh?.computerUseStart) {
-        const msg = "Computer-use agents need the Basics desktop app — open it to run this agent.";
+        const msg = "Computer-use agents need the Basics desktop app - open it to run this agent.";
         setHistory((h) => h.map((row) => (row.id === localId ? { ...row, error: msg } : row)));
         toast.error(msg);
         return;

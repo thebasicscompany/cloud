@@ -147,7 +147,7 @@ export function CloudAutomationDetail({ id }: { id: string }) {
         </div>
         {automation.status === "draft" ? (
           <div className="rounded-lg border border-amber-300/50 bg-amber-50 px-3 py-2 text-amber-800 text-sm dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-300">
-            This automation is a <strong>draft</strong> — it won&apos;t run on its schedule until you <strong>Activate</strong> it.
+            This automation is a <strong>draft</strong> - it won&apos;t run on its schedule until you <strong>Activate</strong> it.
             Use <em>Test run</em> to try it once first.
           </div>
         ) : null}
@@ -186,7 +186,7 @@ export function CloudAutomationDetail({ id }: { id: string }) {
             <ScheduleEditor automationId={automation.id} schedule={schedule} />
           </Panel>
 
-          <Panel title="Where it runs" description="Cloud runs anytime. Local drives your computer — only when your desktop is online.">
+          <Panel title="Where it runs" description="Cloud runs anytime. Local drives your computer - only when your desktop is online.">
             <div className="grid grid-cols-2 gap-2">
               {(["cloud", "local"] as const).map((target) => {
                 const selected = automation.runTarget === target;
@@ -344,7 +344,7 @@ function AutomationCard({ automation }: { automation: CloudAutomationSummary }) 
               }}
             >
               <Trash2 className="size-4" />
-              {confirmDelete ? "Click again — deletes it + all runs" : "Delete automation"}
+              {confirmDelete ? "Click again - deletes it + all runs" : "Delete automation"}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -486,7 +486,7 @@ function SchedField({ label, children }: { label: string; children: ReactNode })
   );
 }
 
-/** Friendly schedule picker — frequency + time/day + timezone dropdowns, plus a
+/** Friendly schedule picker - frequency + time/day + timezone dropdowns, plus a
  *  Manual option that drops the schedule trigger (no raw cron unless "Custom"). */
 function ScheduleEditor({
   automationId,
@@ -625,7 +625,7 @@ function RunsTable({ runs }: { runs: CloudAutomationRun[] }) {
               </TableCell>
               <TableCell><StatusPill status={statusForCloudRun(run.status)} /></TableCell>
               <TableCell className="capitalize">{run.trigger}</TableCell>
-              <TableCell className="max-w-[280px] truncate text-muted-foreground text-xs">{run.resultSummary ?? run.errorSummary ?? "—"}</TableCell>
+              <TableCell className="max-w-[280px] truncate text-muted-foreground text-xs">{run.resultSummary ?? run.errorSummary ?? "-"}</TableCell>
               <TableCell className="text-right">
                 <Button asChild size="sm" variant="ghost" className="gap-1">
                   <Link href={`/runs/${run.id}`} prefetch={false}>
@@ -783,11 +783,11 @@ function AutomationStatus({ status }: { status: CloudAutomation["status"] }) {
   );
 }
 
-// Only badge the LOCAL ones — cloud is the default, so a badge there is noise.
+// Only badge the LOCAL ones - cloud is the default, so a badge there is noise.
 function RunTargetBadge({ runTarget }: { runTarget: CloudAutomation["runTarget"] }) {
   if (runTarget !== "local") return null;
   return (
-    <Badge variant="outline" className="h-auto min-h-5 gap-1 py-0.5" title="Runs on your computer — only when your desktop is online">
+    <Badge variant="outline" className="h-auto min-h-5 gap-1 py-0.5" title="Runs on your computer - only when your desktop is online">
       <Monitor data-icon="inline-start" />
       Local
     </Badge>
@@ -820,7 +820,7 @@ function triggerLabel(automation: CloudAutomationSummary): string {
 
 function credentialLabel(key: string): string {
   const labels: Record<string, string> = {
-    browserbase: "Browserbase",
+    browserbase: "Cloud browser",
     gmail: "Gmail",
     hubspot: "HubSpot",
     jobboardpro: "JobBoard Pro",

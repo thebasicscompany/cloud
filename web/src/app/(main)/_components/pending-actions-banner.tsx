@@ -17,7 +17,7 @@ function hostLabel(host: string): string {
 }
 
 /**
- * Home "waiting on you" banner — surfaces runs blocked needing a browser login
+ * Home "waiting on you" banner - surfaces runs blocked needing a browser login
  * or a Composio connection, with one-click actions, so these requests aren't
  * buried inside individual runs. Renders nothing when there's nothing pending.
  */

@@ -6,7 +6,7 @@ import { MemoryView } from "./_components/memory-view";
 
 export const metadata: Metadata = {
   title: "Memory | Basics",
-  description: "What your agents have learned — saved skills and shortcuts.",
+  description: "What your agents have learned - saved skills and shortcuts.",
 };
 
 export const dynamic = "force-dynamic";

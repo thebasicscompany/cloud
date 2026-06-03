@@ -1,5 +1,5 @@
 /**
- * Application icons — [Heroicons](https://heroicons.com/) v2 **outline** (24×24) by default;
+ * Application icons - [Heroicons](https://heroicons.com/) v2 **outline** (24×24) by default;
  * **solid** aliases (`*Solid`) are exported for active sidebar states.
  * Import only from `@/icons` so we can change vendors or variants in one place.
  */
@@ -70,6 +70,7 @@ import {
   StopIcon,
   TrashIcon,
   UserCircleIcon,
+  UsersIcon,
   WrenchIcon,
   XCircleIcon,
   XMarkIcon,
@@ -100,16 +101,16 @@ export const RefreshCcw = ArrowPathIcon;
 // ─── App-specific aliases (former lucide names) ─────────────────────────────
 export const Home = HomeIcon;
 export const Play = PlayIcon;
-/** Workflows nav — Heroicons `command-line` */
+/** Workflows nav - Heroicons `command-line` */
 export const Workflow = CommandLineIcon;
 export const ClipboardCheck = ClipboardDocumentCheckIcon;
 export const Globe = GlobeAltIcon;
 export const FileSearch = DocumentMagnifyingGlassIcon;
-/** Conversations nav / list — Heroicons `chat-bubble-left-right` */
+/** Conversations nav / list - Heroicons `chat-bubble-left-right` */
 export const MessageSquare = ChatBubbleLeftRightIcon;
 export const Cog = Cog6ToothIcon;
 
-/** Solid (24×24) — active / selected nav */
+/** Solid (24×24) - active / selected nav */
 export const HomeSolid = HomeIconSolid;
 export const PlaySolid = PlayIconSolid;
 export const WorkflowSolid = CommandLineIconSolid;
@@ -166,6 +167,7 @@ export const Plug = LinkIcon;
 export const UserCog = UserCircleIcon;
 
 export const CircleUser = UserCircleIcon;
+export const Users = UsersIcon;
 export const CreditCard = CreditCardIcon;
 export const EllipsisVertical = EllipsisVerticalIcon;
 export const LogOut = ArrowRightStartOnRectangleIcon;

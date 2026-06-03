@@ -50,7 +50,7 @@ function capturedViaLabel(via: string | null): string {
     case "manual_upload":
       return "Uploaded";
     default:
-      return "—";
+      return "-";
   }
 }
 
@@ -115,7 +115,7 @@ export function AgentConsole({
             <CardTitle>Not connected</CardTitle>
             <CardDescription>
               We couldn&apos;t load your agent data from Basics cloud. Make sure you&apos;re signed in,
-              then refresh — your workspace data is fetched securely per-user (no keys live in the app).
+              then refresh - your workspace data is fetched securely per-user (no keys live in the app).
             </CardDescription>
           </CardHeader>
         </Card>
@@ -184,12 +184,12 @@ export function AgentConsole({
                               ) : null}
                             </TableCell>
                             <TableCell className="text-xs text-muted-foreground">
-                              {[s.kind, s.host].filter(Boolean).join(" · ") || "—"}
+                              {[s.kind, s.host].filter(Boolean).join(" · ") || "-"}
                             </TableCell>
                             <TableCell>
                               <div className="flex flex-wrap gap-1">
                                 {s.requiresIntegrations.length === 0 ? (
-                                  <span className="text-xs text-muted-foreground">—</span>
+                                  <span className="text-xs text-muted-foreground">-</span>
                                 ) : (
                                   s.requiresIntegrations.map((i) => (
                                     <Badge key={i} variant="outline" className="font-mono text-[11px]">
@@ -200,7 +200,7 @@ export function AgentConsole({
                               </div>
                             </TableCell>
                             <TableCell className="text-right tabular-nums">
-                              {s.confidence == null ? "—" : `${Math.round(s.confidence * 100)}%`}
+                              {s.confidence == null ? "-" : `${Math.round(s.confidence * 100)}%`}
                             </TableCell>
                             <TableCell>
                               <div className="flex gap-1">
@@ -250,7 +250,7 @@ export function AgentConsole({
                           <TableRow key={h.id}>
                             <TableCell className="font-mono text-sm">{h.name}</TableCell>
                             <TableCell className="max-w-[28rem] truncate text-xs text-muted-foreground">
-                              {h.description ?? "—"}
+                              {h.description ?? "-"}
                             </TableCell>
                             <TableCell className="text-right tabular-nums">v{h.version ?? 1}</TableCell>
                             <TableCell>
@@ -279,7 +279,7 @@ export function AgentConsole({
                   </CardTitle>
                   <CardDescription>
                     Sites your agent stays signed in to, so it can pick up where you left off
-                    without asking for a password each time. The saved login is encrypted —
+                    without asking for a password each time. The saved login is encrypted -
                     Basics only shows which sites and when they were last checked.
                   </CardDescription>
                 </CardHeader>
@@ -358,8 +358,8 @@ export function AgentConsole({
                               <TableCell className="font-medium">
                                 {c.label?.trim() ? c.label : (c.kind ?? c.id.slice(0, 8))}
                               </TableCell>
-                              <TableCell className="text-xs text-muted-foreground">{c.kind ?? "—"}</TableCell>
-                              <TableCell className="text-xs text-muted-foreground">{c.provenance ?? "—"}</TableCell>
+                              <TableCell className="text-xs text-muted-foreground">{c.kind ?? "-"}</TableCell>
+                              <TableCell className="text-xs text-muted-foreground">{c.provenance ?? "-"}</TableCell>
                               <TableCell className="text-xs text-muted-foreground">
                                 {formatRelative(c.lastUsedAt ?? undefined)}
                               </TableCell>

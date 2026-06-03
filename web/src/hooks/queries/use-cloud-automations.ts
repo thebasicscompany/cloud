@@ -18,7 +18,7 @@ async function fetchAutomations(): Promise<CloudAutomationSummary[]> {
   return ((await res.json()).automations ?? []) as CloudAutomationSummary[];
 }
 
-/** Real automations list — backed by /api/automations → automations table. */
+/** Real automations list - backed by /api/automations → automations table. */
 export function useCloudAutomations() {
   return useQuery({
     queryKey: CLOUD_AUTOMATION_QUERY_KEY,
@@ -71,7 +71,7 @@ export function useCloudAutomationActions() {
   // Replay re-runs the same automation goal as a fresh cloud run.
   const replayRun = useMutation({ mutationFn: (automationId: string) => triggerRun(automationId), onSuccess: invalidate });
 
-  // Activate a draft/paused automation — registers its triggers (EventBridge
+  // Activate a draft/paused automation - registers its triggers (EventBridge
   // schedule + Composio) then flips it to active. Surfaces a clear error if a
   // trigger fails to register (cloud/api returns 422 with a message).
   const activate = useMutation({
@@ -82,12 +82,12 @@ export function useCloudAutomationActions() {
         body: "{}",
       }).then(async (r) => {
         const data = (await r.json().catch(() => ({}))) as { message?: string; error?: string };
-        if (!r.ok) throw new Error(data?.message ?? data?.error ?? "Couldn’t activate — a trigger may have failed to register.");
+        if (!r.ok) throw new Error(data?.message ?? data?.error ?? "Couldn’t activate - a trigger may have failed to register.");
         return data;
       }),
     onSuccess: () => {
       invalidate();
-      toast.success("Automation activated — it runs automatically when its triggers fire.");
+      toast.success("Automation activated - it runs automatically when its triggers fire.");
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Couldn’t activate."),
   });
@@ -108,7 +108,7 @@ export function useCloudAutomationActions() {
     mutationFn: (automationId: string) => patch(automationId, { action: "clearSchedule" }),
     onSuccess: () => {
       invalidate();
-      toast.success("Switched to manual — it now only runs when you click Run now.");
+      toast.success("Switched to manual - it now only runs when you click Run now.");
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Couldn’t update the trigger."),
   });
@@ -117,7 +117,7 @@ export function useCloudAutomationActions() {
       patch(automationId, { action: "setRunTarget", target }),
     onSuccess: invalidate,
   });
-  // Hard delete — removes the automation AND all its runs (cloud/api ?purge=true).
+  // Hard delete - removes the automation AND all its runs (cloud/api ?purge=true).
   const deleteAutomation = useMutation({
     mutationFn: (automationId: string) =>
       fetch(`/api/automations/${automationId}`, { method: "DELETE" }).then(async (r) => {

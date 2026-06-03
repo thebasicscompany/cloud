@@ -3,15 +3,15 @@ import "server-only";
 import { cloudGet, cloudGetPublic } from "@/lib/api/cloud";
 
 /**
- * Workspace invitations + membership (multi-seat) — READ model.
+ * Workspace invitations + membership (multi-seat) - READ model.
  *
  * Every read is served by `cloud/api`, scoped to the caller's workspace by their
- * per-user workspace JWT — no service-role admin client in the renderer.
+ * per-user workspace JWT - no service-role admin client in the renderer.
  *
  *  - `listMembers` / `listInvitations` → `GET /v1/team` (requires workspace JWT;
  *    returns `{ members, invitations }`, we return the matching slice).
  *  - `getInvitationPreview` → `GET /v1/invitations/preview?token=…` (PUBLIC; the
- *    invitee isn't a member yet, so there's no workspace JWT — the opaque invite
+ *    invitee isn't a member yet, so there's no workspace JWT - the opaque invite
  *    token is the credential).
  *
  * The write paths (invite / accept / revoke) now run server-side in `cloud/api`
@@ -58,7 +58,7 @@ export interface InvitationPreview {
 }
 
 /**
- * PUBLIC preview of an invite by its token — the invitee isn't a member yet, so
+ * PUBLIC preview of an invite by its token - the invitee isn't a member yet, so
  * there's no workspace JWT to present; the opaque token is the credential. Hits
  * the unauthenticated `GET /v1/invitations/preview?token=…`.
  */

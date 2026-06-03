@@ -9,7 +9,7 @@ export type WorkspaceSettingsPayload = {
   members: WorkspaceMember[];
 };
 
-/** Real workspace settings — backed by /api/settings/workspace (workspaces + members). */
+/** Real workspace settings - backed by /api/settings/workspace (workspaces + members). */
 export function useSettingsWorkspace() {
   return useQuery({
     queryKey: ["settings", "workspace"],

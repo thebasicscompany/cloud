@@ -653,6 +653,11 @@ const DemoFrameSchema = z.object({
   data: z.string().min(64).max(700_000),
   // Seconds from the start of the recording. Helps the model order events.
   tSec: z.number().min(0).max(60 * 60),
+  // Per-frame screen context from the Electron bridge (macOS osascript).
+  // Optional — recordings from the web build don't have it.
+  appName: z.string().max(200).optional(),
+  windowTitle: z.string().max(500).optional(),
+  focusedUrl: z.string().max(2048).optional(),
 })
 
 const DraftFromDemoSchema = z.object({
@@ -664,7 +669,7 @@ const DEMO_SYSTEM = `You are Basics, drafting a brand new Agent from a screen-re
 
 You receive:
 - A short transcript of what the user said while recording (may be empty).
-- Up to 24 screenshots from the recording, in time order, each with its tSec.
+- Up to 24 screenshots from the recording, in time order. Each screenshot is preceded by a text line like \`t=12.3s · app="Google Chrome" · window="Inbox - Gmail" · url="https://mail.google.com/…"\` — that metadata is the user's frontmost app, window title, and active browser URL at that moment. Trust it over reading the pixels: if app="Slack" and the screenshot looks ambiguous, the user is in Slack. Use the url field to pick suggestedBrowserSites (the bare host).
 
 Your job: infer what the agent should DO, then draft NAME, INSTRUCTIONS, TARGET, and SUGGESTED TOOLS. The instructions should describe the task as a reusable procedure — not a play-by-play of THIS run. Pick the target by what the user actually did:
 - If they used a browser to do everything → 'cloud' (or 'chrome' if it clearly depended on their logged-in session).
@@ -707,6 +712,15 @@ agentsRoute.post('/draft-from-demo', requireRole('member'), zValidator('json', D
     text: `Transcript (may be empty):\n${body.transcript?.trim() || '(no narration)'}\n\nScreenshots in time order follow. Use them + the transcript to infer the procedure, then draft the agent.`,
   })
   for (const f of sortedFrames) {
+    // Anchor each frame with the desktop's view of what the user is looking
+    // at: frontmost app, window title, and active browser URL (when the
+    // frontmost app is a browser). This is the screenpipe-grade signal
+    // that closes most of the model's "what app is this?" guesswork.
+    const meta: string[] = [`t=${f.tSec.toFixed(1)}s`]
+    if (f.appName) meta.push(`app="${f.appName}"`)
+    if (f.windowTitle) meta.push(`window="${f.windowTitle}"`)
+    if (f.focusedUrl) meta.push(`url="${f.focusedUrl}"`)
+    userBlocks.push({ type: 'text', text: meta.join(' · ') })
     userBlocks.push({
       type: 'image',
       source: { type: 'base64', media_type: 'image/jpeg', data: f.data },

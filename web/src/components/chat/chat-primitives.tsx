@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUp, Sparkle } from "@phosphor-icons/react";
+import { ArrowUp } from "@phosphor-icons/react";
 import dynamic from "next/dynamic";
 import { forwardRef, useEffect, useRef } from "react";
 import type { JSX, KeyboardEvent, ReactNode } from "react";
@@ -18,7 +18,7 @@ export type ChatRole = "user" | "assistant" | "system";
 export interface ChatThreadProps {
   children: ReactNode;
   className?: string;
-  /** Keys to watch — when any change, the viewport auto-scrolls to bottom. */
+  /** Keys to watch - when any change, the viewport auto-scrolls to bottom. */
   scrollKey?: unknown;
 }
 
@@ -72,7 +72,15 @@ export function ChatMessage({ role, children, avatar, pending, className }: Chat
           pending && "animate-pulse",
         )}
       >
-        {avatar ?? <Sparkle weight="fill" className="size-3.5" />}
+        {avatar ?? (
+          /* Breathing orb in Basics green. The header already shows the
+             wordmark, so this keeps the assistant signature on every
+             message without stacking the logo twice. */
+          <span
+            className="block size-3 rounded-full bg-[var(--chart-2)] [animation:basics-orb-pulse_1.8s_ease-in-out_infinite]"
+            aria-hidden
+          />
+        )}
       </div>
       <div
         className={cn(
@@ -161,7 +169,7 @@ export function ChatComposer({
 
 // Dynamic import keeps the Deepgram WS + MediaRecorder code out of the bundle
 // for callers that don't actually render the mic (chat-to-run, basics canvas,
-// future agent surfaces — all opt in via voice={true|false}).
+// future agent surfaces - all opt in via voice={true|false}).
 const ComposerVoiceButton = dynamic(
   () => import("@/app/(main)/_components/voice-button").then((m) => m.VoiceButton),
   { ssr: false, loading: () => null },

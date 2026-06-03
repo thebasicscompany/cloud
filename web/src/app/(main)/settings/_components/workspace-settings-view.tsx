@@ -41,7 +41,7 @@ export function WorkspaceSettingsView() {
             <CardHeader className="border-b">
               <CardTitle>{data.workspace.name}</CardTitle>
               <CardDescription>
-                Slug <span className="font-mono text-foreground">{data.workspace.slug || "—"}</span>
+                Slug <span className="font-mono text-foreground">{data.workspace.slug || "-"}</span>
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-3 pt-4">

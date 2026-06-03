@@ -8,7 +8,7 @@ import type {
 } from "@/types/cloud-automation";
 
 /**
- * Real automations read model — now served by `cloud/api` (`/v1/automation-views`),
+ * Real automations read model - now served by `cloud/api` (`/v1/automation-views`),
  * scoped per-user by the workspace JWT exchanged from the caller's Supabase
  * session. The heavy lifting (querying `automations` + `cloud_runs`, computing
  * per-automation run stats, and mapping the rich CloudAutomation UI shape) lives

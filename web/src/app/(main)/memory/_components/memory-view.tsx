@@ -12,10 +12,10 @@ import type { AgentHelper, AgentSkill } from "@/lib/agent-data";
 import { Search } from "@/icons";
 
 /**
- * Memory view — what the workspace's agents have learned over time. Two
+ * Memory view - what the workspace's agents have learned over time. Two
  * lists: skills (durable instructions saved from good runs) and helpers
  * (reusable callable shortcuts). Each row is read-only here; deletion is
- * intentionally out of scope for v1 — skills/helpers come from real runs
+ * intentionally out of scope for v1 - skills/helpers come from real runs
  * and removing them silently breaks future replays.
  */
 export function MemoryView({

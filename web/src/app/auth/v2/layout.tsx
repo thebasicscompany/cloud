@@ -17,7 +17,7 @@ export default function Layout({ children }: Readonly<{ children: ReactNode }>) 
       <div className="app-drag-region fixed inset-x-0 top-0 z-30 h-9" aria-hidden="true" />
 
       <div className="grid h-dvh justify-center p-2 lg:grid-cols-2">
-        {/* Brand panel — an emerald gradient pulled from the Basics logo color
+        {/* Brand panel - an emerald gradient pulled from the Basics logo color
             (the theme `--primary` is near-black, so we use explicit greens here). */}
         <div className="relative order-2 hidden h-full overflow-hidden rounded-3xl bg-[linear-gradient(140deg,#23ab68_0%,#168350_46%,#093d28_100%)] lg:flex">
           {/* Soft brand-green glows for depth. */}
@@ -43,7 +43,7 @@ export default function Layout({ children }: Readonly<{ children: ReactNode }>) 
             <div className="flex-1 space-y-1 text-white">
               <h2 className="font-medium">Stay in control.</h2>
               <p className="text-sm text-white/70">
-                Approval gating, take-over, outcome verification — every run audited.
+                Approval gating, take-over, outcome verification - every run audited.
               </p>
             </div>
           </div>

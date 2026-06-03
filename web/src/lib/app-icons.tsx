@@ -22,7 +22,7 @@ import {
   type Icon as PhosphorIcon,
 } from "@phosphor-icons/react";
 
-/** Curated phosphor set for app surfaces — clean, consistent, themeable. */
+/** Curated phosphor set for app surfaces - clean, consistent, themeable. */
 export const APP_ICONS: Record<string, PhosphorIcon> = {
   users: Users,
   buildings: Buildings,

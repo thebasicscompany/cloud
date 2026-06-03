@@ -9,7 +9,6 @@ import { CheckCircle2, ChevronRight, Wrench } from "@/icons";
 import { LocalAgentWorkbench } from "@/app/(main)/_components/local-agent-workbench";
 import { PendingActionsBanner } from "@/app/(main)/_components/pending-actions-banner";
 import { PendingInvitesBanner } from "@/app/(main)/_components/pending-invites-banner";
-import { SuggestionsCard } from "@/app/(main)/_components/suggestions-card";
 import { PendingCard } from "@/app/(main)/approvals/_components/pending-card";
 import { StatusPill } from "@/app/(main)/runs/_components/status-pill";
 import { Badge } from "@/components/ui/badge";
@@ -32,7 +31,7 @@ function useDocuments() {
         const res = await fetch("/api/documents");
         if (res.ok) return ((await res.json()).documents ?? []) as DocSummary[];
       } catch {
-        // offline — empty
+        // offline - empty
       }
       return [];
     },
@@ -47,7 +46,7 @@ function useAgents() {
         const res = await fetch("/api/automations");
         if (res.ok) return ((await res.json()).agents ?? []) as AgentRow[];
       } catch {
-        // offline — empty
+        // offline - empty
       }
       return [];
     },
@@ -64,7 +63,7 @@ export function HomeDashboard() {
   const recent = (runs ?? []).slice(0, 6);
   const pending = (approvals ?? []).filter(isPendingApproval).slice(0, 3);
 
-  // "Ready for you" — runs that finished with a result in the last day, so a
+  // "Ready for you" - runs that finished with a result in the last day, so a
   // completed output is surfaced instead of silently sitting on the run page.
   const READY = new Set(["completed", "verified", "unverified"]);
   const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
@@ -113,11 +112,7 @@ export function HomeDashboard() {
         </section>
       ) : null}
 
-      {/* Proactive pattern recognition — "I noticed you do X, want to automate it?"
-          Sits just above the agent box so Build flows the prompt straight in. */}
-      <SuggestionsCard />
-
-      {/* Hero — talk to the agent. No outer card: the workbench's own panels are
+      {/* Hero - talk to the agent. No outer card: the workbench's own panels are
           the single containment layer (both Hallmark + impeccable: no nested cards). */}
       <LocalAgentWorkbench />
 

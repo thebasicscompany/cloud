@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
  * to the CRM app). Idempotent when a `dedupKey` is supplied.
  *
  * Repointed to cloud/api `POST /v1/apps/:slug/records` (workspace-scoped by the
- * JWT) — no service-role admin client, no hardcoded workspace. The cloud/api
+ * JWT) - no service-role admin client, no hardcoded workspace. The cloud/api
  * handler owns validation + app resolution + the status contract, so we pass its
  * status and JSON straight through.
  */

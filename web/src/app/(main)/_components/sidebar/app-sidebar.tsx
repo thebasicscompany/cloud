@@ -17,7 +17,6 @@ import {
 import { sidebarItems } from "@/navigation/sidebar/sidebar-items";
 import type { MyWorkspace } from "@/lib/workspaces";
 
-import { RecordRoutine } from "../record-routine";
 import { NavMain } from "./nav-main";
 import { NavUser } from "./nav-user";
 import { WorkspaceSwitcher } from "./workspace-switcher";
@@ -29,7 +28,7 @@ type AppSidebarProps = {
 
 export function AppSidebar({ user, workspaces }: AppSidebarProps) {
   // On macOS Electron the window uses `titleBarStyle: hidden` and the traffic
-  // lights sit at x:14, y:14 — they overlap the sidebar's top edge. Pad the
+  // lights sit at x:14, y:14 - they overlap the sidebar's top edge. Pad the
   // header down past them. Client-only check (avoids SSR hydration mismatch).
   const [isMacElectron, setIsMacElectron] = useState(false);
   useEffect(() => {
@@ -69,7 +68,6 @@ export function AppSidebar({ user, workspaces }: AppSidebarProps) {
         <NavMain items={sidebarItems} />
       </SidebarContent>
       <SidebarFooter>
-        <RecordRoutine />
         <NavUser user={user} />
       </SidebarFooter>
     </Sidebar>

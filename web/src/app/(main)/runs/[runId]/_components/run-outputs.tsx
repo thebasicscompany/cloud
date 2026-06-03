@@ -46,7 +46,7 @@ export function RunOutputs({ run }: { run: Run }) {
       const title =
         run.workflowName && run.workflowName !== "ad-hoc"
           ? run.workflowName
-          : `Result — ${run.id.slice(0, 8)}`;
+          : `Result - ${run.id.slice(0, 8)}`;
       const res = await fetch("/api/documents", {
         method: "POST",
         headers: { "content-type": "application/json" },

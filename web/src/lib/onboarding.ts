@@ -20,7 +20,7 @@ declare global {
  * Detect the operating system on the client.
  *
  * Resolution order:
- * 1. Electron preload bridge (`window.basichome.platform`) when present — most reliable.
+ * 1. Electron preload bridge (`window.basichome.platform`) when present - most reliable.
  * 2. `navigator.userAgentData.platform` (modern, high-entropy hint).
  * 3. `navigator.platform` / `navigator.userAgent` string sniffing as a fallback.
  *

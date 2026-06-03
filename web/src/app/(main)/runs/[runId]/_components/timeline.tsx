@@ -111,7 +111,7 @@ function StepBody({ step }: { step: RunStep }) {
       return (
         <p className="mt-1 text-sm leading-snug">
           <span className="font-medium">{p.userName}</span> took over the session
-          {p.reason ? ` — ${p.reason}` : "."}
+          {p.reason ? ` - ${p.reason}` : "."}
         </p>
       );
     default:

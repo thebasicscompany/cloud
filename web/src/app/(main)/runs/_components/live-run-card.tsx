@@ -76,7 +76,7 @@ function lastStepLine(step: RunStep | undefined): string {
     case "model_thinking":
       return p.text;
     case "model_tool_use":
-      return `Calling ${p.toolName} — ${p.reasoning}`;
+      return `Calling ${p.toolName} - ${p.reasoning}`;
     case "tool_call":
       return `${p.toolName}(${Object.keys(p.params).join(", ")})`;
     case "approval":

@@ -8,7 +8,7 @@ const DEFAULT_CODEX_PATH = "/Applications/Codex.app/Contents/Resources/codex";
 const DEFAULT_CODEX_VERSION = "codex-cli 0.133.0";
 
 // Honest default: nothing is connected until the desktop app actually detects a
-// local engine. We never claim a local account the user hasn't set up — the UI
+// local engine. We never claim a local account the user hasn't set up - the UI
 // shows "Not connected" and cloud runs (Basics Cloud) are the default.
 export function createDefaultCodexEngineStore(): CodexEngineStore {
   return {

@@ -64,11 +64,6 @@ const STEP_DEFS = [
     description: "Make local device access explicit.",
   },
   {
-    id: "capture",
-    title: "Capture",
-    description: "Choose local Lens defaults.",
-  },
-  {
     id: "engine",
     title: "Engine",
     description: "Pick how the first agent work runs.",
@@ -381,12 +376,11 @@ export function OnboardingFlow() {
               <span className="font-semibold text-lg tracking-tight">Basics setup</span>
             </div>
             <p className="mt-1 max-w-2xl text-muted-foreground text-sm">
-              Set up the local device, workspace owner role, Lens capture boundary, engine mode, and approval defaults before the cockpit opens.
+              Set up the local device, workspace owner role, engine mode, and approval defaults before the cockpit opens.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Badge variant="outline">Local first</Badge>
-            <Badge variant="outline">Raw capture local</Badge>
             <Badge variant="outline">Owner/admin</Badge>
           </div>
         </header>
@@ -438,7 +432,6 @@ export function OnboardingFlow() {
                 {step.id === "permissions" ? (
                   <PermissionsStep os={os} permissions={state.permissions} setPermissionStatus={setPermissionStatus} />
                 ) : null}
-                {step.id === "capture" ? <CaptureStep state={state} setField={setField} /> : null}
                 {step.id === "engine" ? <EngineStep state={state} setField={setField} /> : null}
                 {step.id === "safety" ? <SafetyStep state={state} setPolicy={setPolicy} setField={setField} /> : null}
                 {step.id === "review" ? <ReviewStep state={state} os={os} /> : null}
@@ -648,88 +641,6 @@ function PermissionsStep({
   );
 }
 
-function CaptureStep({
-  state,
-  setField,
-}: {
-  state: OnboardingState;
-  setField: <K extends keyof OnboardingState>(key: K, value: OnboardingState[K]) => void;
-}) {
-  return (
-    <div className="grid gap-5 xl:grid-cols-[1fr_340px]">
-      <div className="space-y-4">
-        <div className="rounded-lg border bg-card p-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="space-y-1">
-              <h3 className="font-medium text-sm">Lens local capture</h3>
-              <p className="text-muted-foreground text-sm">
-                24/7 capture starts locally after permissions are granted. You can pause immediately and raw data stays on this device.
-              </p>
-            </div>
-            <Switch checked={state.captureEnabled} onCheckedChange={(checked) => setField("captureEnabled", checked)} aria-label="Enable local capture" />
-          </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant={state.captureStatus === "running" ? "secondary" : "default"}
-              size="sm"
-              onClick={() => setField("captureStatus", state.captureStatus === "running" ? "paused" : "running")}
-              disabled={!state.captureEnabled}
-            >
-              {state.captureStatus === "running" ? "Pause capture" : "Resume capture"}
-            </Button>
-            <Badge variant={state.captureEnabled && state.captureStatus === "running" ? "default" : "secondary"}>
-              {state.captureEnabled ? state.captureStatus : "off"}
-            </Badge>
-            <Badge variant="outline">raw_local</Badge>
-          </div>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2">
-          <label htmlFor="onboarding-retention" className="space-y-2">
-            <span className="text-sm font-medium">Retention</span>
-            <NativeSelect
-              id="onboarding-retention"
-              className="w-full"
-              value={state.retentionDays.toString()}
-              onChange={(event) => setField("retentionDays", Number(event.target.value))}
-            >
-              <NativeSelectOption value="7">7 days</NativeSelectOption>
-              <NativeSelectOption value="30">30 days</NativeSelectOption>
-              <NativeSelectOption value="90">90 days</NativeSelectOption>
-            </NativeSelect>
-          </label>
-          <TextField label="Local storage location" value={state.storageLocation} onChange={(value) => setField("storageLocation", value)} />
-        </div>
-
-        <div className="grid gap-3">
-          <ToggleRow
-            icon={Brain}
-            title="Distilled summaries require approval"
-            detail="Summaries may later feed workspace memory only after review. Raw frames never upload."
-            checked={state.distilledCloudRequiresApproval}
-            onCheckedChange={(checked) => setField("distilledCloudRequiresApproval", checked)}
-          />
-          <ToggleRow
-            icon={Lock}
-            title="Training data disabled"
-            detail="Training and eval data capture is off for v1 setup and can be opted into later from settings."
-            checked={false}
-            disabled
-            onCheckedChange={() => undefined}
-          />
-        </div>
-      </div>
-
-      <div className="space-y-3">
-        <InfoPanel icon={Eye} title="What can be captured" detail="Accessibility text, OCR fallback, app/window focus, browser title/URL, input metadata, and optional audio." />
-        <InfoPanel icon={Lock} title="What leaves the device" detail="Nothing raw. Only approved distilled summaries or explicit user-provided inputs can cross to cloud later." />
-        <InfoPanel icon={ClipboardCheck} title="User controls" detail="Pause, resume, retention, delete/export, and redaction controls stay visible in the product." />
-      </div>
-    </div>
-  );
-}
-
 function EngineStep({
   state,
   setField,
@@ -857,15 +768,6 @@ function ReviewStep({ state, os }: { state: OnboardingState; os: ClientOS }) {
           ["Granted", grantedCount.toString()],
           ["Skipped", skippedCount.toString()],
           ["Recovery", skippedCount > 0 ? "Shown in setup and settings" : "No skipped permissions"],
-        ]}
-      />
-      <ReviewPanel
-        title="Capture"
-        rows={[
-          ["Mode", state.captureEnabled ? state.captureStatus : "off"],
-          ["Raw upload", "Off"],
-          ["Retention", `${state.retentionDays} days`],
-          ["Storage", state.storageLocation],
         ]}
       />
       <ReviewPanel

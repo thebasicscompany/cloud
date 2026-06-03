@@ -16,7 +16,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   try {
     body = (await req.json()) as typeof body;
   } catch {
-    /* tolerate empty body — defaults to dismissed */
+    /* tolerate empty body - defaults to dismissed */
   }
   const status = body.status === "accepted" ? "accepted" : "dismissed";
   const ok = await setSuggestionStatus(id, status);

@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import type { ConnectionsData } from "@/lib/connections-data";
 
 /**
- * Connections — apps your agents can talk to, and signed-in sites they can act
+ * Connections - apps your agents can talk to, and signed-in sites they can act
  * inside. Styled to match Settings → Integrations: brand logos, status badges,
  * Manage/Disconnect actions. The "Use my cookies" flow uses the desktop bridge
  * to capture a site's local Chrome cookies into the workspace.
@@ -103,7 +103,7 @@ export function ConnectionsSimple({ data }: { data: ConnectionsData }) {
         </p>
       </header>
 
-      {/* App connections — OAuth'd Composio toolkits + API-key credentials */}
+      {/* App connections - OAuth'd Composio toolkits + API-key credentials */}
       <section>
         <div className="mb-3 flex items-center gap-2">
           <Plug weight="fill" className="size-4 text-foreground/70" />
@@ -178,7 +178,7 @@ export function ConnectionsSimple({ data }: { data: ConnectionsData }) {
         )}
       </section>
 
-      {/* Browser sessions — per-host cookies, captured from local Chrome */}
+      {/* Browser sessions - per-host cookies, captured from local Chrome */}
       <section>
         <div className="mb-3 flex items-center gap-2">
           <GlobeHemisphereWest weight="fill" className="size-4 text-foreground/70" />
