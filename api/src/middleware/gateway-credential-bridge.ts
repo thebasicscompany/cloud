@@ -143,10 +143,13 @@ export const gatewayCredentialBridge: Handler<{ Variables: Vars }> = async (c) =
   c.set('usageTag', resolved.usageTag)
 
   // PHASE-1-3 item 2: enforce monthly managed-credit pool. Only gates POOLED
-  // (basics_managed) calls — BYOK keys spend the user's own credit and are
-  // unaffected. Pool size = plan.perSeatMonthlyManagedCredit × seat_count;
-  // unlimited (null) plans skip the check entirely.
-  if (resolved.usageTag === 'basics_managed') {
+  // managed calls — BYOK ('customer_byok') keys spend the user's own credit
+  // and are unaffected. Pool size = plan.perSeatMonthlyManagedCredit ×
+  // seat_count; unlimited (null) plans skip the check entirely.
+  const isManaged =
+    resolved.usageTag === 'basics_managed_pooled' ||
+    resolved.usageTag === 'basics_managed_per_workspace'
+  if (isManaged) {
     try {
       const sub = await getSubscription(ws.workspace_id)
       const seatCount = sub?.seat_count ?? 1
