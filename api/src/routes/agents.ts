@@ -400,6 +400,31 @@ const DraftSchema = z.object({
   partial: DraftPartialSchema,
 })
 
+// Allowlist of Composio toolkit slugs we ACTUALLY support (each maps to a
+// real OAuth integration). Basics is only allowed to suggest from this list;
+// anything else is filtered out before the response leaves this endpoint.
+// Generic "browser" navigation is NOT a Composio toolkit — that's just the
+// agent's built-in browser when target=cloud/chrome, no connection needed.
+const ALLOWED_TOOLKITS = new Set([
+  'gmail',
+  'google_calendar',
+  'google_sheets',
+  'google_docs',
+  'google_drive',
+  'slack',
+  'notion',
+  'linear',
+  'github',
+  'asana',
+  'trello',
+  'airtable',
+  'hubspot',
+  'salesforce',
+  'jira',
+  'stripe',
+  'shopify',
+])
+
 const DRAFT_SYSTEM = `You are Basics, a calm helper that walks the user through designing a new Agent — a named, reusable worker that runs on their behalf. Refer to yourself as "Basics" if you ever need to.
 
 Your job in the conversation:
@@ -408,9 +433,18 @@ Your job in the conversation:
   • Keep replies short and warm. Avoid jargon.
 
 Target choices:
-  • 'cloud'    — runs in a fresh cloud browser (Browserbase). Best for tasks that don't need the user's logged-in Chrome or local apps.
+  • 'cloud'    — runs in a fresh cloud browser (Browserbase). Best for tasks that don't need the user's logged-in Chrome or local apps. THIS TARGET HAS A BUILT-IN BROWSER ALREADY — do NOT suggest "browser" as a tool.
   • 'computer' — runs against the user's local desktop (macOS computer-use). Best for native apps, Finder, system-level work.
   • 'chrome'   — runs against the user's personal Chrome via the local relay. Best for tasks needing the user's logged-in browser session.
+
+Tool catalog — the ONLY valid slugs for suggestedTools are:
+  gmail, google_calendar, google_sheets, google_docs, google_drive, slack,
+  notion, linear, github, asana, trello, airtable, hubspot, salesforce,
+  jira, stripe, shopify
+Do NOT invent slugs. Do NOT suggest "browser", "web", "search", or anything not in
+this list — those capabilities are built into the target's browser already and
+require no connection. If the agent doesn't need any of the listed toolkits,
+return suggestedTools: [].
 
 You MUST reply with a single JSON object — no markdown, no prose outside JSON. Schema:
   {
@@ -419,7 +453,7 @@ You MUST reply with a single JSON object — no markdown, no prose outside JSON.
       "name"?: string,
       "instructions"?: string,
       "target"?: "cloud" | "computer" | "chrome",
-      "suggestedTools"?: string[]     // tool slugs, e.g. ["gmail","google_sheets","browser"]
+      "suggestedTools"?: string[]     // slugs from the catalog above ONLY
     },
     "complete"?: boolean              // true when the draft is ready to save
   }`
@@ -444,9 +478,19 @@ function parseDraftReply(text: string): DraftResponse {
   }
   try {
     const parsed = JSON.parse(m[0]) as Partial<DraftResponse>
+    const patch = parsed.patch && typeof parsed.patch === 'object' ? { ...parsed.patch } : {}
+    // Filter suggestedTools against the allowlist — Basics occasionally
+    // hallucinates slugs like "browser" or "web" which aren't real Composio
+    // toolkits and would prompt the user to "connect" something that doesn't
+    // exist. Dropping unknown slugs here keeps the UI honest.
+    if (Array.isArray(patch.suggestedTools)) {
+      patch.suggestedTools = patch.suggestedTools.filter(
+        (s) => typeof s === 'string' && ALLOWED_TOOLKITS.has(s),
+      )
+    }
     return {
       reply: typeof parsed.reply === 'string' ? parsed.reply : text.trim(),
-      patch: parsed.patch && typeof parsed.patch === 'object' ? parsed.patch : {},
+      patch,
       ...(parsed.complete === true ? { complete: true } : {}),
     }
   } catch {

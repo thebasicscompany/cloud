@@ -24,6 +24,9 @@ const TARGETS: Array<{ id: AgentTarget; title: string; blurb: string; emoji: str
   { id: "chrome", title: "Your Chrome", blurb: "Your real Chrome, your logged-in sessions.", emoji: "🌐" },
 ];
 
+// Mirror of the API's ALLOWED_TOOLKITS — only real Composio integrations the
+// agent can actually OAuth into. Anything outside this list is ignored. The
+// "browser" capability isn't a toolkit; it's built into cloud/chrome targets.
 type ToolKind = "api" | "site" | "both";
 interface ToolMeta { label: string; description: string; kind: ToolKind; host?: string }
 const TOOL_CATALOG: Record<string, ToolMeta> = {
@@ -31,11 +34,19 @@ const TOOL_CATALOG: Record<string, ToolMeta> = {
   google_calendar: { label: "Google Calendar", description: "Read and create events", kind: "api" },
   google_sheets: { label: "Google Sheets", description: "Read and edit spreadsheets", kind: "api" },
   google_docs: { label: "Google Docs", description: "Read and write docs", kind: "api" },
+  google_drive: { label: "Google Drive", description: "Read and upload files", kind: "api" },
   slack: { label: "Slack", description: "Send and read channel messages", kind: "api" },
   notion: { label: "Notion", description: "Read pages and databases", kind: "api" },
   linear: { label: "Linear", description: "Read and create issues", kind: "api" },
   github: { label: "GitHub", description: "Read repos, open PRs", kind: "api" },
-  x: { label: "X (Twitter)", description: "Read timeline and post — needs your cookies", kind: "both", host: "x.com" },
+  asana: { label: "Asana", description: "Manage tasks and projects", kind: "api" },
+  trello: { label: "Trello", description: "Boards, lists, cards", kind: "api" },
+  airtable: { label: "Airtable", description: "Read and write bases", kind: "api" },
+  hubspot: { label: "HubSpot", description: "Contacts and deals", kind: "api" },
+  salesforce: { label: "Salesforce", description: "Records and reports", kind: "api" },
+  jira: { label: "Jira", description: "Issues and projects", kind: "api" },
+  stripe: { label: "Stripe", description: "Customers and payments", kind: "api" },
+  shopify: { label: "Shopify", description: "Orders and products", kind: "api" },
 };
 
 interface ChatTurn extends AgentDraftMessage {}
