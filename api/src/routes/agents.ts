@@ -26,8 +26,10 @@ import { sql } from 'drizzle-orm'
 import { randomUUID } from 'node:crypto'
 import { db } from '../db/index.js'
 import { getAnthropicClient } from '../lib/anthropic.js'
+import { loadConnectedAccountByToolkit } from '../lib/automation-trigger-registry.js'
 import { dispatchCloudRun, UUID_RE } from '../lib/cloud-run-dispatch.js'
 import { PlanLimitError } from '../lib/plan-limits.js'
+import { supabaseAdmin } from '../lib/supabase.js'
 import { logger } from '../middleware/logger.js'
 import type { WorkspaceToken } from '../lib/jwt.js'
 
@@ -446,6 +448,14 @@ this list — those capabilities are built into the target's browser already and
 require no connection. If the agent doesn't need any of the listed toolkits,
 return suggestedTools: [].
 
+Browser cookies (suggestedBrowserSites) — for sites where the user's logged-in
+session is required and NO Composio toolkit covers it (x.com timeline, reddit,
+a paywalled news site, linkedin private feed, etc.), suggest the HOST as a
+browser-cookie connection in \`suggestedBrowserSites\`. Format: bare hosts like
+"x.com", "reddit.com" — no protocol, no path. Suggest a host ONLY when the task
+genuinely needs the user's session for that site; don't suggest browser cookies
+when a public unauthenticated read would work.
+
 You MUST reply with a single JSON object — no markdown, no prose outside JSON. Schema:
   {
     "reply": string,                  // the next message to show the user
@@ -453,7 +463,8 @@ You MUST reply with a single JSON object — no markdown, no prose outside JSON.
       "name"?: string,
       "instructions"?: string,
       "target"?: "cloud" | "computer" | "chrome",
-      "suggestedTools"?: string[]     // slugs from the catalog above ONLY
+      "suggestedTools"?: string[],          // Composio slugs from the catalog above ONLY
+      "suggestedBrowserSites"?: string[]    // bare hosts (e.g. "x.com") for cookie-based sites
     },
     "complete"?: boolean              // true when the draft is ready to save
   }`
@@ -465,8 +476,47 @@ interface DraftResponse {
     instructions?: string
     target?: 'cloud' | 'computer' | 'chrome'
     suggestedTools?: string[]
+    /**
+     * Per-host browser cookie suggestions — e.g. ['x.com', 'reddit.com'].
+     * Surfaced when the agent needs to act on a site that isn't a Composio
+     * toolkit OR where the user's logged-in session is required (Twitter
+     * timeline, private subreddit, paywalled article, etc.).
+     */
+    suggestedBrowserSites?: string[]
   }
   complete?: boolean
+}
+
+/**
+ * Pull the workspace's live connection state so Basics drafts against what
+ * the user ACTUALLY has connected (not against the static catalog). Returns
+ * the connected Composio toolkit slugs and the hosts the user has saved
+ * browser cookies for. Fail-soft: empty arrays on any error so the draft
+ * call still succeeds (just without bias from existing connections).
+ */
+async function loadWorkspaceConnections(
+  ws: string,
+  acc: string,
+): Promise<{ connectedToolkits: string[]; savedHosts: string[] }> {
+  let connectedToolkits: string[] = []
+  let savedHosts: string[] = []
+  try {
+    const byToolkit = await loadConnectedAccountByToolkit(ws, acc)
+    connectedToolkits = Object.keys(byToolkit).sort()
+  } catch {
+    /* fail-soft */
+  }
+  try {
+    const sb = supabaseAdmin()
+    const { data } = await sb
+      .from('workspace_browser_sites')
+      .select('host')
+      .eq('workspace_id', ws)
+    savedHosts = (data ?? []).map((r) => String(r.host ?? '')).filter(Boolean).sort()
+  } catch {
+    /* fail-soft */
+  }
+  return { connectedToolkits, savedHosts }
 }
 
 function parseDraftReply(text: string): DraftResponse {
@@ -488,6 +538,14 @@ function parseDraftReply(text: string): DraftResponse {
         (s) => typeof s === 'string' && ALLOWED_TOOLKITS.has(s),
       )
     }
+    // Normalize suggestedBrowserSites — bare hosts only, lowercase, strip
+    // protocol/path noise. Defensive against the model returning full URLs.
+    if (Array.isArray(patch.suggestedBrowserSites)) {
+      patch.suggestedBrowserSites = patch.suggestedBrowserSites
+        .map((s) => String(s ?? '').trim().toLowerCase())
+        .map((s) => s.replace(/^https?:\/\//, '').replace(/\/.*$/, ''))
+        .filter((s) => /^[a-z0-9.-]+\.[a-z]{2,}$/.test(s))
+    }
     return {
       reply: typeof parsed.reply === 'string' ? parsed.reply : text.trim(),
       patch,
@@ -500,6 +558,21 @@ function parseDraftReply(text: string): DraftResponse {
 
 agentsRoute.post('/draft', zValidator('json', DraftSchema), async (c) => {
   const body = c.req.valid('json')
+  const ws = c.var.workspace!.workspace_id
+  const acc = c.var.workspace!.account_id
+
+  // Pull what the user has actually connected so Basics can bias toward
+  // already-connected toolkits + saved browser sessions (matches what
+  // OpenCode sees at run time via composeConnectionsContext +
+  // composeBrowserSitesContext). Fail-soft: empty arrays just remove the
+  // bias hints from the system prompt without breaking drafting.
+  const conn = await loadWorkspaceConnections(ws, acc)
+  const connectionsPreamble = `\n\nWorkspace's CURRENT connections (prefer these — the user has already authorized them):
+- Connected Composio toolkits: ${conn.connectedToolkits.length ? conn.connectedToolkits.join(', ') : '(none yet)'}
+- Saved browser sessions (cookies): ${conn.savedHosts.length ? conn.savedHosts.join(', ') : '(none yet)'}
+
+Bias your suggestedTools toward what's already connected. If the agent needs a tool from the catalog that ISN'T connected yet, suggest it anyway — the user can connect it from the canvas. For sites in suggestedBrowserSites, prefer hosts already in "Saved browser sessions" above; only suggest new hosts when the task truly needs them.`
+
   const partialPreamble = body.partial
     ? `\n\nCurrent draft state (may be empty):\n${JSON.stringify(body.partial, null, 2)}`
     : ''
@@ -509,7 +582,7 @@ agentsRoute.post('/draft', zValidator('json', DraftSchema), async (c) => {
     const msg = await client.messages.create({
       model: DRAFT_MODEL,
       max_tokens: 1500,
-      system: DRAFT_SYSTEM + partialPreamble,
+      system: DRAFT_SYSTEM + connectionsPreamble + partialPreamble,
       messages: body.messages.map((m) => ({ role: m.role, content: m.content })),
     })
     const text = msg.content.map((b) => (b.type === 'text' ? b.text : '')).join('')
