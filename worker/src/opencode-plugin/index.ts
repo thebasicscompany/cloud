@@ -541,22 +541,27 @@ async function buildRuntime(sessionID: string): Promise<PluginRuntime> {
 
   // G.4 — load active skills + wire skill_write through PgSkillStore.
   //
-  // Context discipline: we cap at the top-K highest-confidence skills for the
-  // workspace rather than loadAll(). The transform hook re-injects every loaded
-  // skill into the system prompt on EVERY model turn — at 20 skills × N turns
-  // that's a huge token tax on workspaces with many learned skills, mostly
-  // irrelevant to the current goal. K=5 keeps the most-trusted bias plays
-  // without flooding context. TODO: per-host selective retrieval via
-  // skillLoader.loadForHost(currentUrl) once we have the URL at session-boot
-  // time — would let us drop K further to "skills relevant to this site".
+  // Context discipline + relevance: we used to loadAll() top-5 by confidence,
+  // which gave the same 5 skills on every run regardless of the task. Now we
+  // pull a wider candidate pool and re-rank by token-overlap with the run's
+  // goal text (passed in via BASICS_RUN_GOAL — set by the runner before
+  // spawning opencode). loadRelevant gives the agent skills LIKE the current
+  // task; falls back to loadAll when goal text isn't available (legacy boot).
   const skillLoader = new PgSkillLoader({ databaseUrl });
   let skills: LoadedSkill[] = [];
   try {
-    skills = await skillLoader.loadAll({ workspaceId, limit: 5 });
+    const goalText = process.env.BASICS_RUN_GOAL ?? "";
+    skills = goalText
+      ? await skillLoader.loadRelevant({ workspaceId, goalText, limit: 5 })
+      : await skillLoader.loadAll({ workspaceId, limit: 5 });
     if (skills.length > 0) {
       await publisher.emit({
         type: "skills_loaded",
-        payload: { count: skills.length, names: skills.map((s) => s.name) },
+        payload: {
+          count: skills.length,
+          names: skills.map((s) => s.name),
+          strategy: goalText ? "goal_relevant" : "top_by_confidence",
+        },
       });
     }
   } catch (e) {

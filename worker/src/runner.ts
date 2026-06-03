@@ -100,6 +100,11 @@ export async function runOnce(env: RunEnv, options: RunnerOptions = {}): Promise
         BROWSERBASE_API_KEY: env.browserbaseApiKey,
         BROWSERBASE_PROJECT_ID: env.browserbaseProjectId,
         DATABASE_URL_POOLER: env.databaseUrl,
+        // Goal text → plugin uses it to re-rank skills by relevance to THIS
+        // run (vs the workspace-wide top-5 by confidence). Truncate for env
+        // size safety; the re-ranker only needs enough text to match
+        // keywords against skill descriptions.
+        BASICS_RUN_GOAL: env.goal.slice(0, 4000),
       },
       onEvent: async (event) => {
         await publisher.emit({
