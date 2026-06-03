@@ -1,5 +1,8 @@
 import { Hono } from 'hono'
 
+import { ComposioClient } from '@basics/shared'
+import { loadConnectedAccountByToolkit } from '../lib/automation-trigger-registry.js'
+import { logger } from '../middleware/logger.js'
 import { supabaseAdmin } from '../lib/supabase.js'
 import type { WorkspaceToken } from '../lib/jwt.js'
 import { requireWorkspaceJwt } from '../middleware/jwt.js'
@@ -102,4 +105,66 @@ connectionsRoute.get('/', requireWorkspaceJwt, async (c) => {
   }))
 
   return c.json({ workspaceId: ws, toolkits, credentials, browserSites })
+})
+
+// ─── DELETE /v1/connections/:slug ────────────────────────────────────────
+//
+// Disconnect a workspace's connection to a Composio toolkit (e.g. "notion").
+// Does two things in order:
+//   1. Revoke the OAuth connection on the Composio side via
+//      ComposioClient.deleteConnectedAccount(connectedAccountId) — looked up
+//      from the live Composio account list by toolkit slug.
+//   2. Drop the cached toolkit row from composio_tool_cache so it disappears
+//      from the Connections page immediately (the cache repopulates only when
+//      a fresh connection is made).
+//
+// If the Composio side has no matching active account (already revoked
+// upstream), we still clear the local cache — the user clicked "Disconnect"
+// and the UI should reflect that. We return ok: true with `composioRevoked:
+// false` so the caller can tell the difference.
+
+const SLUG_RE = /^[a-z0-9_-]{1,80}$/
+
+connectionsRoute.delete('/:slug', requireWorkspaceJwt, async (c) => {
+  const slug = (c.req.param('slug') ?? '').trim().toLowerCase()
+  if (!SLUG_RE.test(slug)) return c.json({ error: 'invalid_slug' }, 400)
+  const ws = c.var.workspace.workspace_id
+  const acc = c.var.workspace.account_id
+
+  // Find the connected_account for this toolkit. composio_user_id convention
+  // is account_id (per loadConnectedAccountByToolkit).
+  const byToolkit = await loadConnectedAccountByToolkit(ws, acc)
+  const connectedAccountId = byToolkit[slug] ?? null
+
+  let composioRevoked = false
+  if (connectedAccountId) {
+    try {
+      const client = new ComposioClient()
+      await client.deleteConnectedAccount(connectedAccountId)
+      composioRevoked = true
+    } catch (err) {
+      logger.warn(
+        { workspaceId: ws, slug, connectedAccountId, err: (err as Error).message },
+        'connections delete: composio deleteConnectedAccount failed; clearing local cache anyway',
+      )
+    }
+  }
+
+  // Drop the cached toolkit row so the UI reflects the disconnect even when
+  // Composio was already revoked / unreachable. Tool cache is workspace-scoped.
+  try {
+    const supabase = supabaseAdmin()
+    await supabase
+      .from('composio_tool_cache')
+      .delete()
+      .eq('workspace_id', ws)
+      .eq('toolkit_slug', slug)
+  } catch (err) {
+    logger.warn(
+      { workspaceId: ws, slug, err: (err as Error).message },
+      'connections delete: tool_cache row removal failed (non-fatal)',
+    )
+  }
+
+  return c.json({ ok: true, slug, composioRevoked })
 })
