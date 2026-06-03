@@ -1,4 +1,4 @@
-import { Robot, Plug, FileText, FolderOpen } from "@phosphor-icons/react/dist/ssr";
+import { Robot, Plug, FileText, FolderOpen, Brain } from "@phosphor-icons/react/dist/ssr";
 
 import {
   Cog,
@@ -12,6 +12,7 @@ const AgentIcon = Robot as unknown as Icon;
 const ConnectionsIcon = Plug as unknown as Icon;
 const DocumentsIcon = FileText as unknown as Icon;
 const AppsIcon = FolderOpen as unknown as Icon;
+const MemoryIcon = Brain as unknown as Icon;
 
 export interface NavSubItem {
   title: string;
@@ -49,6 +50,7 @@ export const sidebarItems: NavGroup[] = [
     items: [
       { title: "Agents", url: "/agents", icon: AgentIcon, iconActive: AgentIcon },
       { title: "Activity", url: "/runs", icon: Play, iconActive: PlaySolid },
+      { title: "Memory", url: "/memory", icon: MemoryIcon, iconActive: MemoryIcon },
       { title: "Documents", url: "/documents", icon: DocumentsIcon, iconActive: DocumentsIcon },
       { title: "Apps", url: "/apps", icon: AppsIcon, iconActive: AppsIcon },
       { title: "Connections", url: "/connections", icon: ConnectionsIcon, iconActive: ConnectionsIcon },
