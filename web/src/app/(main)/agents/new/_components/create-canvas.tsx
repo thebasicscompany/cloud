@@ -151,8 +151,11 @@ export function CreateAgentCanvas() {
     }
   };
 
+  // Cancel out the (main) layout's p-6 pb-28 padding so the canvas spans the
+  // full available area. Calc gives us a deterministic height: full viewport
+  // minus the 12-unit (3rem) sticky header in the (main) layout.
   return (
-    <div className="grid h-full grid-cols-[380px_1fr] overflow-hidden">
+    <div className="-m-4 grid h-[calc(100svh-3rem)] grid-cols-[380px_1fr] overflow-hidden md:-m-6 md:-mb-28">
       {/* ── Middle: Basics chat ──────────────────────────────────────────── */}
       <div className="flex h-full min-h-0 flex-col border-r bg-card">
         <div className="flex items-center gap-2 border-b px-4 py-3">
