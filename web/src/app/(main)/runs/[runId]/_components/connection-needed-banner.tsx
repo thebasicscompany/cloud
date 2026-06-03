@@ -176,20 +176,33 @@ export function ConnectionNeededBanner({ runId }: { runId: string }) {
   if (toolkits.length === 0 && browserSites.length === 0) return null;
 
   const names = toolkits.map(titleCase);
+  // When all the agent needs is a browser-cookie push (no Composio OAuth),
+  // the new request_browser_login tool auto-resumes once cookies land — the
+  // user does NOT need to click "Resume run". Hide that button + reword the
+  // helper text. Cookies-only path is the common case for mid-session blocks
+  // on Reddit / Twitter / paywalled sites.
+  const cookiesOnly = toolkits.length === 0 && browserSites.length > 0;
 
   return (
-    <div className="rounded-xl border bg-card p-4 shadow-sm">
-      <div className="flex items-start gap-3.5">
-        <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">
+    <div className="login-prompt relative overflow-hidden rounded-xl border-2 border-amber-300/70 bg-amber-50/60 p-4 shadow-md dark:border-amber-500/30 dark:bg-amber-500/5">
+      {/* Subtle pulse on the border so the user sees this is an ACTIVE wait,
+          not an old banner that's been sitting around. */}
+      <div className="pointer-events-none absolute inset-0 animate-pulse rounded-xl ring-2 ring-amber-300/40 dark:ring-amber-500/20" aria-hidden />
+      <div className="relative flex items-start gap-3.5">
+        <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-amber-200 text-amber-800 dark:bg-amber-500/25 dark:text-amber-300">
           <TriangleAlertIcon className="size-4" />
         </span>
         <div className="min-w-0 flex-1 space-y-3">
           <div className="space-y-1">
             <p className="font-semibold text-foreground text-sm">
-              This run needs you to connect something to finish.
+              {cookiesOnly
+                ? `Agent is paused — needs your ${browserSites.length === 1 ? hostLabel(browserSites[0]!) : "site"} login.`
+                : "This run needs you to connect something to finish."}
             </p>
             <p className="text-muted-foreground text-sm leading-relaxed">
-              Connect the items below, then click <strong>Resume run</strong> — the agent will pick up where it left off without restarting from scratch.
+              {cookiesOnly
+                ? <>Push your cookies with one click — the agent picks them up immediately and continues. Times out in ~5&nbsp;min.</>
+                : <>Connect the items below, then click <strong>Resume run</strong> — the agent will pick up where it left off without restarting from scratch.</>}
             </p>
           </div>
 
@@ -235,24 +248,33 @@ export function ConnectionNeededBanner({ runId }: { runId: string }) {
               </div>
             ))}
             <Button asChild variant="ghost" size="sm" className="h-8 gap-1.5">
-              <Link href={browserSites.length > 0 && toolkits.length === 0 ? "/browser" : "/connections"}>
-                {browserSites.length > 0 && toolkits.length === 0 ? "Browser logins" : "Manage connections"}
+              <Link href={cookiesOnly ? "/connections" : "/connections"}>
+                Manage connections
                 <ExternalLink className="size-3.5" />
               </Link>
             </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant={resumed ? "outline" : "default"}
-              onClick={() => void resume()}
-              disabled={resuming || resumed}
-              className="h-8 gap-1.5"
-            >
-              {resuming ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : null}
-              {resumed ? "Resumed — agent is continuing" : "Resume run"}
-            </Button>
+            {/* Resume button is only meaningful when a Composio OAuth needs a
+             *  manual restart. Browser-cookie path auto-resumes via
+             *  request_browser_login's CDP injection. */}
+            {!cookiesOnly ? (
+              <Button
+                type="button"
+                size="sm"
+                variant={resumed ? "outline" : "default"}
+                onClick={() => void resume()}
+                disabled={resuming || resumed}
+                className="h-8 gap-1.5"
+              >
+                {resuming ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : null}
+                {resumed ? "Resumed — agent is continuing" : "Resume run"}
+              </Button>
+            ) : capturedHosts.size > 0 ? (
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-100 px-2 py-1 text-emerald-800 text-xs dark:bg-emerald-500/15 dark:text-emerald-300">
+                <Loader2 className="size-3 animate-spin" /> Agent picking up cookies…
+              </span>
+            ) : null}
           </div>
 
           {error && <p className="text-destructive text-xs">{error}</p>}
