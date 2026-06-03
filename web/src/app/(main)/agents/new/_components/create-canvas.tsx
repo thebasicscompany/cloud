@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import type { Dispatch, SetStateAction } from "react";
 
 import { toast } from "sonner";
 import { Check, Robot } from "@phosphor-icons/react";
@@ -475,29 +476,80 @@ function ToolsList({
 }: {
   suggested: string[];
   tools: AgentTool[];
-  setTools: (t: AgentTool[]) => void;
+  setTools: Dispatch<SetStateAction<AgentTool[]>>;
 }) {
   const all = Array.from(new Set([...suggested, ...tools.map((t) => t.tool)]));
   const isConnected = (slug: string, mode: AgentTool["mode"]) =>
     tools.some((t) => t.tool === slug && t.mode === mode);
+  // Tracks which toolkit is mid-OAuth so the Connect button can show a
+  // pending state instead of optimistically flipping to "Connected" before
+  // the user actually finishes the sign-in (the bug the user just hit).
+  const [connecting, setConnecting] = useState<string | null>(null);
 
   const connectApi = async (toolkit: string) => {
+    if (connecting === toolkit) return;
+    setConnecting(toolkit);
     try {
       const r = await fetch("/api/connections/connect", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ toolkit }),
       });
-      const j = await r.json().catch(() => ({}));
-      if (r.ok && j.redirectUrl) {
-        window.open(j.redirectUrl, "_blank", "noopener");
-        toast.success(`Sign in to ${toolkit} in the new tab to finish.`);
-        if (!isConnected(toolkit, "api")) setTools([...tools, { tool: toolkit, mode: "api" }]);
-      } else {
+      const j = (await r.json().catch(() => ({}))) as {
+        ok?: boolean;
+        redirectUrl?: string;
+        error?: string;
+      };
+      if (!r.ok || !j.redirectUrl) {
         toast.error(j.error ?? `Could not start ${toolkit} connection.`);
+        setConnecting(null);
+        return;
       }
+      // Route the OAuth URL through the user's REAL default browser when we're
+      // running inside Electron - they're already signed into Notion/Slack/etc
+      // there, so authorize is one click. window.open(_blank) in Electron pops a
+      // fresh, cookie-less BrowserWindow, which is what the user just hit:
+      // "it doesn't open in my actual chrome".
+      const bh = (
+        window as unknown as {
+          basichome?: { isDesktop?: boolean; openExternal?: (u: string) => Promise<{ ok?: boolean }> };
+        }
+      ).basichome;
+      if (bh?.isDesktop && typeof bh.openExternal === "function") {
+        void bh.openExternal(j.redirectUrl);
+      } else {
+        window.open(j.redirectUrl, "_blank", "noopener,noreferrer");
+      }
+      toast.message(`Finish ${toolkit} sign-in in your browser - waiting…`);
+      // Don't optimistically mark connected - that's the second bug. Poll
+      // /v1/connections every 2.5s; flip to connected only when the toolkit
+      // actually appears in the workspace's connected accounts. Stop after
+      // 5 min so a forgotten tab doesn't poll forever.
+      const start = Date.now();
+      const tick = setInterval(async () => {
+        try {
+          const cr = await fetch("/api/connections", { cache: "no-store" });
+          const cd = (await cr.json().catch(() => ({}))) as { toolkits?: Array<{ slug: string }> };
+          const found = (cd.toolkits ?? []).some((t) => t.slug.toLowerCase() === toolkit.toLowerCase());
+          if (found) {
+            clearInterval(tick);
+            setConnecting(null);
+            if (!isConnected(toolkit, "api")) setTools((prev) => [...prev, { tool: toolkit, mode: "api" }]);
+            toast.success(`Connected ${toolkit}.`);
+            return;
+          }
+        } catch {
+          /* keep polling */
+        }
+        if (Date.now() - start > 5 * 60_000) {
+          clearInterval(tick);
+          setConnecting(null);
+          toast.error(`Didn't see ${toolkit} finish in 5 minutes. Try again?`);
+        }
+      }, 2500);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Connection error");
+      setConnecting(null);
     }
   };
 
@@ -552,6 +604,10 @@ function ToolsList({
                   apiConnected ? (
                     <Button size="sm" variant="outline" onClick={() => remove(slug, "api")} className="h-7 px-2.5 text-xs">
                       ✓ Connected
+                    </Button>
+                  ) : connecting === slug ? (
+                    <Button size="sm" variant="outline" disabled className="h-7 px-2.5 text-xs">
+                      Connecting…
                     </Button>
                   ) : (
                     <Button size="sm" onClick={() => void connectApi(slug)} className="h-7 px-2.5 text-xs">
