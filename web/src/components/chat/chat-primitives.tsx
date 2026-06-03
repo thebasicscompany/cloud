@@ -1,6 +1,8 @@
 "use client";
 
 import { ArrowUp } from "@phosphor-icons/react";
+
+import { BasicsOrb } from "@/components/basics-orb";
 import dynamic from "next/dynamic";
 import { forwardRef, useEffect, useRef } from "react";
 import type { JSX, KeyboardEvent, ReactNode } from "react";
@@ -66,21 +68,8 @@ export function ChatMessage({ role, children, avatar, pending, className }: Chat
   }
   return (
     <div className={cn("flex gap-3", className)}>
-      <div
-        className={cn(
-          "mt-0.5 grid size-7 shrink-0 place-items-center rounded-full bg-foreground/[0.06] text-foreground/70",
-          pending && "animate-pulse",
-        )}
-      >
-        {avatar ?? (
-          /* Breathing orb in Basics green. The header already shows the
-             wordmark, so this keeps the assistant signature on every
-             message without stacking the logo twice. */
-          <span
-            className="block size-3 rounded-full bg-[var(--chart-2)] [animation:basics-orb-pulse_1.8s_ease-in-out_infinite]"
-            aria-hidden
-          />
-        )}
+      <div className="mt-0.5 shrink-0">
+        {avatar ?? <BasicsOrb pending={pending} size={26} />}
       </div>
       <div
         className={cn(

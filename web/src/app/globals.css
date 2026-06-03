@@ -212,30 +212,3 @@
   }
 }
 
-@keyframes basics-pulse {
-  0%, 100% {
-    opacity: 0.7;
-    transform: scale(1);
-    filter: drop-shadow(0 0 0 rgba(0, 0, 0, 0));
-  }
-
-  50% {
-    opacity: 1;
-    transform: scale(1.08);
-    filter: drop-shadow(0 0 6px color-mix(in oklab, var(--primary) 45%, transparent));
-  }
-}
-
-@keyframes basics-orb-pulse {
-  0%, 100% {
-    opacity: 0.85;
-    transform: scale(1);
-    box-shadow: 0 0 0 0 transparent;
-  }
-
-  50% {
-    opacity: 1;
-    transform: scale(1.12);
-    box-shadow: 0 0 10px 1px color-mix(in oklab, var(--chart-2) 65%, transparent);
-  }
-}

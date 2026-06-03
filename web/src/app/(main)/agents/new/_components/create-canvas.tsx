@@ -6,8 +6,6 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Check, Robot } from "@phosphor-icons/react";
 
-import { BasicsMark } from "@/components/basics-mark";
-
 import { Button } from "@/components/ui/button";
 import { ChatComposer, ChatMessage, ChatThread } from "@/components/chat/chat-primitives";
 
@@ -146,10 +144,7 @@ export function CreateAgentCanvas() {
       {/* ── LEFT: Basics chat ──────────────────────────────────────────── */}
       <div className="flex h-full min-h-0 flex-col border-r bg-card">
         <div className="flex items-center gap-2 border-b px-4 py-3">
-          <div className="flex size-6 items-center justify-center rounded-md bg-foreground/5">
-            <BasicsMark size={14} />
-          </div>
-          <div className="font-medium text-sm">Basics</div>
+          <div className="font-semibold text-[15px] tracking-tight">Basics</div>
           <button
             type="button"
             onClick={() => setDemoOpen(true)}
