@@ -19,9 +19,12 @@ const MetallicPaint = dynamic(() => import("./metallic-paint"), {
   loading: () => null,
 });
 
-const GREEN_LIGHT = "#bff5d4";
-const GREEN_DARK = "#0e3d1f";
-const GREEN_TINT = "#3fa56b";
+// User direction: no black, or "super super little amount". So the dark stop
+// of the metallic gradient is itself a mid-bright green - the troughs of the
+// pattern come out as a soft green-mint instead of near-black.
+const GREEN_LIGHT = "#eafff2";
+const GREEN_DARK = "#7adc9e";
+const GREEN_TINT = "#4fc587";
 
 export function BasicsOrb({ pending = false, size = 24, className }: { pending?: boolean; size?: number; className?: string }) {
   return (
@@ -39,8 +42,8 @@ export function BasicsOrb({ pending = false, size = 24, className }: { pending?:
         speed={pending ? 1.1 : 0.25}
         liquid={pending ? 1.0 : 0.55}
         mouseAnimation={false}
-        brightness={2.0}
-        contrast={0.55}
+        brightness={2.2}
+        contrast={0.45}
         refraction={0.012}
         blur={0.014}
         chromaticSpread={pending ? 3.2 : 2.0}

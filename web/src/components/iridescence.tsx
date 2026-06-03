@@ -71,7 +71,17 @@ export function Iridescence({
 }: IridescenceProps) {
   const ctnDom = useRef<HTMLDivElement | null>(null);
   const mousePos = useRef({ x: 0.5, y: 0.5 });
+  // Keep refs to the live program + listener so prop-change effects can
+  // write uniforms without re-initializing WebGL on every parent render.
+  // The mount effect used to re-run any time `color` changed - and since
+  // the consumer passes a fresh array literal each render, every keystroke
+  // tore down and rebuilt the canvas. The brief gl.clearColor(white) at
+  // the top of the init path is the white-flash bug the user reported.
+  const programRef = useRef<Program | null>(null);
+  const mouseHandlerRef = useRef<((e: MouseEvent) => void) | null>(null);
 
+  // Mount-only effect: build renderer, program, geometry, canvas + render
+  // loop. NEVER re-run on prop changes - those are handled below.
   useEffect(() => {
     if (!ctnDom.current) return;
     const ctn = ctnDom.current;
@@ -79,13 +89,12 @@ export function Iridescence({
     const gl = renderer.gl;
     gl.clearColor(1, 1, 1, 1);
 
-    let program: Program | undefined;
-
     function resize() {
       const scale = 1;
       renderer.setSize(ctn.offsetWidth * scale, ctn.offsetHeight * scale);
-      if (program) {
-        program.uniforms.uResolution.value = new Color(
+      const prog = programRef.current;
+      if (prog) {
+        prog.uniforms.uResolution.value = new Color(
           gl.canvas.width,
           gl.canvas.height,
           gl.canvas.width / gl.canvas.height,
@@ -96,7 +105,7 @@ export function Iridescence({
     resize();
 
     const geometry = new Triangle(gl);
-    program = new Program(gl, {
+    const program = new Program(gl, {
       vertex: vertexShader,
       fragment: fragmentShader,
       uniforms: {
@@ -110,44 +119,72 @@ export function Iridescence({
         uSpeed: { value: speed },
       },
     });
+    programRef.current = program;
 
     const mesh = new Mesh(gl, { geometry, program });
     let animateId = 0;
 
     function update(t: number) {
       animateId = requestAnimationFrame(update);
-      if (program) program.uniforms.uTime.value = t * 0.001;
+      program.uniforms.uTime.value = t * 0.001;
       renderer.render({ scene: mesh });
     }
     animateId = requestAnimationFrame(update);
     ctn.appendChild(gl.canvas);
 
-    function handleMouseMove(e: MouseEvent) {
-      const rect = ctn.getBoundingClientRect();
-      const x = (e.clientX - rect.left) / rect.width;
-      const y = 1.0 - (e.clientY - rect.top) / rect.height;
-      mousePos.current = { x, y };
-      if (program) {
-        program.uniforms.uMouse.value[0] = x;
-        program.uniforms.uMouse.value[1] = y;
-      }
-    }
-    if (mouseReact) {
-      ctn.addEventListener("mousemove", handleMouseMove);
-    }
-
     return () => {
       cancelAnimationFrame(animateId);
       window.removeEventListener("resize", resize);
-      if (mouseReact) {
-        ctn.removeEventListener("mousemove", handleMouseMove);
-      }
+      const handler = mouseHandlerRef.current;
+      if (handler) ctn.removeEventListener("mousemove", handler);
+      mouseHandlerRef.current = null;
+      programRef.current = null;
       if (gl.canvas.parentElement === ctn) {
         ctn.removeChild(gl.canvas);
       }
       gl.getExtension("WEBGL_lose_context")?.loseContext();
     };
-  }, [color, speed, amplitude, mouseReact]);
+    // Mount-only. Subsequent prop changes flow through the uniform-update
+    // effect below; never tear down the canvas on a parent re-render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Push prop changes straight into the live uniforms. Color is depth-
+  // compared by serializing its tuple so a fresh-array-literal parent
+  // re-render doesn't keep re-rebuilding the Color object pointlessly.
+  const [r, g, b] = color;
+  useEffect(() => {
+    const prog = programRef.current;
+    if (!prog) return;
+    prog.uniforms.uColor.value = new Color(r, g, b);
+    prog.uniforms.uAmplitude.value = amplitude;
+    prog.uniforms.uSpeed.value = speed;
+  }, [r, g, b, amplitude, speed]);
+
+  // Mouse listener as its own effect so toggling mouseReact doesn't
+  // rebuild the canvas either.
+  useEffect(() => {
+    const ctn = ctnDom.current;
+    if (!ctn) return;
+    if (!mouseReact) return;
+    const handler = (e: MouseEvent) => {
+      const rect = ctn.getBoundingClientRect();
+      const x = (e.clientX - rect.left) / rect.width;
+      const y = 1.0 - (e.clientY - rect.top) / rect.height;
+      mousePos.current = { x, y };
+      const prog = programRef.current;
+      if (prog) {
+        prog.uniforms.uMouse.value[0] = x;
+        prog.uniforms.uMouse.value[1] = y;
+      }
+    };
+    mouseHandlerRef.current = handler;
+    ctn.addEventListener("mousemove", handler);
+    return () => {
+      ctn.removeEventListener("mousemove", handler);
+      mouseHandlerRef.current = null;
+    };
+  }, [mouseReact]);
 
   return <div ref={ctnDom} className={`iridescence-container ${className ?? ""}`} {...rest} />;
 }
