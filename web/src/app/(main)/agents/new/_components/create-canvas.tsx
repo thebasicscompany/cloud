@@ -1,14 +1,15 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { toast } from "sonner";
-import { ArrowUp, Check, Robot, Sparkle } from "@phosphor-icons/react";
+import { Check, Robot, Sparkle } from "@phosphor-icons/react";
 
-import { AuroraCanvas } from "@/components/aurora-canvas";
 import { Button } from "@/components/ui/button";
+import { ChatComposer, ChatMessage, ChatThread } from "@/components/chat/chat-primitives";
 import { ConnectionLogo } from "@/components/connection-logo";
+import { Iridescence } from "@/components/iridescence";
 import { Textarea } from "@/components/ui/textarea";
 import { draftWithBasics, useAgentActions } from "@/hooks/queries/use-agents";
 import type {
@@ -75,24 +76,18 @@ export function CreateAgentCanvas() {
   const [tools, setTools] = useState<AgentTool[]>([]);
   const [suggestedTools, setSuggestedTools] = useState<string[]>([]);
 
-  // Per-section completion. Sections appear when content is ready; once
-  // complete they flip to a green ✓ chip but stay visible. The "Save agent"
-  // button enables when name + target + instructions are set and every
-  // visible section is checked.
-  const [completed, setCompleted] = useState<Record<"hosting" | "instructions" | "tools", boolean>>({
-    hosting: false,
-    instructions: false,
-    tools: false,
-  });
-
+  // Section completion is now derived directly from the fields. As soon as
+  // a section has valid content it shows the green ✓ chip; no manual
+  // "Mark complete" click is needed. Save activates when the three
+  // required fields (name, target, instructions) are present.
   const showInstructions = Boolean(instructions);
   const showTools = suggestedTools.length > 0 || tools.length > 0;
-  const allDone = Boolean(name && instructions && target && completed.hosting && completed.instructions && completed.tools);
-
-  const chatRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: "smooth" });
-  }, [chat.length, thinking]);
+  const completed = {
+    hosting: Boolean(target),
+    instructions: Boolean(instructions),
+    tools: !showTools || tools.length > 0,
+  };
+  const allDone = Boolean(name && instructions && target);
 
   const applyPatch = (patch: AgentDraftPatch) => {
     if (patch.name) setName(patch.name);
@@ -151,39 +146,44 @@ export function CreateAgentCanvas() {
           </div>
           <div className="font-medium text-sm">Basics</div>
         </div>
-        <div ref={chatRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
+        <ChatThread scrollKey={`${chat.length}-${thinking ? 1 : 0}`}>
           {chat.map((turn, i) => (
-            <ChatBubble key={i} turn={turn} />
+            <ChatMessage key={i} role={turn.role}>
+              {turn.content}
+            </ChatMessage>
           ))}
-          {thinking ? <ChatBubble turn={{ role: "assistant", content: "…" }} dim /> : null}
-        </div>
-        <div className="border-t p-3">
-          <div className="flex items-end gap-2 rounded-xl border bg-background p-1.5 focus-within:border-foreground/30">
-            <Textarea
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  void send();
-                }
-              }}
-              placeholder="Reply to Basics"
-              className="min-h-8 resize-none border-0 px-2 py-1 text-sm focus-visible:ring-0"
-              rows={1}
-              disabled={thinking}
-            />
-            <Button onClick={() => void send()} disabled={!draft.trim() || thinking} size="icon" className="size-8 shrink-0">
-              <ArrowUp weight="bold" className="size-4" />
-            </Button>
-          </div>
-        </div>
+          {thinking ? (
+            <ChatMessage role="assistant" pending>
+              …
+            </ChatMessage>
+          ) : null}
+        </ChatThread>
+        <ChatComposer
+          value={draft}
+          onChange={setDraft}
+          onSubmit={() => void send()}
+          placeholder="Reply to Basics"
+          disabled={thinking}
+        />
       </div>
 
-      {/* ── RIGHT: rounded inner card holding the aurora canvas ──────────── */}
+      {/* ── RIGHT: rounded inner card holding the iridescence canvas ─────── */}
       <div className="flex h-full min-h-0 flex-col overflow-hidden p-4">
-        <div className="relative isolate flex h-full min-h-0 flex-col overflow-hidden rounded-3xl border border-white/30 shadow-xl">
-          <AuroraCanvas className="absolute inset-0 z-0" />
+        <div
+          className="relative isolate flex h-full min-h-0 flex-col overflow-hidden rounded-3xl border border-white/30 shadow-xl"
+          style={{ backgroundColor: "#23ab68" }}
+        >
+          {/* Brand emerald (#23ab68) as the tint peak; the modified shader
+              mixes white→uColor by the pattern so the dark troughs read white
+              instead of black-green. Pointer-events off so the canvas never
+              eats clicks meant for the cards above it. */}
+          <Iridescence
+            className="pointer-events-none absolute inset-0 z-0"
+            color={[0.137, 0.671, 0.408]}
+            speed={0.35}
+            amplitude={0.1}
+            mouseReact={false}
+          />
 
           {/* Top bar */}
           <div className="relative z-20 flex items-center justify-between px-5 py-3">
@@ -217,7 +217,7 @@ export function CreateAgentCanvas() {
               />
 
               <div className="w-full space-y-2.5">
-                <SectionCard title="Hosting" complete={completed.hosting} canComplete={Boolean(target)} onComplete={() => setCompleted((c) => ({ ...c, hosting: true }))}>
+                <SectionCard title="Hosting" complete={completed.hosting}>
                   <div className="grid grid-cols-3 gap-2">
                     {TARGETS.map((t) => (
                       <button
@@ -260,12 +260,7 @@ export function CreateAgentCanvas() {
                 </SectionCard>
 
                 {showInstructions ? (
-                  <SectionCard
-                    title="Instructions"
-                    complete={completed.instructions}
-                    canComplete={Boolean(instructions)}
-                    onComplete={() => setCompleted((c) => ({ ...c, instructions: true }))}
-                  >
+                  <SectionCard title="Instructions" complete={completed.instructions}>
                     <Textarea
                       value={instructions}
                       onChange={(e) => setInstructions(e.target.value)}
@@ -276,7 +271,7 @@ export function CreateAgentCanvas() {
                 ) : null}
 
                 {showTools ? (
-                  <SectionCard title="Tools" complete={completed.tools} canComplete onComplete={() => setCompleted((c) => ({ ...c, tools: true }))}>
+                  <SectionCard title="Tools" complete={completed.tools}>
                     <ToolsList suggested={suggestedTools} tools={tools} setTools={setTools} />
                   </SectionCard>
                 ) : null}
@@ -290,21 +285,6 @@ export function CreateAgentCanvas() {
 }
 
 // ─── Subcomponents ─────────────────────────────────────────────────────────
-
-function ChatBubble({ turn, dim }: { turn: ChatTurn; dim?: boolean }) {
-  const isUser = turn.role === "user";
-  return (
-    <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-      <div
-        className={`max-w-[88%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-sm leading-snug ${
-          isUser ? "bg-foreground text-background" : "bg-muted text-foreground"
-        } ${dim ? "opacity-60" : ""}`}
-      >
-        {turn.content}
-      </div>
-    </div>
-  );
-}
 
 function AgentCardPreview({
   name,
@@ -376,14 +356,10 @@ function AgentCardPreview({
 function SectionCard({
   title,
   complete,
-  canComplete,
-  onComplete,
   children,
 }: {
   title: string;
   complete: boolean;
-  canComplete: boolean;
-  onComplete: () => void;
   children: React.ReactNode;
 }) {
   return (
@@ -394,11 +370,7 @@ function SectionCard({
           <span className="inline-flex items-center gap-1 rounded-full bg-[color:var(--chart-2)]/15 px-2 py-0.5 text-[color:var(--chart-2)] text-xs">
             <Check weight="bold" className="size-3" /> Complete
           </span>
-        ) : (
-          <Button size="sm" variant="ghost" disabled={!canComplete} onClick={onComplete} className="h-7 px-2 text-xs">
-            Mark complete
-          </Button>
-        )}
+        ) : null}
       </div>
       {children}
       <style jsx>{`

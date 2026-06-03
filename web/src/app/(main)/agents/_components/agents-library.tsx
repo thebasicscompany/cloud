@@ -52,7 +52,9 @@ export function AgentsLibrary() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      {/* Negative margin + matching padding gives hover lifts/shadows room
+          to render before the scroll viewport's clipping edge. */}
+      <div className="-m-2 flex-1 overflow-y-auto p-2">
         {isLoading ? (
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
             {Array.from({ length: 8 }).map((_, i) => (

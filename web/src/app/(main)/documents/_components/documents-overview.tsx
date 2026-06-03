@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ChevronRight, Clock, Download, Loader2, Pencil, Plus, Trash2 } from "@/icons";
 import { resolveAppIcon } from "@/lib/app-icons";
 
+import { MarkdownLite } from "@/components/markdown-lite";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -77,24 +78,24 @@ function DocCard({ doc, onOpen }: { doc: DocSummary; onOpen: () => void }) {
     <button
       type="button"
       onClick={onOpen}
-      className="group flex min-h-[132px] flex-col gap-2 rounded-xl border bg-card p-4 text-left transition-colors hover:border-primary/40"
+      className="group flex min-h-[132px] min-w-0 flex-col gap-2 overflow-hidden rounded-xl border bg-card p-4 text-left transition-colors hover:border-primary/40"
     >
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex w-full items-start justify-between gap-2">
         <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
           <Icon className="size-5" weight="duotone" />
         </span>
-        <div className="flex items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-1.5">
           {doc.pinned ? <Badge variant="outline">Pinned</Badge> : null}
           <Badge variant={doc.status === "draft" ? "secondary" : "outline"}>{doc.status}</Badge>
         </div>
       </div>
-      <div className="min-w-0 flex-1">
+      <div className="w-full min-w-0 flex-1">
         <div className="truncate font-semibold">{doc.title}</div>
         <p className="mt-0.5 line-clamp-2 text-muted-foreground text-sm">{doc.summary}</p>
       </div>
-      <div className="flex items-center justify-between border-t pt-2 text-muted-foreground text-xs">
-        <span className="truncate">{doc.source.label}</span>
-        <span className="flex items-center gap-1 font-medium text-foreground transition-transform group-hover:translate-x-0.5">
+      <div className="flex w-full items-center justify-between gap-2 border-t pt-2 text-muted-foreground text-xs">
+        <span className="min-w-0 flex-1 truncate">{doc.source.label}</span>
+        <span className="flex shrink-0 items-center gap-1 font-medium text-foreground transition-transform group-hover:translate-x-0.5">
           Open
           <ChevronRight className="size-3.5" />
         </span>
@@ -213,66 +214,6 @@ function DocReader({ slug, onClose }: { slug: string; onClose: () => void }) {
       ) : null}
     </Dialog>
   );
-}
-
-/** Minimal, safe markdown renderer (headings, bold/italic, lists, paragraphs). */
-function MarkdownLite({ text }: { text: string }) {
-  const blocks = text.split(/\n{2,}/);
-  return (
-    <article className="space-y-3 text-sm leading-relaxed">
-      {blocks.map((block, i) => {
-        const lines = block.split("\n");
-        if (/^#{1,3}\s/.test(lines[0] ?? "")) {
-          const level = (lines[0].match(/^#+/)?.[0].length ?? 1) as 1 | 2 | 3;
-          const content = lines[0].replace(/^#+\s/, "");
-          const cls = level === 1 ? "font-semibold text-xl" : level === 2 ? "font-semibold text-lg" : "font-medium text-base";
-          return (
-            <h3 key={i} className={cls}>
-              {inline(content)}
-            </h3>
-          );
-        }
-        if (lines.every((l) => /^\s*[-*]\s/.test(l) || l.trim() === "")) {
-          return (
-            <ul key={i} className="ml-5 list-disc space-y-1">
-              {lines.filter((l) => l.trim()).map((l, j) => (
-                <li key={j}>{inline(l.replace(/^\s*[-*]\s/, ""))}</li>
-              ))}
-            </ul>
-          );
-        }
-        if (lines.every((l) => /^\s*\d+\.\s/.test(l) || l.trim() === "")) {
-          return (
-            <ol key={i} className="ml-5 list-decimal space-y-1">
-              {lines.filter((l) => l.trim()).map((l, j) => (
-                <li key={j}>{inline(l.replace(/^\s*\d+\.\s/, ""))}</li>
-              ))}
-            </ol>
-          );
-        }
-        return (
-          <p key={i} className="text-foreground/90">
-            {lines.map((l, j) => (
-              <span key={j}>
-                {inline(l)}
-                {j < lines.length - 1 ? <br /> : null}
-              </span>
-            ))}
-          </p>
-        );
-      })}
-    </article>
-  );
-}
-
-/** Inline **bold** / *italic* → React nodes (escaped automatically by React). */
-function inline(text: string): React.ReactNode {
-  const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g).filter(Boolean);
-  return parts.map((p, i) => {
-    if (p.startsWith("**") && p.endsWith("**")) return <strong key={i}>{p.slice(2, -2)}</strong>;
-    if (p.startsWith("*") && p.endsWith("*")) return <em key={i}>{p.slice(1, -1)}</em>;
-    return <span key={i}>{p}</span>;
-  });
 }
 
 function EditDocDialog({ doc, onClose, onSaved }: { doc: DocDetail; onClose: () => void; onSaved: () => void }) {

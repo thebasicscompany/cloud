@@ -1,100 +1,90 @@
-import type React from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 /**
- * Minimal, safe markdown renderer — headings, bold/italic, inline code, links,
- * bullet + numbered lists, and paragraphs. No `dangerouslySetInnerHTML`: every
- * leaf is a React node, so user/agent text is escaped automatically.
- *
- * Deliberately small (no markdown lib dependency). Good enough to turn an
- * agent's raw markdown result into something scannable instead of a wall of
- * `whitespace-pre-wrap` text. Shared by the run Output panel and Documents.
+ * Markdown renderer used by the run Output panel and the Documents reader.
+ * Backed by react-markdown + remark-gfm so it handles the full common
+ * markdown surface (links, fenced code blocks, tables, task lists,
+ * autolinks, blockquotes, strikethrough, etc.). No `dangerouslySetInnerHTML`
+ * — react-markdown escapes every leaf node automatically.
  */
 export function MarkdownLite({ text }: { text: string }) {
-  const blocks = text.split(/\n{2,}/);
   return (
-    <article className="space-y-3 text-sm leading-relaxed">
-      {blocks.map((block, i) => {
-        const lines = block.split("\n");
-        if (/^#{1,3}\s/.test(lines[0] ?? "")) {
-          const level = (lines[0].match(/^#+/)?.[0].length ?? 1) as 1 | 2 | 3;
-          const content = lines[0].replace(/^#+\s/, "");
-          const cls =
-            level === 1
-              ? "font-semibold text-xl"
-              : level === 2
-                ? "font-semibold text-lg"
-                : "font-medium text-base";
-          return (
-            <h3 key={i} className={cls}>
-              {inline(content)}
-            </h3>
-          );
-        }
-        if (lines.every((l) => /^\s*[-*]\s/.test(l) || l.trim() === "")) {
-          return (
-            <ul key={i} className="ml-5 list-disc space-y-1">
-              {lines
-                .filter((l) => l.trim())
-                .map((l, j) => (
-                  <li key={j}>{inline(l.replace(/^\s*[-*]\s/, ""))}</li>
-                ))}
-            </ul>
-          );
-        }
-        if (lines.every((l) => /^\s*\d+\.\s/.test(l) || l.trim() === "")) {
-          return (
-            <ol key={i} className="ml-5 list-decimal space-y-1">
-              {lines
-                .filter((l) => l.trim())
-                .map((l, j) => (
-                  <li key={j}>{inline(l.replace(/^\s*\d+\.\s/, ""))}</li>
-                ))}
-            </ol>
-          );
-        }
-        return (
-          <p key={i} className="text-foreground/90">
-            {lines.map((l, j) => (
-              <span key={j}>
-                {inline(l)}
-                {j < lines.length - 1 ? <br /> : null}
-              </span>
-            ))}
-          </p>
-        );
-      })}
+    <article className="space-y-3 text-sm leading-relaxed text-foreground/90">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          h1: (props) => <h1 className="font-semibold text-xl" {...props} />,
+          h2: (props) => <h2 className="font-semibold text-lg" {...props} />,
+          h3: (props) => <h3 className="font-medium text-base" {...props} />,
+          h4: (props) => <h4 className="font-medium text-sm" {...props} />,
+          p: (props) => <p className="text-foreground/90" {...props} />,
+          a: ({ href, ...props }) => (
+            <a
+              href={href}
+              target="_blank"
+              rel="noreferrer"
+              className="font-medium text-primary underline underline-offset-2 hover:opacity-80"
+              {...props}
+            />
+          ),
+          ul: (props) => <ul className="ml-5 list-disc space-y-1" {...props} />,
+          ol: (props) => <ol className="ml-5 list-decimal space-y-1" {...props} />,
+          li: (props) => <li className="text-foreground/90" {...props} />,
+          blockquote: (props) => (
+            <blockquote
+              className="border-l-4 border-primary/25 pl-3 text-muted-foreground italic"
+              {...props}
+            />
+          ),
+          code: ({ className, children, ...props }) => {
+            const isBlock = /language-/.test(className ?? "");
+            if (isBlock) {
+              return (
+                <code className={`${className ?? ""} font-mono text-xs`} {...props}>
+                  {children}
+                </code>
+              );
+            }
+            return (
+              <code
+                className="rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]"
+                {...props}
+              >
+                {children}
+              </code>
+            );
+          },
+          pre: (props) => (
+            <pre
+              className="overflow-x-auto rounded-lg border border-border bg-muted p-3 font-mono text-xs"
+              {...props}
+            />
+          ),
+          table: (props) => (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse" {...props} />
+            </div>
+          ),
+          th: (props) => (
+            <th
+              className="border border-border bg-muted/50 px-2 py-1 text-left text-xs"
+              {...props}
+            />
+          ),
+          td: (props) => (
+            <td className="border border-border px-2 py-1 text-xs" {...props} />
+          ),
+          hr: () => <hr className="my-2 border-border" />,
+          strong: (props) => <strong className="font-semibold" {...props} />,
+          em: (props) => <em className="italic" {...props} />,
+          img: ({ alt, ...props }) => (
+            <img alt={alt ?? ""} className="max-w-full rounded-md border border-border" {...props} />
+          ),
+        }}
+      >
+        {text}
+      </ReactMarkdown>
     </article>
   );
-}
-
-/** Inline **bold** / *italic* / `code` / [links](url) → escaped React nodes. */
-function inline(text: string): React.ReactNode {
-  const parts = text
-    .split(/(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`|\[[^\]]+\]\([^)]+\))/g)
-    .filter(Boolean);
-  return parts.map((p, i) => {
-    if (p.startsWith("**") && p.endsWith("**")) return <strong key={i}>{p.slice(2, -2)}</strong>;
-    if (p.startsWith("*") && p.endsWith("*")) return <em key={i}>{p.slice(1, -1)}</em>;
-    if (p.startsWith("`") && p.endsWith("`"))
-      return (
-        <code key={i} className="rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]">
-          {p.slice(1, -1)}
-        </code>
-      );
-    const link = p.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
-    if (link) {
-      return (
-        <a
-          key={i}
-          href={link[2]}
-          target="_blank"
-          rel="noreferrer"
-          className="font-medium text-primary underline underline-offset-2"
-        >
-          {link[1]}
-        </a>
-      );
-    }
-    return <span key={i}>{p}</span>;
-  });
 }
