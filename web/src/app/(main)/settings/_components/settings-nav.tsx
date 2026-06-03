@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { CalendarClock, Building2, CreditCard, Plug, UserCog, Users } from "@/icons";
+import { CalendarClock, Building2, CreditCard, Folder, Plug, UserCog, Users } from "@/icons";
 
 import { cn } from "@/lib/utils";
 
@@ -12,6 +12,7 @@ const sections = [
   { title: "Workspace", url: "/settings/workspace", icon: Building2 },
   { title: "Team", url: "/settings/team", icon: Users },
   { title: "Billing", url: "/settings/billing", icon: CreditCard },
+  { title: "Resources", url: "/settings/resources", icon: Folder },
   { title: "Integrations", url: "/settings/integrations", icon: Plug },
   { title: "Schedules", url: "/settings/schedules", icon: CalendarClock },
 ] as const;

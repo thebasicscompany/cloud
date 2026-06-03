@@ -56,6 +56,11 @@ interface PluginRuntime {
   /** Hosts with a saved cloud browser login (cookies), injected so the agent
    * knows which gated sites it's already signed into and which to request. */
   browserSites: ReadonlyArray<string>;
+  /** Long-lived artifacts the workspace cares about (Notion pages, Google
+   * docs/sheets, Airtable bases, Slack channels, ...). Injected so the agent
+   * edits an existing thing rather than spawning a parallel copy. Only
+   * `agent_access != 'none'` rows are loaded; tagging is on the row itself. */
+  resources: ReadonlyArray<WorkspaceResourceSummary>;
   /** Toolkit slugs the ORG has enabled in Composio (connectable via Composio),
    * so the agent tells "ask to connect via Composio" from "use the browser". */
   enabledToolkits: ReadonlyArray<string>;
@@ -144,6 +149,45 @@ interface AppSummaryForPrompt {
   field_keys: string[];
 }
 
+interface WorkspaceResourceSummary {
+  id: string;
+  kind: string;
+  name: string;
+  url: string | null;
+  externalId: string | null;
+  description: string | null;
+  agentAccess: "read" | "read_write";
+  toolkitSlug: string | null;
+}
+
+/**
+ * <workspace_resources> system fragment — the durable registry of long-lived
+ * artifacts the workspace has (Notion pages, Sheets, Airtable bases, ...).
+ * Tells the agent (1) what exists, (2) whether it can edit it, (3) to EDIT
+ * an existing thing rather than create a parallel copy when the goal calls
+ * for one of these. Skipped entirely when the workspace has zero resources -
+ * an empty section just bloats the prompt.
+ */
+function composeWorkspaceResourcesContext(resources: ReadonlyArray<WorkspaceResourceSummary>): string | null {
+  if (resources.length === 0) return null;
+  const lines = resources.map((r) => {
+    const idPart = r.externalId ? `, id="${r.externalId}"` : "";
+    const urlPart = r.url ? `, url="${r.url}"` : "";
+    const tkPart = r.toolkitSlug ? `, toolkit="${r.toolkitSlug}"` : "";
+    const descPart = r.description ? ` - ${r.description}` : "";
+    return `- "${r.name}" (${r.kind}${tkPart}${idPart}${urlPart}) [${r.agentAccess}]${descPart}`;
+  });
+  return `<workspace_resources>
+These are long-lived artifacts this workspace already has. Each is tagged with its access mode:
+  - [read_write] — you can edit, append, or update in place.
+  - [read]      — you can read but MUST NOT write, edit, append, or delete. If the goal requires a write to a read-only resource, return final_answer with an explanation rather than touching it.
+
+When the goal calls for one of these (e.g. "log this to the Q3 leads tracker", "update the customer FAQ"), USE THE EXISTING ENTRY by its id - do NOT create a parallel new resource. If you create a NEW long-lived artifact during this run, register it via \`resource_register({kind, name, url?, externalId, toolkitSlug?})\` BEFORE final_answer so future runs see it.
+
+${lines.join("\n")}
+</workspace_resources>`;
+}
+
 function composeAppsContext(apps: ReadonlyArray<AppSummaryForPrompt>): string {
   const lines = apps.length
     ? apps.map(
@@ -224,6 +268,8 @@ How to write:
   • Body is markdown. A one-line "Last-verified: YYYY-MM-DD" header is recommended but NOT required for non-selector skills.
 
 ALSO: if the run was a deterministic tool sequence with no LLM judgment mid-flow, ALSO call \`helper_write\` with an \`args_schema\`. Skip helper_write if you made subjective scoring/ranking calls. helper_write is OPTIONAL; skill_write is MANDATORY.
+
+ALSO: if you CREATED a long-lived artifact this run (a Notion page, Google Doc/Sheet, Airtable base, Slack channel, Linear project, GitHub repo, etc. — anything the user will come back to and edit), call \`resource_register({kind, name, url?, externalId, toolkitSlug?})\` BEFORE \`final_answer\`. Use the system's identifier (notion page id, google file id, airtable base id) as \`externalId\` — that's what future runs will use to address it. Skip this for ephemeral side-effects (a single email sent, a single message posted, a screenshot).
 
 If you're tempted to skip skill_write because "the task was simple" — write it anyway. Even "today's date" runs teach future runs which approach is fastest.
 </memory_mandate>`;
@@ -699,6 +745,47 @@ async function buildRuntime(sessionID: string): Promise<PluginRuntime> {
     console.error("plugin: browser-sites host load failed; continuing", (e as Error).message);
   }
 
+  // Workspace resources — the durable registry of long-lived artifacts the
+  // agent has touched on previous runs (Notion pages, Sheets, Airtable bases,
+  // ...) plus anything the user manually added. Only rows where the user has
+  // granted agent_access != 'none' get loaded; the 'none' rows are off-limits
+  // and never see the system prompt. The fragment tags each entry with its
+  // access mode so the agent knows when it's allowed to write.
+  let workspaceResources: WorkspaceResourceSummary[] = [];
+  try {
+    const resourceRows = await quotaSql<
+      Array<{
+        id: string;
+        kind: string;
+        name: string;
+        url: string | null;
+        external_id: string | null;
+        description: string | null;
+        agent_access: "read" | "read_write";
+        toolkit_slug: string | null;
+      }>
+    >`
+      SELECT id, kind, name, url, external_id, description, agent_access, toolkit_slug
+        FROM public.workspace_resources
+       WHERE workspace_id = ${workspaceId}::uuid
+         AND agent_access <> 'none'
+       ORDER BY updated_at DESC
+       LIMIT 80
+    `;
+    workspaceResources = resourceRows.map((r) => ({
+      id: r.id,
+      kind: r.kind,
+      name: r.name,
+      url: r.url,
+      externalId: r.external_id,
+      description: r.description,
+      agentAccess: r.agent_access,
+      toolkitSlug: r.toolkit_slug,
+    }));
+  } catch (e) {
+    console.error("plugin: workspace_resources load failed; continuing", (e as Error).message);
+  }
+
   const ctx: WorkerToolContext = {
     session,
     runId,
@@ -777,6 +864,7 @@ async function buildRuntime(sessionID: string): Promise<PluginRuntime> {
     helpers,
     apps: workspaceApps,
     browserSites: savedBrowserHosts,
+    resources: workspaceResources,
     enabledToolkits,
     // computer_use is offered when the desktop is the executor — either a
     // browser-relay run OR a pure compute run (no browser bridged at all).
@@ -1015,6 +1103,11 @@ export const BasicsBrowserPlugin: Plugin = async (_input) => {
         // agent persists results to Documents/Apps instead of only the run log.
         const appsFragment = composeAppsContext(rt.apps);
         if (appsFragment) output.system.unshift(appsFragment);
+        // Workspace resources — long-lived artifacts the workspace already has
+        // and which agent the user wants the agent to add to / edit rather
+        // than re-create. Only shows when there's at least one row.
+        const resourcesFragment = composeWorkspaceResourcesContext(rt.resources);
+        if (resourcesFragment) output.system.unshift(resourcesFragment);
         // Browser-sites fragment — which gated sites are signed in, and to
         // request (not brute-force) logins for ones that aren't.
         output.system.unshift(composeBrowserSitesContext(rt.browserSites));

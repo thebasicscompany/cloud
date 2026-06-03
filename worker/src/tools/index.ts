@@ -34,6 +34,7 @@ import { set_step_status } from "./set_step_status.js";
 import { report_finding } from "./report_finding.js";
 import { final_answer } from "./final_answer.js";
 import { skill_write } from "./skill_write.js";
+import { resource_register } from "./resource_register.js";
 import { helper_write } from "./helper_write.js";
 import { helper_call } from "./helper_call.js";
 import { spawn_subagent } from "./spawn_subagent.js";
@@ -83,6 +84,7 @@ export {
   report_finding,
   final_answer,
   skill_write,
+  resource_register,
   helper_write,
   helper_call,
   spawn_subagent,
@@ -135,6 +137,7 @@ export function buildWorkerToolRegistry(): ToolRegistry<WorkerToolContext> {
     report_finding,
     final_answer,
     skill_write,
+    resource_register,
     helper_write,
     helper_call,
     spawn_subagent,

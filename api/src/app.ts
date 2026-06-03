@@ -41,6 +41,7 @@ import { appsRoute } from './routes/apps.js'
 import { suggestionsRoute } from './routes/suggestions.js'
 import { workspaceSettingsRoute } from './routes/workspace-settings.js'
 import { connectionsRoute } from './routes/connections.js'
+import { resourcesRoute } from './routes/resources.js'
 import { pendingApprovalsRoute } from './routes/pending-approvals.js'
 import { runViewsRoute } from './routes/run-views.js'
 import { agentRoute } from './routes/agent.js'
@@ -199,6 +200,7 @@ export function buildApp() {
   app.route('/v1/suggestions', suggestionsRoute)
   app.route('/v1/settings', workspaceSettingsRoute)
   app.route('/v1/connections', connectionsRoute)
+  app.route('/v1/resources', resourcesRoute)
   app.route('/v1/pending-approvals', pendingApprovalsRoute)
   app.route('/v1/run-views', runViewsRoute)
   app.route('/v1/agent', agentRoute)

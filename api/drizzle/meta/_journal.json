@@ -260,6 +260,13 @@
       "when": 1780457000000,
       "tag": "0037_resource_visibility",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1780458000000,
+      "tag": "0038_workspace_resources",
+      "breakpoints": true
     }
   ]
 }
