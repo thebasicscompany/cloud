@@ -11,6 +11,18 @@ import { StatusPill } from "../../_components/status-pill";
 
 const LIVE_STATUSES = new Set(["pending", "booting", "running", "paused", "paused_by_user", "verifying"]);
 
+// Friendly labels for the executionTarget enum the API surfaces. Raw values
+// (basics_cloud / local_compute / cloud / chrome) leak implementation detail
+// into the UI; users care about "where did this run?", not the slug.
+const TARGET_LABEL: Record<string, string> = {
+  cloud: "Cloud",
+  basics_cloud: "Cloud", // legacy hardcoded value still in old run rows
+  computer: "Computer use",
+  local_compute: "Computer use", // legacy
+  chrome: "Your Chrome",
+  local_relay: "Your Chrome", // legacy
+};
+
 type Props = {
   run: Run;
   takeover: boolean;
@@ -37,8 +49,12 @@ export function RunHeader({ run, takeover, onToggleTakeover, paused, onTogglePau
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="truncate font-semibold text-2xl tracking-tight">{run.workflowName}</h1>
             <StatusPill status={run.status} />
+            {run.executionTarget ? (
+              <span className="inline-flex items-center rounded-full border bg-card px-2 py-0.5 text-foreground/70 text-xs">
+                {TARGET_LABEL[run.executionTarget] ?? run.executionTarget}
+              </span>
+            ) : null}
           </div>
-          <div className="font-mono text-muted-foreground text-xs">{run.id}</div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {isLive ? (
@@ -66,19 +82,16 @@ export function RunHeader({ run, takeover, onToggleTakeover, paused, onTogglePau
         </div>
       </div>
 
-      <dl className="flex flex-wrap items-baseline gap-x-6 gap-y-2 rounded-lg border bg-card px-4 py-3 text-sm">
+      {/* User-friendly metadata strip — only what the user actually cares
+       *  about. Removed: raw run UUID, Steps:0 noise, Trigger:Manual (the
+       *  default), Runtime:live (always live in the UI), Actor UUID,
+       *  Session UUID, raw Target slug. Kept: Started + Duration + Cost
+       *  when present. Error summary stays below as-is. */}
+      <dl className="flex flex-wrap items-baseline gap-x-6 gap-y-2 text-sm text-foreground/70">
         <Stat label="Started" value={formatRelative(run.startedAt)} />
         <Stat label="Duration" value={formatDuration(run, isLive)} />
-        <Stat label="Steps" value={run.stepCount.toString()} />
-        {run.costCents != null && <Stat label="Cost" value={`$${(run.costCents / 100).toFixed(2)}`} />}
-        <Stat label="Trigger" value={triggerText(run)} />
-        {run.executionTarget && <Stat label="Target" value={run.executionTarget} mono />}
-        {run.runtime && <Stat label="Runtime" value={run.runtime} mono />}
-        {run.actorAccountId && <Stat label="Actor" value={run.actorAccountId} mono />}
-        {run.deviceId && <Stat label="Device" value={run.deviceId} mono />}
-        {run.activeTool && <Stat label="Active tool" value={run.activeTool} mono />}
-        {run.browserbaseSessionId && (
-          <Stat label="Session" value={run.browserbaseSessionId} mono />
+        {run.costCents != null && run.costCents > 0 && (
+          <Stat label="Cost" value={`$${(run.costCents / 100).toFixed(2)}`} />
         )}
       </dl>
 

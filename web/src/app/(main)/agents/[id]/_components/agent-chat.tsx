@@ -1,15 +1,17 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 
 import { toast } from "sonner";
 
 import { Robot } from "@phosphor-icons/react";
 
-import { ArrowUp, Pencil, Trash2 } from "@/icons";
+import { Pencil, Trash2 } from "@/icons";
 
 import { Button } from "@/components/ui/button";
+import { ChatComposer, ChatMessage, ChatThread } from "@/components/chat/chat-primitives";
 import { Textarea } from "@/components/ui/textarea";
 import { useAgent, useAgentActions } from "@/hooks/queries/use-agents";
 import type { Agent, AgentTarget } from "@/types/agent";
@@ -28,11 +30,6 @@ export function AgentChatRun({ id }: { id: string }) {
   const [goal, setGoal] = useState("");
   const [history, setHistory] = useState<Array<{ id: string; goal: string; runId?: string; error?: string }>>([]);
   const [editing, setEditing] = useState(false);
-  const taRef = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    taRef.current?.focus();
-  }, [agent?.id]);
 
   if (isLoading) {
     return (
@@ -56,6 +53,45 @@ export function AgentChatRun({ id }: { id: string }) {
     const localId = `local-${Date.now()}`;
     setHistory((h) => [...h, { id: localId, goal: text }]);
     setGoal("");
+
+    // target=computer means macOS computer-use, which the AWS cloud worker
+    // CAN'T do (no Mac to drive). Route through the desktop bridge instead,
+    // which runs the eyes→brain→hands loop locally. Off-desktop, surface a
+    // clear error rather than silently sending it to a cloud Browserbase
+    // session that doesn't match the agent's intent.
+    if (agent.target === "computer") {
+      interface CuBridge {
+        computerUseStart?: (goal: string) => Promise<{ done?: boolean; text?: string; error?: string }>;
+      }
+      const bh = typeof window !== "undefined"
+        ? (window as unknown as { basichome?: CuBridge }).basichome ?? null
+        : null;
+      if (!bh?.computerUseStart) {
+        const msg = "Computer-use agents need the Basics desktop app — open it to run this agent.";
+        setHistory((h) => h.map((row) => (row.id === localId ? { ...row, error: msg } : row)));
+        toast.error(msg);
+        return;
+      }
+      try {
+        const result = await bh.computerUseStart(text);
+        if (result?.error) {
+          setHistory((h) => h.map((row) => (row.id === localId ? { ...row, error: result.error! } : row)));
+          toast.error(result.error);
+        } else {
+          setHistory((h) =>
+            h.map((row) => (row.id === localId ? { ...row, runId: "local-cu" } : row)),
+          );
+          toast.success(result?.text || "Done.");
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Computer-use run failed.";
+        setHistory((h) => h.map((row) => (row.id === localId ? { ...row, error: msg } : row)));
+        toast.error(msg);
+      }
+      return;
+    }
+
+    // cloud + chrome targets → dispatch through cloud worker.
     try {
       const result = await run.mutateAsync({ id, goal: text });
       setHistory((h) => h.map((row) => (row.id === localId ? { ...row, runId: result.runId } : row)));
@@ -120,51 +156,46 @@ export function AgentChatRun({ id }: { id: string }) {
         />
       ) : null}
 
-      <div className="flex-1 space-y-2 overflow-y-auto rounded-2xl border bg-card p-4">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border bg-card">
         {history.length === 0 ? (
-          <div className="flex h-full min-h-[140px] flex-col items-center justify-center text-center text-foreground/60 text-sm">
+          <div className="flex h-full min-h-[140px] flex-col items-center justify-center px-6 text-center text-foreground/60 text-sm">
             <p>Tell {agent.name} what to do.</p>
             <p className="mt-1 text-xs">It runs with the instructions, target, and tools you set up.</p>
           </div>
         ) : (
-          history.map((row) => (
-            <div key={row.id} className="rounded-lg border bg-background p-2.5 text-sm">
-              <div className="line-clamp-3 whitespace-pre-wrap">{row.goal}</div>
-              {row.runId ? (
-                <div className="mt-1 text-foreground/60 text-xs">
-                  <a href={`/runs/${row.runId}`} className="hover:underline">
-                    Open run →
-                  </a>
-                </div>
-              ) : row.error ? (
-                <div className="mt-1 text-destructive text-xs">{row.error}</div>
-              ) : (
-                <div className="mt-1 text-foreground/60 text-xs">Starting run…</div>
-              )}
-            </div>
-          ))
+          <ChatThread scrollKey={history.length}>
+            {history.map((row) => (
+              <div key={row.id} className="space-y-3">
+                <ChatMessage role="user">{row.goal}</ChatMessage>
+                {row.runId ? (
+                  <ChatMessage role="assistant">
+                    Starting your run.{" "}
+                    <Link href={`/runs/${row.runId}`} className="font-medium text-primary underline-offset-2 hover:underline">
+                      Open run →
+                    </Link>
+                  </ChatMessage>
+                ) : row.error ? (
+                  <ChatMessage role="assistant">
+                    <span className="text-destructive">{row.error}</span>
+                  </ChatMessage>
+                ) : (
+                  <ChatMessage role="assistant" pending>
+                    Starting run…
+                  </ChatMessage>
+                )}
+              </div>
+            ))}
+          </ChatThread>
         )}
-      </div>
 
-      <div className="mt-3 flex items-end gap-2 rounded-2xl border bg-card p-2">
-        <Textarea
-          ref={taRef}
+        <ChatComposer
           value={goal}
-          onChange={(e) => setGoal(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              void send();
-            }
-          }}
+          onChange={setGoal}
+          onSubmit={() => void send()}
           placeholder={`What should ${agent.name} do?`}
-          className="min-h-12 resize-none border-0 focus-visible:ring-0"
-          rows={2}
           disabled={run.isPending}
+          rows={2}
         />
-        <Button onClick={() => void send()} disabled={!goal.trim() || run.isPending} size="icon" className="size-9 shrink-0">
-          <ArrowUp className="size-4" />
-        </Button>
       </div>
     </div>
   );

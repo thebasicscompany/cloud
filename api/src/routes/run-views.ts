@@ -166,7 +166,7 @@ const STEP_KIND: Record<string, RunStepKind> = {
 }
 
 const RUN_SELECT =
-  'id,automation_id,cloud_agent_id,workspace_id,account_id,status,started_at,completed_at,created_at,last_progress_at,duration_seconds,result_summary,error_message,failure_reason,run_mode,browserbase_session_id,live_view_url,recording_url,triggered_by,automations(name),cloud_agents(agent_id)'
+  'id,automation_id,cloud_agent_id,workspace_id,account_id,status,started_at,completed_at,created_at,last_progress_at,duration_seconds,result_summary,error_message,failure_reason,run_mode,browser_target,browserbase_session_id,live_view_url,recording_url,triggered_by,automations(name),cloud_agents(agent_id)'
 
 // Statuses the UI renders as "live". A run that claims one of these but hasn't
 // progressed in STALE_MS is treated as orphaned for display, so a dead worker
@@ -214,7 +214,19 @@ function mapRun(r: Record<string, unknown>): Run {
       (r.failure_reason as string) ??
       (orphaned ? 'Orphaned — no worker progress for 30m+' : undefined),
     runtime: (r.run_mode as string) ?? 'cloud',
-    executionTarget: 'basics_cloud',
+    // executionTarget surfaces what the run's browser actually attached to,
+    // which the UI maps to a friendly label. Was hardcoded to 'basics_cloud'
+    // for every run regardless of target — so a computer-use run looked like
+    // a cloud run in the UI. Map the cloud_runs.browser_target column:
+    //   'cloud'         → 'cloud'      (Browserbase)
+    //   'local_compute' → 'computer'   (pure macOS computer-use)
+    //   'local_relay'   → 'chrome'     (user's Chrome via relay)
+    executionTarget:
+      (r.browser_target as string) === 'local_compute'
+        ? 'computer'
+        : (r.browser_target as string) === 'local_relay'
+          ? 'chrome'
+          : 'cloud',
     actorAccountId: (r.account_id as string) ?? undefined,
     browserbaseSessionId: (r.browserbase_session_id as string) ?? undefined,
     liveUrl: (r.live_view_url as string) ?? undefined,

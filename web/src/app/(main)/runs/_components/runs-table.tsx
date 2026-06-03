@@ -33,7 +33,19 @@ import { StatusPill } from "./status-pill";
 
 const LIVE_STATUSES = new Set<RunStatus>(["pending", "booting", "running", "paused", "paused_by_user", "verifying"]);
 const SKELETON_ROWS = ["skeleton-run-1", "skeleton-run-2", "skeleton-run-3", "skeleton-run-4", "skeleton-run-5", "skeleton-run-6"];
-const SKELETON_COLUMNS = ["status", "workflow", "steps", "cost", "started"];
+const SKELETON_COLUMNS = ["status", "workflow", "target", "started"];
+
+// Friendly labels for executionTarget so the table reads "Cloud" / "Computer
+// use" / "Your Chrome" instead of "basics_cloud" / "local_compute" /
+// "local_relay" or the legacy hardcoded value.
+const TARGET_LABEL: Record<string, string> = {
+  cloud: "Cloud",
+  basics_cloud: "Cloud",
+  computer: "Computer use",
+  local_compute: "Computer use",
+  chrome: "Your Chrome",
+  local_relay: "Your Chrome",
+};
 
 export function RunsTable() {
   const [search, setSearch] = useState("");
@@ -119,9 +131,8 @@ export function RunsTable() {
             <TableHeader>
               <TableRow>
                 <TableHead>Status</TableHead>
-                <TableHead>Workflow</TableHead>
-                <TableHead className="text-right">Steps</TableHead>
-                <TableHead className="text-right">Cost</TableHead>
+                <TableHead>Agent</TableHead>
+                <TableHead>Target</TableHead>
                 <TableHead>
                   <button
                     type="button"
@@ -159,31 +170,14 @@ export function RunsTable() {
                       <StatusPill status={run.status} />
                     </TableCell>
                     <TableCell>
-                      <div className="flex flex-col">
-                        <Link href={`/runs/${run.id}`} className="font-medium hover:underline underline-offset-2" prefetch={false}>
-                          {run.workflowName}
-                        </Link>
-                        <span className="font-mono text-muted-foreground text-xs">
-                          {run.id.slice(0, 8)}
-                          {run.trigger !== "scheduled" && (
-                            <>
-                              {" · "}
-                              <span className="capitalize">{run.trigger}</span>
-                              {run.triggeredBy ? ` · ${run.triggeredBy.name}` : ""}
-                            </>
-                          )}
-                        </span>
-                      </div>
+                      <Link href={`/runs/${run.id}`} className="font-medium hover:underline underline-offset-2" prefetch={false}>
+                        {run.workflowName}
+                      </Link>
                     </TableCell>
-                    <TableCell className="text-right">
-                      <span className="tabular-nums text-sm">{run.stepCount}</span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {run.costCents != null ? (
-                        <span className="tabular-nums text-sm">${(run.costCents / 100).toFixed(2)}</span>
-                      ) : (
-                        <span className="text-muted-foreground text-sm">No cost</span>
-                      )}
+                    <TableCell>
+                      <span className="text-foreground/70 text-sm">
+                        {TARGET_LABEL[run.executionTarget ?? "cloud"] ?? run.executionTarget ?? "Cloud"}
+                      </span>
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-col">

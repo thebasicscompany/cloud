@@ -633,6 +633,21 @@ agentsRoute.post('/:id/run', zValidator('json', RunSchema), async (c) => {
   const agent = await loadAgent(ws, id)
   if (!agent) return c.json({ error: 'not_found' }, 404)
 
+  // target=computer means macOS computer-use, which has to run locally — the
+  // AWS Fargate worker has no Mac to drive. The web client routes these
+  // through the desktop bridge (window.basichome.computerUseStart); refusing
+  // here is a defense-in-depth in case any caller forgets.
+  if (agent.target === 'computer') {
+    return c.json(
+      {
+        error: 'computer_use_must_run_locally',
+        message:
+          "This agent uses your Mac (computer-use). Run it from the Basics desktop app — the cloud worker can't drive your machine.",
+      },
+      400,
+    )
+  }
+
   const body = c.req.valid('json')
   // composedGoal stays lean — the memory mandate (skill_write / helper_write
   // before final_answer) lives in the worker's system prompt now (composeMemoryMandateContext)
