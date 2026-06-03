@@ -4,7 +4,7 @@
 // renderer in a native desktop window, plus a tray and a global shortcut.
 // The overlay "pill" is part of the web app itself (the in-app overlay
 // component) — the shell does NOT spawn a separate pill window.
-const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, nativeImage, screen, desktopCapturer, shell } = require("electron");
+const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, nativeImage, screen, desktopCapturer, session, shell } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const localBrowser = require("./local-browser");
@@ -272,6 +272,33 @@ app.whenReady().then(async () => {
   if (process.platform === "darwin" && app.dock) {
     const dockImg = nativeImage.createFromPath(path.join(__dirname, "build", "icon.png"));
     if (!dockImg.isEmpty()) app.dock.setIcon(dockImg);
+  }
+
+  // Electron returns "Not supported" for navigator.mediaDevices.getDisplayMedia()
+  // unless the main process registers a display-media request handler. The
+  // DemoRecorder ("Record a demo" -> draft an agent from a recording) needs
+  // this to capture the screen. On macOS 14+ useSystemPicker delegates to
+  // the native screen/window chooser + the green capture indicator; on older
+  // versions Electron falls back to our supplied source (primary screen).
+  try {
+    session.defaultSession.setDisplayMediaRequestHandler(
+      (_request, callback) => {
+        desktopCapturer
+          .getSources({ types: ["screen", "window"] })
+          .then((sources) => {
+            const primary = sources.find((s) => s.id.startsWith("screen:")) ?? sources[0];
+            if (!primary) {
+              callback({});
+              return;
+            }
+            callback({ video: primary, audio: "loopback" });
+          })
+          .catch(() => callback({}));
+      },
+      { useSystemPicker: true },
+    );
+  } catch (e) {
+    console.warn("setDisplayMediaRequestHandler unavailable:", e && e.message);
   }
 
   createMainWindow();
