@@ -579,7 +579,24 @@ function ToolsList({
   };
 
   const connectSite = async (host: string, slug: string) => {
-    interface CookieBridge { exportLocalCookies?: (host: string) => Promise<{ ok?: boolean; error?: string; count?: number }> }
+    interface ExportedCookie {
+      name: string;
+      value: string;
+      domain: string;
+      path: string;
+      expires?: number;
+      httpOnly?: boolean;
+      secure?: boolean;
+      sameSite?: string;
+    }
+    interface CookieBridge {
+      exportLocalCookies?: (host: string) => Promise<{
+        ok?: boolean;
+        error?: string;
+        host?: string;
+        cookies?: ExportedCookie[];
+      }>;
+    }
     const bridge = (typeof window !== "undefined"
       ? ((window as unknown as { basichome?: CookieBridge }).basichome ?? null)
       : null);
@@ -588,13 +605,31 @@ function ToolsList({
       return;
     }
     try {
+      // Step 1: pull the cookies from local Chrome via the desktop bridge.
       const res = await bridge.exportLocalCookies(host);
-      if (res?.ok) {
-        toast.success(`Captured ${res.count ?? "your"} ${host} cookies.`);
-        if (!isConnected(slug, "browser")) setTools([...tools, { tool: slug, mode: "browser" }]);
-      } else {
-        toast.error(res?.error ?? `Couldn't grab ${host} cookies from Chrome.`);
+      if (!res?.ok || !Array.isArray(res.cookies) || res.cookies.length === 0) {
+        toast.error(res?.error ?? `Couldn't grab ${host} cookies from Chrome. Make sure you're signed in.`);
+        return;
       }
+      // Step 2: POST them to the cloud so they UPSERT workspace_browser_sites
+      // - this is the step the old code was skipping, which is why the
+      // Connections page never showed the saved login.
+      const saveRes = await fetch("/api/browser-sites/local-cookies", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ host: res.host ?? host, cookies: res.cookies }),
+      });
+      const saveJson = (await saveRes.json().catch(() => ({}))) as {
+        ok?: boolean;
+        cookieCount?: number;
+        error?: string;
+      };
+      if (!saveRes.ok || !saveJson.ok) {
+        toast.error(saveJson.error ?? `Couldn't save ${host} cookies to your workspace.`);
+        return;
+      }
+      toast.success(`Saved ${saveJson.cookieCount ?? res.cookies.length} ${host} cookies.`);
+      if (!isConnected(slug, "browser")) setTools([...tools, { tool: slug, mode: "browser" }]);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Cookie capture failed");
     }

@@ -62,8 +62,23 @@ export function ConnectionsSimple({ data }: { data: ConnectionsData }) {
   };
   const captureCookies = async (host: string) => {
     if (!host) return;
+    interface ExportedCookie {
+      name: string;
+      value: string;
+      domain: string;
+      path: string;
+      expires?: number;
+      httpOnly?: boolean;
+      secure?: boolean;
+      sameSite?: string;
+    }
     interface CookieBridge {
-      exportLocalCookies?: (host: string) => Promise<{ ok?: boolean; error?: string; count?: number }>;
+      exportLocalCookies?: (host: string) => Promise<{
+        ok?: boolean;
+        error?: string;
+        host?: string;
+        cookies?: ExportedCookie[];
+      }>;
     }
     const bridge = typeof window !== "undefined"
       ? (window as unknown as { basichome?: CookieBridge }).basichome ?? null
@@ -74,17 +89,41 @@ export function ConnectionsSimple({ data }: { data: ConnectionsData }) {
     }
     setCapturing(true);
     try {
+      // Step 1: pull cookies from local Chrome via the desktop bridge.
       const res = await bridge.exportLocalCookies(host);
-      if (res?.ok) {
-        toast.success(`Saved ${host} (${res.count ?? "your"} cookies).`);
-        setSiteHost("");
-        setBrowserSites([
-          ...browserSites,
-          { host, displayName: host, lastVerifiedAt: new Date().toISOString(), expiresAt: null },
-        ]);
-      } else {
-        toast.error(res?.error ?? "Could not capture cookies");
+      if (!res?.ok || !Array.isArray(res.cookies) || res.cookies.length === 0) {
+        toast.error(res?.error ?? `Couldn't capture ${host} cookies. Make sure you're signed in.`);
+        return;
       }
+      // Step 2: POST them to the cloud so they UPSERT workspace_browser_sites
+      // and actually show up in the list. The old version skipped this and
+      // only updated local state, so the row vanished on reload.
+      const saveRes = await fetch("/api/browser-sites/local-cookies", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ host: res.host ?? host, cookies: res.cookies }),
+      });
+      const saveJson = (await saveRes.json().catch(() => ({}))) as {
+        ok?: boolean;
+        cookieCount?: number;
+        expires_at?: string | null;
+        error?: string;
+      };
+      if (!saveRes.ok || !saveJson.ok) {
+        toast.error(saveJson.error ?? `Couldn't save ${host} cookies to your workspace.`);
+        return;
+      }
+      toast.success(`Saved ${host} (${saveJson.cookieCount ?? res.cookies.length} cookies).`);
+      setSiteHost("");
+      setBrowserSites([
+        ...browserSites,
+        {
+          host,
+          displayName: host,
+          lastVerifiedAt: new Date().toISOString(),
+          expiresAt: saveJson.expires_at ?? null,
+        },
+      ]);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Cookie capture failed");
     } finally {
