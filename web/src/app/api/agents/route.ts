@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { cloudFetch } from "@/lib/api/cloud";
+import { cloudFetch, CloudApiError } from "@/lib/api/cloud";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,6 +20,15 @@ export async function GET() {
       headers: { "content-type": "application/json" },
     });
   } catch (e) {
+    // CloudApiError encodes the real reason — most commonly 401 "no workspace
+    // session" when the supabase cookie isn't there. Preserve its status so
+    // the renderer can show "session expired" instead of a generic 503.
+    if (e instanceof CloudApiError) {
+      return NextResponse.json(
+        { error: "agents_unavailable", message: e.message },
+        { status: e.status },
+      );
+    }
     return NextResponse.json(
       { error: "agents_unavailable", message: e instanceof Error ? e.message : "unknown" },
       { status: 503 },
