@@ -65,7 +65,11 @@ export const PLAN_LIMITS: Record<WorkspacePlan, PlanLimits> = {
     monthlyManagedCreditCents: 1500, // ~$15/seat/mo of managed inference
     dailyCloudMinutes: 120,
     minScheduleIntervalMinutes: 30,
-    seatLimit: 3,
+    // Unlimited seats - per-seat billed. Pro/Team are differentiated by the
+    // per-seat ALLOWANCES (managed AI, agents, cloud minutes, BYOK), not by
+    // an arbitrary seat cap. Upgrade pressure comes from hitting limits or
+    // wanting BYOK, not from "you can't invite a 4th person."
+    seatLimit: null,
     allowByok: false,
     selfServe: true,
   },
@@ -127,14 +131,14 @@ export const PLAN_CATALOG: PlanCatalogEntry[] = [
     plan: 'pro',
     name: 'Pro',
     pricePerSeatCents: 2000,
-    blurb: 'For power users and tiny teams — more included AI and cloud automation.',
+    blurb: 'For power users and growing teams — unlimited seats, more included AI and cloud automation per seat.',
     stripePriceEnv: 'STRIPE_PRICE_PRO',
   },
   {
     plan: 'team',
     name: 'Team',
     pricePerSeatCents: 4000,
-    blurb: 'For teams — roles, shared resources, scheduling and bring-your-own keys.',
+    blurb: 'For teams — 2× the per-seat allowances, faster schedules, bring-your-own keys.',
     stripePriceEnv: 'STRIPE_PRICE_TEAM',
   },
   {
