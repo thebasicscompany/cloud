@@ -25,6 +25,7 @@ import { z } from 'zod'
 import { sql } from 'drizzle-orm'
 import { randomUUID } from 'node:crypto'
 import { db } from '../db/index.js'
+import { ComposioClient } from '@basics/shared'
 import { getAnthropicClient } from '../lib/anthropic.js'
 import { loadConnectedAccountByToolkit } from '../lib/automation-trigger-registry.js'
 import { dispatchCloudRun, UUID_RE } from '../lib/cloud-run-dispatch.js'
@@ -486,14 +487,15 @@ Target choices:
   • 'computer' — runs against the user's local desktop (macOS computer-use). Best for native apps, Finder, system-level work.
   • 'chrome'   — runs against the user's personal Chrome via the local relay. Best for tasks needing the user's logged-in browser session.
 
-Tool catalog — the ONLY valid slugs for suggestedTools are:
-  gmail, googlecalendar, googlesheets, googledocs, googledrive, slack,
-  notion, linear, github, asana, trello, airtable, hubspot, salesforce,
-  jira, stripe, shopify
-Do NOT invent slugs. Do NOT suggest "browser", "web", "search", or anything not in
-this list — those capabilities are built into the target's browser already and
-require no connection. If the agent doesn't need any of the listed toolkits,
-return suggestedTools: [].
+Tool catalog — the ONLY valid slugs for suggestedTools are the toolkits this
+workspace's Composio project actually has an enabled auth_config for. The list
+is injected as <available_toolkits> below; use slugs EXACTLY as written there
+(no underscores added, no typos, no rewording). If the slug isn't in
+<available_toolkits>, do NOT suggest it - the user can't connect it.
+Do NOT suggest "browser", "web", "search", or anything not in that list - those
+capabilities are built into the target's browser already and require no
+connection. If the agent doesn't need any listed toolkits, return
+suggestedTools: [].
 
 Browser cookies (suggestedBrowserSites) — for sites where the user's logged-in
 session is required and NO Composio toolkit covers it (x.com timeline, reddit,
@@ -541,6 +543,42 @@ interface DraftResponse {
  * browser cookies for. Fail-soft: empty arrays on any error so the draft
  * call still succeeds (just without bias from existing connections).
  */
+/**
+ * Live list of enabled Composio auth_config toolkit slugs. This is the
+ * "what can the user click Connect on" catalog, and we feed it directly
+ * into Basics's drafting prompt so it can't hallucinate a slug that
+ * doesn't exist in the workspace's Composio project. Cached for 5 minutes
+ * because a draft chat may fire several requests in quick succession and
+ * the catalog changes rarely.
+ */
+let toolkitCatalogCache: { at: number; slugs: string[] } | null = null
+const TOOLKIT_CATALOG_TTL_MS = 5 * 60_000
+async function loadAvailableToolkits(): Promise<string[]> {
+  if (toolkitCatalogCache && Date.now() - toolkitCatalogCache.at < TOOLKIT_CATALOG_TTL_MS) {
+    return toolkitCatalogCache.slugs
+  }
+  try {
+    const client = new ComposioClient()
+    const configs = await client.listAuthConfigs()
+    const slugs = Array.from(
+      new Set(
+        configs
+          .filter((cfg) => (cfg.status ?? '').toUpperCase() !== 'DISABLED')
+          .map((cfg) => (cfg.toolkit?.slug ?? '').toLowerCase())
+          .filter(Boolean),
+      ),
+    ).sort()
+    toolkitCatalogCache = { at: Date.now(), slugs }
+    return slugs
+  } catch (err) {
+    logger.warn(
+      { err: (err as Error).message },
+      'agents.loadAvailableToolkits: Composio listAuthConfigs failed; falling back to static catalog',
+    )
+    return Array.from(ALLOWED_TOOLKITS)
+  }
+}
+
 async function loadWorkspaceConnections(
   ws: string,
   acc: string,
@@ -566,7 +604,7 @@ async function loadWorkspaceConnections(
   return { connectedToolkits, savedHosts }
 }
 
-function parseDraftReply(text: string): DraftResponse {
+function parseDraftReply(text: string, allowedToolkits?: ReadonlySet<string>): DraftResponse {
   // The model is instructed to return JSON only, but defensively extract
   // the first balanced JSON object in case it wraps in prose.
   const m = text.match(/\{[\s\S]*\}/)
@@ -579,10 +617,13 @@ function parseDraftReply(text: string): DraftResponse {
     // Filter suggestedTools against the allowlist — Basics occasionally
     // hallucinates slugs like "browser" or "web" which aren't real Composio
     // toolkits and would prompt the user to "connect" something that doesn't
-    // exist. Dropping unknown slugs here keeps the UI honest.
+    // exist. Dropping unknown slugs here keeps the UI honest. The allowlist
+    // is the workspace's live Composio auth_configs when we could load it,
+    // and the static ALLOWED_TOOLKITS otherwise (Composio outage / no key).
+    const allow = allowedToolkits ?? ALLOWED_TOOLKITS
     if (Array.isArray(patch.suggestedTools)) {
       patch.suggestedTools = patch.suggestedTools.filter(
-        (s) => typeof s === 'string' && ALLOWED_TOOLKITS.has(s),
+        (s) => typeof s === 'string' && allow.has(s),
       )
     }
     // Normalize suggestedBrowserSites — bare hosts only, lowercase, strip
@@ -613,12 +654,17 @@ agentsRoute.post('/draft', zValidator('json', DraftSchema), async (c) => {
   // OpenCode sees at run time via composeConnectionsContext +
   // composeBrowserSitesContext). Fail-soft: empty arrays just remove the
   // bias hints from the system prompt without breaking drafting.
-  const conn = await loadWorkspaceConnections(ws, acc)
+  const [conn, availableToolkits] = await Promise.all([
+    loadWorkspaceConnections(ws, acc),
+    loadAvailableToolkits(),
+  ])
+  const allowed = new Set(availableToolkits.length ? availableToolkits : Array.from(ALLOWED_TOOLKITS))
+  const catalogPreamble = `\n\n<available_toolkits>\n${availableToolkits.join(', ') || '(none — Composio not configured)'}\n</available_toolkits>`
   const connectionsPreamble = `\n\nWorkspace's CURRENT connections (prefer these — the user has already authorized them):
 - Connected Composio toolkits: ${conn.connectedToolkits.length ? conn.connectedToolkits.join(', ') : '(none yet)'}
 - Saved browser sessions (cookies): ${conn.savedHosts.length ? conn.savedHosts.join(', ') : '(none yet)'}
 
-Bias your suggestedTools toward what's already connected. If the agent needs a tool from the catalog that ISN'T connected yet, suggest it anyway — the user can connect it from the canvas. For sites in suggestedBrowserSites, prefer hosts already in "Saved browser sessions" above; only suggest new hosts when the task truly needs them.`
+Bias your suggestedTools toward what's already connected. If the agent needs a tool from <available_toolkits> that ISN'T connected yet, suggest it anyway — the user can connect it from the canvas. For sites in suggestedBrowserSites, prefer hosts already in "Saved browser sessions" above; only suggest new hosts when the task truly needs them.`
 
   const partialPreamble = body.partial
     ? `\n\nCurrent draft state (may be empty):\n${JSON.stringify(body.partial, null, 2)}`
@@ -629,11 +675,11 @@ Bias your suggestedTools toward what's already connected. If the agent needs a t
     const msg = await client.messages.create({
       model: DRAFT_MODEL,
       max_tokens: 1500,
-      system: DRAFT_SYSTEM + connectionsPreamble + partialPreamble,
+      system: DRAFT_SYSTEM + catalogPreamble + connectionsPreamble + partialPreamble,
       messages: body.messages.map((m) => ({ role: m.role, content: m.content })),
     })
     const text = msg.content.map((b) => (b.type === 'text' ? b.text : '')).join('')
-    return c.json(parseDraftReply(text))
+    return c.json(parseDraftReply(text, allowed))
   } catch (err) {
     logger.warn(
       { err: (err as Error).message },
@@ -683,7 +729,7 @@ Your job: infer what the agent should DO, then draft NAME, INSTRUCTIONS, TARGET,
 - If they used a browser to do everything → 'cloud' (or 'chrome' if it clearly depended on their logged-in session).
 - If they used native macOS apps / Finder / system UI → 'computer'.
 
-Tool catalog — the ONLY valid slugs are: gmail, googlecalendar, googlesheets, googledocs, googledrive, slack, notion, linear, github, asana, trello, airtable, hubspot, salesforce, jira, stripe, shopify. Do NOT invent slugs and do NOT insert underscores ('googledrive' not 'google_drive'). Include suggestedBrowserSites (bare hosts like "x.com") for sites where the user is logged in.
+Tool catalog — the ONLY valid slugs for suggestedTools are the toolkits this workspace's Composio project has an enabled auth_config for. The list is injected as <available_toolkits> in the system preamble; use slugs EXACTLY as written there. If a slug isn't in that list, do NOT suggest it. Include suggestedBrowserSites (bare hosts like "x.com") for sites where the user is logged in but no Composio toolkit covers them.
 
 Reply with ONE JSON object (no markdown):
   {
@@ -702,8 +748,12 @@ agentsRoute.post('/draft-from-demo', requireRole('member'), zValidator('json', D
   const body = c.req.valid('json')
   const ws = c.var.workspace!.workspace_id
   const acc = c.var.workspace!.account_id
-  const conn = await loadWorkspaceConnections(ws, acc)
-  const preamble = `\n\nWorkspace's CURRENT connections — prefer these in suggestedTools / suggestedBrowserSites:
+  const [conn, availableToolkits] = await Promise.all([
+    loadWorkspaceConnections(ws, acc),
+    loadAvailableToolkits(),
+  ])
+  const allowed = new Set(availableToolkits.length ? availableToolkits : Array.from(ALLOWED_TOOLKITS))
+  const preamble = `\n\n<available_toolkits>\n${availableToolkits.join(', ') || '(none — Composio not configured)'}\n</available_toolkits>\n\nWorkspace's CURRENT connections — prefer these in suggestedTools / suggestedBrowserSites:
 - Composio toolkits: ${conn.connectedToolkits.length ? conn.connectedToolkits.join(', ') : '(none)'}
 - Saved browser sessions: ${conn.savedHosts.length ? conn.savedHosts.join(', ') : '(none)'}`
 
@@ -744,7 +794,7 @@ agentsRoute.post('/draft-from-demo', requireRole('member'), zValidator('json', D
       messages: [{ role: 'user', content: userBlocks }],
     })
     const text = msg.content.map((b) => (b.type === 'text' ? b.text : '')).join('')
-    return c.json(parseDraftReply(text))
+    return c.json(parseDraftReply(text, allowed))
   } catch (err) {
     logger.warn({ err: (err as Error).message }, 'agents draft-from-demo: anthropic call failed')
     return c.json({ error: 'draft_unavailable', message: (err as Error).message }, 503)
