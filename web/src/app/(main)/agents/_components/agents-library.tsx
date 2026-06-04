@@ -19,8 +19,9 @@ const TARGET_LABEL: Record<string, string> = {
 };
 
 export function AgentsLibrary() {
-  const { data: agents = [], isLoading } = useAgents();
+  const { data: agents = [], isLoading, error } = useAgents();
   const [query, setQuery] = useState("");
+  const fetchStatus = (error as Error & { status?: number } | undefined)?.status;
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -61,6 +62,8 @@ export function AgentsLibrary() {
               <div key={i} className="h-24 animate-pulse rounded-2xl bg-foreground/5" />
             ))}
           </div>
+        ) : error ? (
+          <ErrorState status={fetchStatus} message={(error as Error).message} />
         ) : filtered.length === 0 ? (
           <EmptyState hasQuery={Boolean(query)} />
         ) : (
@@ -113,6 +116,27 @@ function AgentCard({ agent }: { agent: Agent }) {
         </div>
       </div>
     </Link>
+  );
+}
+
+function ErrorState({ status, message }: { status?: number; message: string }) {
+  // 401 / 403 = session expired or wrong workspace. Anything else = transient.
+  const isAuth = status === 401 || status === 403;
+  return (
+    <div className="flex flex-col items-center justify-center rounded-2xl border border-destructive/30 bg-destructive/5 p-12 text-center">
+      <Robot weight="fill" className="mb-3 size-8 text-destructive/60" />
+      <h2 className="font-medium text-base text-destructive">
+        {isAuth ? "Session expired" : "Couldn't load your agents"}
+      </h2>
+      <p className="mt-1 max-w-md text-foreground/60 text-sm">
+        {isAuth
+          ? "Sign back in to reload your agents - your workspace JWT expired."
+          : "Something went wrong reaching the agents API. Try refreshing; if it keeps failing, check Status."}
+      </p>
+      <p className="mt-2 max-w-md text-foreground/40 text-xs">
+        {status ? `status ${status} · ` : ""}{message}
+      </p>
+    </div>
   );
 }
 

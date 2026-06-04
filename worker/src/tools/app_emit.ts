@@ -26,7 +26,7 @@ function slugify(input: string): string {
 export const app_emit = defineTool({
   name: "app_emit",
   description:
-    "Append a record (an output) to a workspace App — a typed surface (table/board/list) where outputs accumulate and the user can read/edit them. Use this to durably persist a structured result (a lead, a digest entry, a row) instead of only returning text. `appSlug` selects the app; if it doesn't exist and `appName` is given, it is created. `data` is the record object. For board apps set `status` to the column. Pass a stable `dedupKey` to avoid duplicates on re-runs. To create an app that has NO rows yet (e.g. a sync that found nothing this run), call with appName + appKind + `fields` (the columns) and OMIT `data` — the app is created empty and ready to populate later.",
+    "Append a record (an output) to a workspace App — a typed surface (table/board/list) where outputs accumulate and the user can read/edit them. Use this to durably persist a structured result (a lead, a digest entry, a row) instead of only returning text. `appSlug` selects the app; if it doesn't exist and `appName` is given, it is created. `data` is the record object. For board apps set `status` to the column. Pass a stable `dedupKey` to avoid duplicates on re-runs. To create an app that has NO rows yet (e.g. a sync that found nothing this run), call with appName + appKind + `fields` (the columns) and OMIT `data` — the app is created empty and ready to populate later. SCHEMA EVOLUTION: calling app_emit on an EXISTING app with a `fields` array or `data` keys the current schema doesn't know about will EXTEND the app's column list (existing rows stay intact; the new column is added).",
   params: z.object({
     appSlug: z
       .string()
@@ -75,9 +75,13 @@ export const app_emit = defineTool({
     }
 
     // Resolve the app (workspace-scoped), or create it if metadata is given.
+    // Pull `fields` along with the id so we can MERGE schema additions on
+    // existing apps: a later run learning "I also want a priority column"
+    // can pass it in `fields` (or implicitly via a new data key) and the
+    // app's schema picks it up instead of stranding it in the JSONB blob.
     let app = (
-      await sql<Array<{ id: string }>>`
-        SELECT id::text AS id FROM public.workspace_apps
+      await sql<Array<{ id: string; fields: unknown }>>`
+        SELECT id::text AS id, fields FROM public.workspace_apps
          WHERE workspace_id = ${ctx.workspaceId}::uuid AND slug = ${slug}
          LIMIT 1
       `
@@ -107,7 +111,7 @@ export const app_emit = defineTool({
             : [];
       const k0 = schemaCols[0]?.key;
       const k1 = schemaCols[1]?.key;
-      const created = await sql<Array<{ id: string }>>`
+      const created = await sql<Array<{ id: string; fields: unknown }>>`
         INSERT INTO public.workspace_apps
           (workspace_id, slug, name, description, icon, kind, fields, view, source_run_id)
         VALUES
@@ -121,9 +125,45 @@ export const app_emit = defineTool({
                : {}) as unknown as Parameters<typeof sql.json>[0])},
            ${ctx.runId ?? null}::uuid)
         ON CONFLICT (workspace_id, slug) DO UPDATE SET updated_at = now()
-        RETURNING id::text AS id
+        RETURNING id::text AS id, ${sql.json(schemaCols as unknown as Parameters<typeof sql.json>[0])} AS fields
       `;
       app = created[0]!;
+    }
+
+    // Schema evolution: when a later run brings new column keys (either an
+    // explicit `fields` entry or just a `data` key the existing schema
+    // doesn't know about), merge them into the app's `fields` jsonb.
+    // Otherwise the new value lands silently in the data blob and the user
+    // never sees it as a column - so "iterate the same app across runs"
+    // works for rows AND for the schema.
+    if (appExisted) {
+      const existingFields = Array.isArray(app!.fields) ? (app!.fields as Array<{ key: string; label?: string; type?: string }>) : [];
+      const known = new Set(existingFields.map((f) => f.key));
+      const additions: Array<{ key: string; label: string; type: string }> = [];
+      for (const f of fields ?? []) {
+        if (!known.has(f.key)) {
+          additions.push({ key: f.key, label: f.label ?? f.key, type: f.type ?? "text" });
+          known.add(f.key);
+        }
+      }
+      for (const k of data ? Object.keys(data) : []) {
+        if (!known.has(k)) {
+          additions.push({ key: k, label: k, type: "text" });
+          known.add(k);
+        }
+      }
+      if (additions.length > 0) {
+        const merged = [...existingFields, ...additions];
+        await sql`
+          UPDATE public.workspace_apps
+             SET fields = ${sql.json(merged as unknown as Parameters<typeof sql.json>[0])}, updated_at = now()
+           WHERE id = ${app!.id}::uuid
+        `;
+        await ctx.publish({
+          type: "app_schema_extended",
+          payload: { kind: "app_schema_extended", appSlug: slug, addedKeys: additions.map((a) => a.key) },
+        });
+      }
     }
 
     // No data → an app-create-only call (e.g. a sync that found nothing this
@@ -139,12 +179,13 @@ export const app_emit = defineTool({
 
     const automationId = (ctx as { automationId?: string }).automationId ?? null;
     const dataJson = sql.json(data as unknown as Parameters<typeof sql.json>[0]);
+    const appId = app!.id;
 
     const inserted = await sql<Array<{ id: string }>>`
       INSERT INTO public.workspace_app_records
         (app_id, workspace_id, data, status, dedup_key, source_run_id, source_automation_id)
       VALUES
-        (${app.id}::uuid, ${ctx.workspaceId}::uuid, ${dataJson},
+        (${appId}::uuid, ${ctx.workspaceId}::uuid, ${dataJson},
          ${status ?? null}, ${dedupKey ?? null},
          ${ctx.runId ?? null}::uuid, ${automationId}::uuid)
       ON CONFLICT (app_id, dedup_key) DO UPDATE
@@ -152,7 +193,7 @@ export const app_emit = defineTool({
       RETURNING id::text AS id
     `;
 
-    await sql`UPDATE public.workspace_apps SET updated_at = now() WHERE id = ${app.id}::uuid`;
+    await sql`UPDATE public.workspace_apps SET updated_at = now() WHERE id = ${appId}::uuid`;
 
     await ctx.publish({
       type: "app_record_written",

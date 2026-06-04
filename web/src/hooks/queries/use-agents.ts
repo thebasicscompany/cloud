@@ -12,8 +12,18 @@ import type {
 export const AGENTS_KEY = ["agents"];
 
 async function listAgents(): Promise<Agent[]> {
+  // Throw on non-2xx so React Query's `error` becomes truthy. Previously
+  // we silently returned [], which made an expired JWT / DB outage / "no
+  // agents yet" look identical to the user. Status surfaces in the
+  // thrown error so the library view can show "session expired" vs.
+  // "agents are temporarily unavailable" instead of a generic empty.
   const r = await fetch("/api/agents", { cache: "no-store" });
-  if (!r.ok) return [];
+  if (!r.ok) {
+    const body = (await r.json().catch(() => ({}))) as { error?: string; message?: string };
+    const err = new Error(body.message ?? body.error ?? `Agents fetch failed (${r.status})`);
+    (err as Error & { status?: number }).status = r.status;
+    throw err;
+  }
   const data = await r.json();
   return (data.agents ?? []) as Agent[];
 }
