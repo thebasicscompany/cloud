@@ -79,13 +79,18 @@ export function CreateAgentCanvas() {
   const [schedule, setSchedule] = useState<AgentSchedule | null>(null);
   const [tools, setTools] = useState<AgentTool[]>([]);
   const [suggestedTools, setSuggestedTools] = useState<string[]>([]);
+  // Sites Basics asked for cookie capture on (bare hosts like "x.com"). These
+  // aren't in TOOL_CATALOG - the agent surfaces them when the task needs the
+  // user's logged-in session on a site no Composio toolkit covers. Renders
+  // as virtual `kind: "site"` entries with host=slug.
+  const [suggestedSites, setSuggestedSites] = useState<string[]>([]);
 
   // Section completion is now derived directly from the fields. As soon as
   // a section has valid content it shows the green ✓ chip; no manual
   // "Mark complete" click is needed. Save activates when the three
   // required fields (name, target, instructions) are present.
   const showInstructions = Boolean(instructions);
-  const showTools = suggestedTools.length > 0 || tools.length > 0;
+  const showTools = suggestedTools.length > 0 || suggestedSites.length > 0 || tools.length > 0;
   const completed = {
     hosting: Boolean(target),
     instructions: Boolean(instructions),
@@ -101,6 +106,9 @@ export function CreateAgentCanvas() {
     }
     if (patch.suggestedTools && patch.suggestedTools.length > 0) {
       setSuggestedTools(patch.suggestedTools);
+    }
+    if (patch.suggestedBrowserSites && patch.suggestedBrowserSites.length > 0) {
+      setSuggestedSites(patch.suggestedBrowserSites);
     }
   };
 
@@ -266,7 +274,12 @@ export function CreateAgentCanvas() {
 
                 {showTools ? (
                   <SectionCard title="Tools" complete={completed.tools}>
-                    <ToolsList suggested={suggestedTools} tools={tools} setTools={setTools} />
+                    <ToolsList
+                      suggested={suggestedTools}
+                      suggestedSites={suggestedSites}
+                      tools={tools}
+                      setTools={setTools}
+                    />
                   </SectionCard>
                 ) : null}
               </div>
@@ -471,14 +484,26 @@ function SchedulePicker({
 
 function ToolsList({
   suggested,
+  suggestedSites = [],
   tools,
   setTools,
 }: {
   suggested: string[];
+  suggestedSites?: string[];
   tools: AgentTool[];
   setTools: Dispatch<SetStateAction<AgentTool[]>>;
 }) {
-  const all = Array.from(new Set([...suggested, ...tools.map((t) => t.tool)]));
+  // The combined list is: every Composio toolkit suggested OR already connected,
+  // PLUS every browser-site suggestion (rendered as a virtual catalog entry so
+  // the existing site/cookies button branch handles it) OR already saved.
+  const all = Array.from(
+    new Set([
+      ...suggested,
+      ...suggestedSites,
+      ...tools.map((t) => t.tool),
+    ]),
+  );
+  const siteSet = new Set(suggestedSites.map((s) => s.toLowerCase()));
   const isConnected = (slug: string, mode: AgentTool["mode"]) =>
     tools.some((t) => t.tool === slug && t.mode === mode);
   // Tracks which toolkit is mid-OAuth so the Connect button can show a
@@ -584,7 +609,13 @@ function ToolsList({
         <div className="text-foreground/60 text-xs">Basics will suggest tools based on what this agent does.</div>
       ) : null}
       {all.map((slug) => {
-        const meta = TOOL_CATALOG[slug] ?? { label: slug, description: "", kind: "api" as ToolKind };
+        // Browser-site suggestions ("x.com", "reddit.com") aren't in the
+        // catalog; synthesize a meta entry for them so the existing site
+        // branch renders the "Use my cookies" affordance.
+        const isSiteSuggestion = siteSet.has(slug.toLowerCase());
+        const meta = TOOL_CATALOG[slug] ?? (isSiteSuggestion
+          ? { label: slug, description: "Sign in via browser cookies", kind: "site" as ToolKind, host: slug }
+          : { label: slug, description: "", kind: "api" as ToolKind });
         const showApi = meta.kind === "api" || meta.kind === "both";
         const showSite = meta.kind === "site" || meta.kind === "both";
         const apiConnected = isConnected(slug, "api");

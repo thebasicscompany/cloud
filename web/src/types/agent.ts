@@ -47,6 +47,10 @@ export interface AgentDraftPatch {
   instructions?: string;
   target?: AgentTarget;
   suggestedTools?: string[];
+  /** Bare hosts (e.g. "x.com") for sites whose logged-in cookies the cloud
+   * agent needs. Surfaced as a "Use my <host> cookies" tile next to the
+   * Composio toolkit suggestions. */
+  suggestedBrowserSites?: string[];
 }
 
 export interface AgentDraftResponse {
