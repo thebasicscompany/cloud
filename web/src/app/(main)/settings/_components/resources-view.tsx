@@ -2,25 +2,29 @@
 
 import { useState } from "react";
 
+import Link from "next/link";
 import { toast } from "sonner";
 
-import { Folder, Plus, Trash2 } from "@/icons";
+import { Folder, Trash2 } from "@/icons";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 
 /**
- * Workspace resources - long-lived apps / docs / etc. the agent should know
- * about across runs. Each row exposes the three dials the user needs:
- *   - Edit name / URL / description
- *   - Change agent_access (read_write | read | none)
- *   - Delete
+ * Workspace resources — the audit + access-control surface for things your
+ * AGENTS created on previous runs (Notion pages, Sheets, Airtable bases,
+ * Slack channels, ...). NOT a "paste any URL" bookmark folder: the user
+ * can't manually add external resources here because we can't guarantee an
+ * agent can edit a URL it didn't create + the Composio connection for. To
+ * create a NEW thing the agent should fill/maintain, the user makes an App
+ * over on /apps — that's where the dataset surface lives.
  *
- * "Add resource" creates a user_added row. Agent-created rows show their
- * source badge so the user can tell what the agents have made for them.
+ * Per-row controls:
+ *   - Rename / edit URL + notes (in case the agent named it badly)
+ *   - Change agent_access (read_write | read | none)
+ *   - Delete (drops the registry row; doesn't touch the underlying artifact)
  */
 
 export type AgentAccess = "none" | "read" | "read_write";
@@ -53,29 +57,8 @@ const ACCESS_VARIANT: Record<AgentAccess, "default" | "secondary" | "outline"> =
   none: "outline",
 };
 
-const KIND_PRESETS = [
-  "notion_page",
-  "notion_database",
-  "google_doc",
-  "google_sheet",
-  "google_drive_folder",
-  "airtable_base",
-  "slack_channel",
-  "linear_project",
-  "github_repo",
-  "other",
-];
-
 export function ResourcesView({ initialResources }: { initialResources: Resource[] }) {
   const [resources, setResources] = useState<Resource[]>(initialResources);
-  const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState<{ kind: string; name: string; url: string; externalId: string; description: string }>({
-    kind: "notion_page",
-    name: "",
-    url: "",
-    externalId: "",
-    description: "",
-  });
 
   async function patchResource(id: string, body: Partial<Pick<Resource, "name" | "url" | "externalId" | "description" | "agentAccess" | "toolkitSlug">>) {
     const optimistic = resources.map((r) => (r.id === id ? { ...r, ...body } : r));
@@ -108,93 +91,33 @@ export function ResourcesView({ initialResources }: { initialResources: Resource
     }
   }
 
-  async function addResource() {
-    if (!draft.name.trim() || !draft.kind.trim()) {
-      toast.error("Give it a name and a kind.");
-      return;
-    }
-    try {
-      const res = await fetch("/api/resources", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          kind: draft.kind.trim().toLowerCase(),
-          name: draft.name.trim(),
-          url: draft.url.trim() || undefined,
-          externalId: draft.externalId.trim() || undefined,
-          description: draft.description.trim() || undefined,
-          source: "user_added",
-          agentAccess: "read_write",
-        }),
-      });
-      const json = (await res.json().catch(() => ({}))) as { resource?: Resource; error?: string };
-      if (!res.ok || !json.resource) throw new Error(json.error ?? "add failed");
-      setResources([json.resource, ...resources]);
-      setDraft({ kind: "notion_page", name: "", url: "", externalId: "", description: "" });
-      setAdding(false);
-      toast.success(`Added ${json.resource.name}.`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Couldn't add resource");
-    }
-  }
-
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div className="space-y-1">
-          <h2 className="font-semibold text-lg tracking-tight">Resources</h2>
-          <p className="max-w-prose text-muted-foreground text-sm">
-            Long-lived apps and docs your agents should know about - both things they&apos;ve made on previous runs and ones you point them at. Change what an agent can do per resource, or revoke access entirely.
-          </p>
-        </div>
-        <Button size="sm" onClick={() => setAdding((v) => !v)} className="gap-1.5">
-          <Plus className="size-4" /> Add resource
-        </Button>
+      <div className="space-y-1">
+        <h2 className="font-semibold text-lg tracking-tight">Resources</h2>
+        <p className="max-w-prose text-muted-foreground text-sm">
+          Long-lived things your agents have made on previous runs - Notion pages, sheets, Airtable bases, Slack channels, and so on. Decide per item whether the agent can keep editing it, can only read it, or shouldn&apos;t touch it at all.
+        </p>
       </div>
 
-      {adding ? (
-        <div className="space-y-3 rounded-xl border bg-card p-4">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="r-kind" className="text-xs">Kind</Label>
-              <NativeSelect
-                id="r-kind"
-                value={draft.kind}
-                onChange={(e) => setDraft({ ...draft, kind: e.target.value })}
-              >
-                {KIND_PRESETS.map((k) => (
-                  <NativeSelectOption key={k} value={k}>{k}</NativeSelectOption>
-                ))}
-              </NativeSelect>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="r-name" className="text-xs">Name</Label>
-              <Input id="r-name" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Q3 Leads tracker" />
-            </div>
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label htmlFor="r-url" className="text-xs">URL</Label>
-              <Input id="r-url" value={draft.url} onChange={(e) => setDraft({ ...draft, url: e.target.value })} placeholder="https://airtable.com/..." />
-            </div>
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label htmlFor="r-extid" className="text-xs">External ID (optional - the system&apos;s identifier)</Label>
-              <Input id="r-extid" value={draft.externalId} onChange={(e) => setDraft({ ...draft, externalId: e.target.value })} placeholder="appBaseId123 / pageId / etc." />
-            </div>
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label htmlFor="r-desc" className="text-xs">Notes for the agent (optional)</Label>
-              <Input id="r-desc" value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} placeholder="Use this for all customer follow-ups" />
-            </div>
+      <div className="rounded-xl border bg-foreground/[0.02] p-4 text-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1">
+            <div className="font-medium">Want the agent to fill a new dataset?</div>
+            <p className="max-w-prose text-foreground/60 text-xs">
+              Create an App on the Apps page (a CRM, a list, a tracker - whatever the agent should keep adding rows to). Apps are first-class inside Basics, so the agent can write to them without an extra OAuth step.
+            </p>
           </div>
-          <div className="flex justify-end gap-2">
-            <Button size="sm" variant="ghost" onClick={() => setAdding(false)}>Cancel</Button>
-            <Button size="sm" onClick={() => void addResource()}>Add</Button>
-          </div>
+          <Button asChild size="sm" variant="outline">
+            <Link href="/apps">Open Apps</Link>
+          </Button>
         </div>
-      ) : null}
+      </div>
 
       {resources.length === 0 ? (
         <div className="rounded-xl border border-dashed bg-foreground/[0.02] p-10 text-center text-foreground/60 text-sm">
           <Folder className="mx-auto mb-3 size-8 text-foreground/40" />
-          No resources yet. Agents will register things they create here so they can edit them on the next run. You can also add ones you&apos;ve already made.
+          Nothing here yet. When your agents create a Notion page, a Google Doc, an Airtable base, etc., it&apos;ll show up here so you can decide what they&apos;re allowed to do with it next time.
         </div>
       ) : (
         <div className="space-y-2">

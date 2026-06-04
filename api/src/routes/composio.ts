@@ -138,15 +138,22 @@ composioSkillsRoute.post(
       const toolkit = body.toolkit.trim().toLowerCase()
       if (!toolkit) return c.json({ ok: false, error: "Missing 'toolkit' in request body." }, 400)
 
+      // Composio's canonical slugs are unhyphenated single words
+      // ('googledrive' not 'google_drive', 'googlesheets' not 'google_sheets').
+      // Older agent outputs and any cached UI catalog rows may still use
+      // the underscored form, so we normalize on read: a lookup for
+      // 'google_drive' also matches 'googledrive'. Cheap, deterministic,
+      // can't false-positive between distinct toolkits.
+      const stripped = toolkit.replace(/_/g, '')
       const client = new ComposioClient()
 
       // 1) Find the toolkit's enabled auth_config (required to mint a link).
       const authConfigs = await client.listAuthConfigs()
-      const match = authConfigs.find(
-        (a) =>
-          (a.toolkit?.slug ?? '').toLowerCase() === toolkit &&
-          (a.status ?? '').toUpperCase() !== 'DISABLED',
-      )
+      const match = authConfigs.find((a) => {
+        const slug = (a.toolkit?.slug ?? '').toLowerCase()
+        const isMatch = slug === toolkit || slug.replace(/_/g, '') === stripped
+        return isMatch && (a.status ?? '').toUpperCase() !== 'DISABLED'
+      })
       if (!match) {
         return c.json(
           {

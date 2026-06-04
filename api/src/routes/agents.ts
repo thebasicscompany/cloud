@@ -450,12 +450,16 @@ const DraftSchema = z.object({
 // anything else is filtered out before the response leaves this endpoint.
 // Generic "browser" navigation is NOT a Composio toolkit — that's just the
 // agent's built-in browser when target=cloud/chrome, no connection needed.
+// Slugs MUST match Composio's canonical toolkit slugs - 'googledrive', not
+// 'google_drive'. The connect-toolkit route looks them up via case-insensitive
+// equality against ComposioAuthConfig.toolkit.slug, so any mismatch surfaces
+// as "No enabled Composio auth config found for toolkit X".
 const ALLOWED_TOOLKITS = new Set([
   'gmail',
-  'google_calendar',
-  'google_sheets',
-  'google_docs',
-  'google_drive',
+  'googlecalendar',
+  'googlesheets',
+  'googledocs',
+  'googledrive',
   'slack',
   'notion',
   'linear',
@@ -483,7 +487,7 @@ Target choices:
   • 'chrome'   — runs against the user's personal Chrome via the local relay. Best for tasks needing the user's logged-in browser session.
 
 Tool catalog — the ONLY valid slugs for suggestedTools are:
-  gmail, google_calendar, google_sheets, google_docs, google_drive, slack,
+  gmail, googlecalendar, googlesheets, googledocs, googledrive, slack,
   notion, linear, github, asana, trello, airtable, hubspot, salesforce,
   jira, stripe, shopify
 Do NOT invent slugs. Do NOT suggest "browser", "web", "search", or anything not in
@@ -679,7 +683,7 @@ Your job: infer what the agent should DO, then draft NAME, INSTRUCTIONS, TARGET,
 - If they used a browser to do everything → 'cloud' (or 'chrome' if it clearly depended on their logged-in session).
 - If they used native macOS apps / Finder / system UI → 'computer'.
 
-Tool catalog — the ONLY valid slugs are: gmail, google_calendar, google_sheets, google_docs, google_drive, slack, notion, linear, github, asana, trello, airtable, hubspot, salesforce, jira, stripe, shopify. Do NOT invent slugs. Include suggestedBrowserSites (bare hosts like "x.com") for sites where the user is logged in.
+Tool catalog — the ONLY valid slugs are: gmail, googlecalendar, googlesheets, googledocs, googledrive, slack, notion, linear, github, asana, trello, airtable, hubspot, salesforce, jira, stripe, shopify. Do NOT invent slugs and do NOT insert underscores ('googledrive' not 'google_drive'). Include suggestedBrowserSites (bare hosts like "x.com") for sites where the user is logged in.
 
 Reply with ONE JSON object (no markdown):
   {

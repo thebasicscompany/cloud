@@ -36,10 +36,10 @@ type ToolKind = "api" | "site" | "both";
 interface ToolMeta { label: string; description: string; kind: ToolKind; host?: string }
 const TOOL_CATALOG: Record<string, ToolMeta> = {
   gmail: { label: "Gmail", description: "Read and send mail", kind: "api" },
-  google_calendar: { label: "Google Calendar", description: "Read and create events", kind: "api" },
-  google_sheets: { label: "Google Sheets", description: "Read and edit spreadsheets", kind: "api" },
-  google_docs: { label: "Google Docs", description: "Read and write docs", kind: "api" },
-  google_drive: { label: "Google Drive", description: "Read and upload files", kind: "api" },
+  googlecalendar: { label: "Google Calendar", description: "Read and create events", kind: "api" },
+  googlesheets: { label: "Google Sheets", description: "Read and edit spreadsheets", kind: "api" },
+  googledocs: { label: "Google Docs", description: "Read and write docs", kind: "api" },
+  googledrive: { label: "Google Drive", description: "Read and upload files", kind: "api" },
   slack: { label: "Slack", description: "Send and read channel messages", kind: "api" },
   notion: { label: "Notion", description: "Read pages and databases", kind: "api" },
   linear: { label: "Linear", description: "Read and create issues", kind: "api" },
